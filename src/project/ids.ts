@@ -18,3 +18,14 @@ export function newDialogueId(): DialogueId {
 export function newQuestId(): QuestId {
   return crypto.randomUUID() as QuestId
 }
+
+// Ids arriving from outside the document — today only the URL hash. Branding a raw string
+// is not a claim that the entity exists; callers must still look it up and handle a miss.
+
+export function asMapId(raw: string): MapId {
+  return raw as MapId
+}
+
+export function asDialogueId(raw: string): DialogueId {
+  return raw as DialogueId
+}

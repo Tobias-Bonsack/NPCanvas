@@ -2,6 +2,9 @@ import type { ReactElement, ReactNode } from 'react'
 import type { AppState } from '../project/types.ts'
 import { createEmptyProject } from '../project/data-file.ts'
 import { dispatch, useAppState } from '../project/store.ts'
+import { Nav } from './Nav.tsx'
+import type { Route } from './route.ts'
+import { useRoute } from './route.ts'
 import './App.css'
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
@@ -108,11 +111,37 @@ function LoadFailedScreen({
 }
 
 function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
+  const route = useRoute()
   return (
-    <Screen title={state.project.projectName}>
-      <p className="app__lead">
-        Connected to <strong>{state.directoryName}</strong>.
-      </p>
-    </Screen>
+    <div className="app-shell">
+      <Nav />
+      <ReadyView state={state} route={route} />
+    </div>
   )
+}
+
+/** Exhaustive over `Route`; the `ReactElement` return type rejects a new view silently added. */
+function ReadyView({ state, route }: { state: ReadyState; route: Route }): ReactElement {
+  switch (route.kind) {
+    case 'map':
+      return (
+        <Screen title={state.project.projectName}>
+          <p className="app__lead">
+            Connected to <strong>{state.directoryName}</strong>. Map canvas arrives in #9.
+          </p>
+        </Screen>
+      )
+    case 'quests':
+      return (
+        <Screen title="Quest board">
+          <p className="app__lead">{state.project.quests.length} quests.</p>
+        </Screen>
+      )
+    case 'insights':
+      return (
+        <Screen title="Insights">
+          <p className="app__lead">{state.project.dialogues.length} dialogues logged.</p>
+        </Screen>
+      )
+  }
 }
