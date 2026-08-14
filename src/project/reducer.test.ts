@@ -24,6 +24,8 @@ function gameMap(id: string, name = id): GameMap {
     file: { fileName: `map-${id}.png`, mimeType: 'image/png', byteSize: 10 },
     width: 100,
     height: 100,
+    origin: { x: 0, y: 0 },
+    scale: 1,
   }
 }
 
@@ -96,6 +98,8 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'selection/set', selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') } },
   { kind: 'map/added', map: gameMap('harbour') },
   { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'Docks' },
+  { kind: 'map/moved', mapId: asMapId('harbour'), origin: { x: 10, y: 10 } },
+  { kind: 'map/scaled', mapId: asMapId('harbour'), scale: 2 },
   { kind: 'map/deleted', mapId: asMapId('harbour') },
   { kind: 'dialogue/added', dialogue: dialogue('dialogue-1', asMapId('harbour')) },
   { kind: 'dialogue/moved', dialogueId: asDialogueId('dialogue-1'), position: { x: 0, y: 0 } },
@@ -260,6 +264,70 @@ describe('reduce: map actions', () => {
     expect(
       reduce(state, { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'harbour' }),
     ).toBe(state)
+  })
+})
+
+describe('reduce: map placement', () => {
+  it('moves one map without touching the other', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'map/moved',
+      mapId: asMapId('harbour'),
+      origin: { x: -250, y: 80 },
+    })
+    expect(next.kind === 'ready' && next.project.maps.map((map) => map.origin)).toEqual([
+      { x: -250, y: 80 },
+      { x: 0, y: 0 },
+    ])
+  })
+
+  it('ignores a move of a map that does not exist, or to the origin it already has', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, { kind: 'map/moved', mapId: asMapId('nope'), origin: { x: 1, y: 1 } }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'map/moved', mapId: asMapId('harbour'), origin: { x: 0, y: 0 } }),
+    ).toBe(state)
+  })
+
+  // The origin moves with the scale, which is what makes a nudge read as adjustment rather
+  // than as the map drifting off towards the bottom right.
+  it('scales a map about its centre', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'map/scaled',
+      mapId: asMapId('harbour'),
+      scale: 2,
+    })
+    expect(next.kind === 'ready' && next.project.maps[0]).toMatchObject({
+      scale: 2,
+      origin: { x: -50, y: -50 },
+    })
+    expect(next.kind === 'ready' && next.project.maps[1].scale).toBe(1)
+  })
+
+  it('clamps the scale into the sane range', () => {
+    const state = ready(twoMapProject())
+    const huge = reduce(state, { kind: 'map/scaled', mapId: asMapId('harbour'), scale: 500 })
+    expect(huge.kind === 'ready' && huge.project.maps[0].scale).toBe(10)
+
+    const tiny = reduce(state, { kind: 'map/scaled', mapId: asMapId('harbour'), scale: 0 })
+    expect(tiny.kind === 'ready' && tiny.project.maps[0].scale).toBe(0.1)
+  })
+
+  it('ignores a scale of a map that does not exist, or one that clamps to the current scale', () => {
+    const state = ready(twoMapProject())
+    expect(reduce(state, { kind: 'map/scaled', mapId: asMapId('nope'), scale: 2 })).toBe(state)
+    expect(reduce(state, { kind: 'map/scaled', mapId: asMapId('harbour'), scale: 1 })).toBe(state)
+  })
+
+  it('leaves dialogue positions alone, because they are map-local and ride along', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), {
+      kind: 'map/moved',
+      mapId: asMapId('harbour'),
+      origin: { x: 900, y: 900 },
+    })
+    expect(next.kind === 'ready' && next.project.dialogues).toBe(before.dialogues)
   })
 })
 

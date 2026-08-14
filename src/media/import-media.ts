@@ -1,5 +1,5 @@
 import { newMapId } from '../project/ids.ts'
-import type { GameMap } from '../project/types.ts'
+import type { GameMap, Point } from '../project/types.ts'
 import { writeMediaFile } from '../storage/project-directory.ts'
 
 /**
@@ -20,10 +20,13 @@ const IMAGE_EXTENSIONS: Readonly<Record<string, string | undefined>> = {
 
 /**
  * Copies a picked image into `media/`, probes its natural size, and returns the `GameMap`
- * for the caller to dispatch. The natural size **is** the world coordinate system, so it is
- * measured once here rather than read off a rendered `<img>` that may not have loaded yet.
+ * for the caller to dispatch. The natural size **is** the map-local coordinate system, so it
+ * is measured once here rather than read off a rendered `<img>` that may not have loaded yet.
+ *
+ * `origin` is supplied by the caller rather than computed here, so canvas placement policy
+ * stays in `canvas-layout.ts` and the media layer never has to know what else is on screen.
  */
-export async function importMapImage(file: File): Promise<GameMap> {
+export async function importMapImage(file: File, origin: Point): Promise<GameMap> {
   const extension = IMAGE_EXTENSIONS[file.type]
   if (extension === undefined) {
     const supplied = file.type === '' ? 'an unrecognised file type' : file.type
@@ -43,6 +46,8 @@ export async function importMapImage(file: File): Promise<GameMap> {
     file: { fileName, mimeType: file.type, byteSize: file.size },
     width,
     height,
+    origin,
+    scale: 1,
   }
 }
 

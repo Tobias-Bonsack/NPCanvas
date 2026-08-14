@@ -1,4 +1,5 @@
 import { assertNever } from '../assert-never.ts'
+import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
 import type {
   AppState,
   Dialogue,
@@ -27,6 +28,8 @@ export type Action =
   | { kind: 'selection/set'; selection: Selection }
   | { kind: 'map/added'; map: GameMap }
   | { kind: 'map/renamed'; mapId: MapId; name: string }
+  | { kind: 'map/moved'; mapId: MapId; origin: Point }
+  | { kind: 'map/scaled'; mapId: MapId; scale: number }
   | { kind: 'map/deleted'; mapId: MapId }
   | { kind: 'dialogue/added'; dialogue: Dialogue }
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
@@ -98,15 +101,28 @@ export function reduce(state: AppState, action: Action): AppState {
       if (state.kind !== 'ready') return state
       const target = state.project.maps.find((map) => map.id === action.mapId)
       if (target === undefined || target.name === action.name) return state
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          maps: state.project.maps.map((map) =>
-            map === target ? { ...map, name: action.name } : map,
-          ),
-        },
-      }
+      return withMap(state, target, { ...target, name: action.name })
+    }
+
+    // Fires once per drag, on pointerup, for the same reason `dialogue/moved` does: the map
+    // follows the cursor from component state, so autosave sees one document change.
+    case 'map/moved': {
+      if (state.kind !== 'ready') return state
+      const target = state.project.maps.find((map) => map.id === action.mapId)
+      if (target === undefined) return state
+      if (target.origin.x === action.origin.x && target.origin.y === action.origin.y) return state
+      return withMap(state, target, { ...target, origin: action.origin })
+    }
+
+    // The origin moves with the scale so the map's centre stays put — the two are one
+    // adjustment, and splitting them would let a caller apply half of it.
+    case 'map/scaled': {
+      if (state.kind !== 'ready') return state
+      const target = state.project.maps.find((map) => map.id === action.mapId)
+      if (target === undefined) return state
+      const scale = clampMapScale(action.scale)
+      if (target.scale === scale) return state
+      return withMap(state, target, { ...target, scale, origin: originForScale(target, scale) })
     }
 
     // The whole cascade is one action: a map, its zones, its dialogues, and every quest
@@ -194,6 +210,19 @@ export function reduce(state: AppState, action: Action): AppState {
 }
 
 const EMPTY_ZONE_IDS: ReadonlySet<ZoneId> = new Set<ZoneId>()
+
+type ReadyState = Extract<AppState, { kind: 'ready' }>
+
+/** Replaces one map by reference identity. Every single-map edit funnels through here. */
+function withMap(state: ReadyState, target: GameMap, replacement: GameMap): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      maps: state.project.maps.map((map) => (map === target ? replacement : map)),
+    },
+  }
+}
 
 /**
  * Quests are not scoped to a map, so they outlive any cascade — but a dangling `DialogueId`

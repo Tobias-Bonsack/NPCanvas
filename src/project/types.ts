@@ -5,7 +5,14 @@ export type ZoneId = string & { readonly brand: 'ZoneId' }
 export type DialogueId = string & { readonly brand: 'DialogueId' }
 export type QuestId = string & { readonly brand: 'QuestId' }
 
-/** Map-image pixel coordinates. The map image's natural size IS the world space. */
+/**
+ * A coordinate pair, in whichever space the field holding it names.
+ *
+ * Two spaces exist. **Map-local** is pixels within one map image — `Dialogue.position` and
+ * `Zone.polygon` are map-local, and stay that way. **Canvas** is the shared space every map
+ * is placed into, one canvas unit being one map pixel at `scale: 1` — `GameMap.origin` is
+ * canvas space. See CLAUDE.md § Domain and architecture decisions.
+ */
 export type Point = { x: number; y: number }
 
 /** At least three vertices — a two-point "region" is not representable. */
@@ -28,7 +35,18 @@ export type DialogueContent =
   | { kind: 'gif'; file: MediaFile; width: number; height: number }
   | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
 
-export type GameMap = { id: MapId; name: string; file: MediaFile; width: number; height: number }
+export type GameMap = {
+  id: MapId
+  name: string
+  file: MediaFile
+  /** The image's natural pixel size, and therefore the extent of its map-local space. */
+  width: number
+  height: number
+  /** Top-left corner in canvas space. Moving it carries the map's pins and zones along. */
+  origin: Point
+  /** Canvas units per map pixel; 1 is native size. */
+  scale: number
+}
 
 export type Zone = {
   id: ZoneId
@@ -61,9 +79,29 @@ export type Quest = {
 
 // ---- on-disk schema ----
 
+/** A V1 map: no placement, because V1 showed exactly one map at a time. */
+export type GameMapV1 = {
+  id: MapId
+  name: string
+  file: MediaFile
+  width: number
+  height: number
+}
+
 export type ProjectFileV1 = {
-  /** Literal, not `number`: future versions discriminate on it in parseProjectFile. */
+  /** Literal, not `number`: every version discriminates on it in parseProjectFile. */
   schemaVersion: 1
+  projectName: string
+  savedAt: string
+  maps: GameMapV1[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
+}
+
+/** V2 places every map on one shared canvas, so maps carry `origin` and `scale`. */
+export type ProjectFileV2 = {
+  schemaVersion: 2
   projectName: string
   savedAt: string
   maps: GameMap[]
@@ -71,7 +109,15 @@ export type ProjectFileV1 = {
   dialogues: Dialogue[]
   quests: Quest[]
 }
-export type ProjectFile = ProjectFileV1
+
+/**
+ * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
+ * it migrates anything older forward, so nothing downstream branches on a version.
+ */
+export type StoredProjectFile = ProjectFileV1 | ProjectFileV2
+
+/** The current shape, and the only one the store, the components, and writes ever see. */
+export type ProjectFile = ProjectFileV2
 
 // ---- in-memory app state ----
 

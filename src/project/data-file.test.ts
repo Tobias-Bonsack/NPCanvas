@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { parseProjectFile, serializeProject } from './data-file.ts'
+import { MAP_LAYOUT_GAP } from '../map/canvas-layout.ts'
+import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
 // A document exercising every branch of the reader: all four content kinds, a polygon, a
 // quest, and a media file. Rebuilt per test so a mutation cannot leak into the next case.
 function validDocument(): Record<string, unknown> {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     projectName: 'Fisherman’s Rest',
     savedAt: '2026-08-14T10:00:00.000Z',
     maps: [
@@ -15,6 +16,8 @@ function validDocument(): Record<string, unknown> {
         file: { fileName: 'map-1.png', mimeType: 'image/png', byteSize: 204800 },
         width: 2000,
         height: 1500,
+        origin: { x: -400, y: 250 },
+        scale: 0.75,
       },
     ],
     zones: [
@@ -163,10 +166,95 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 2
-    expect(rejectionMessage(data)).toContain('schemaVersion')
+    data.schemaVersion = 3
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1 or 2, but found 3')
   })
 
+  it('rejects a V2 map with no placement', () => {
+    const data = validDocument()
+    const maps = data.maps as Record<string, unknown>[]
+    delete maps[0].origin
+    expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
+  })
+
+  it('round trips a V2 document with its placements unchanged', () => {
+    const result = parseProjectFile(JSON.stringify(validDocument()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(2)
+    expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
+    expect(result.file.maps[0].scale).toBe(0.75)
+
+    const rewritten = parseProjectFile(serializeProject(result.file))
+    expect(rewritten.ok).toBe(true)
+    if (!rewritten.ok) return
+    expect(rewritten.file.maps).toEqual(result.file.maps)
+  })
+})
+
+/** A V1 document is a V2 one with the placement fields removed and the version rolled back. */
+function v1Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 1
+  const [map] = data.maps as Record<string, unknown>[]
+  delete map.origin
+  delete map.scale
+  data.maps = [
+    map,
+    { ...map, id: 'map-2', name: 'Caves', width: 800, height: 600 },
+    { ...map, id: 'map-3', name: 'Keep', width: 1200, height: 400 },
+  ]
+  return data
+}
+
+describe('parseProjectFile: V1 migration', () => {
+  it('migrates a V1 document to V2 and leaves everything but the maps alone', () => {
+    const result = parseProjectFile(JSON.stringify(v1Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(2)
+    expect(result.file.dialogues).toHaveLength(4)
+    expect(result.file.zones[0].name).toBe('Harbour')
+    expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
+  })
+
+  it('lays the V1 maps out left to right at native scale, with nothing overlapping', () => {
+    const result = parseProjectFile(JSON.stringify(v1Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.maps.map((map) => map.scale)).toEqual([1, 1, 1])
+    expect(result.file.maps.map((map) => map.origin)).toEqual([
+      { x: 0, y: 0 },
+      { x: 2000 + MAP_LAYOUT_GAP, y: 0 },
+      { x: 2000 + MAP_LAYOUT_GAP + 800 + MAP_LAYOUT_GAP, y: 0 },
+    ])
+  })
+
+  it('accepts a V1 document with no maps at all', () => {
+    const data = v1Document()
+    data.maps = []
+    data.zones = []
+    data.dialogues = []
+    data.quests = []
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file).toMatchObject({ schemaVersion: 2, maps: [] })
+  })
+
+  it('still validates the V1 fields it reads', () => {
+    const data = v1Document()
+    const maps = data.maps as Record<string, unknown>[]
+    maps[1].width = '800'
+    expect(rejectionMessage(data)).toBe('maps[1].width: expected a finite number')
+  })
+})
+
+describe('parseProjectFile: field validation', () => {
   it('rejects a missing field', () => {
     const data = validDocument()
     delete data.projectName
@@ -209,6 +297,18 @@ describe('parseProjectFile', () => {
     const quests = data.quests as Record<string, unknown>[]
     quests[0].status = 'abandoned'
     expect(rejectionMessage(data)).toBe('quests[0].status: expected open or done')
+  })
+})
+
+describe('createEmptyProject', () => {
+  it('writes the current schema version, so a new project is never migrated on its first read', () => {
+    const project = createEmptyProject('Harbour')
+    expect(project.schemaVersion).toBe(2)
+
+    const reread = parseProjectFile(serializeProject(project))
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+    expect(reread.file.schemaVersion).toBe(2)
   })
 })
 

@@ -5,6 +5,7 @@ import { importMapImage } from '../media/import-media.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
 import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
+import { nextMapOrigin } from './canvas-layout.ts'
 
 /**
  * Transient picker UI — the rename draft and the delete confirmation — is component state,
@@ -134,7 +135,7 @@ export function MapPicker({
       >
         Delete
       </button>
-      <MapImportButton label="Import map" />
+      <MapImportButton label="Import map" maps={project.maps} />
     </div>
   )
 }
@@ -143,7 +144,14 @@ export function MapPicker({
  * The only import path in the app, used both in the picker bar and in the empty-project call
  * to action — hence a shared leaf rather than the same file input written out twice.
  */
-export function MapImportButton({ label }: { label: string }): ReactElement {
+export function MapImportButton({
+  label,
+  maps,
+}: {
+  label: string
+  /** Only to place the new map beside the existing ones — see `nextMapOrigin`. */
+  maps: readonly GameMap[]
+}): ReactElement {
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputId = useId()
@@ -159,7 +167,7 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
     setError(null)
     setImporting(true)
     try {
-      const map = await importMapImage(file)
+      const map = await importMapImage(file, nextMapOrigin(maps))
       dispatch({ kind: 'map/added', map })
       navigate({ kind: 'map', mapId: map.id, dialogueId: null })
     } catch (importError) {

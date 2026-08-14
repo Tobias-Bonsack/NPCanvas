@@ -1,14 +1,17 @@
+import { nextMapOrigin } from '../map/canvas-layout.ts'
 import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
 import type {
   Dialogue,
   DialogueContent,
   DialogueId,
   GameMap,
+  GameMapV1,
   MapId,
   MediaFile,
   Point,
   Polygon,
   ProjectFile,
+  ProjectFileV1,
   Quest,
   QuestId,
   RelevanceTag,
@@ -20,7 +23,7 @@ import { RELEVANCE_TAGS } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -46,9 +49,10 @@ export type ParseResult =
  * Hand-written validation, no schema library — see CLAUDE.md § Dependencies for the
  * tripwire that would make `zod` worth it.
  *
- * This is also the designated **migration entry point**. When `ProjectFileV2` is added,
- * branch on `schemaVersion` in `readProjectFile` and migrate forward to the newest shape,
- * so every caller downstream keeps seeing only the current `ProjectFile`.
+ * This is also the designated **migration entry point**: `readProjectFile` branches on
+ * `schemaVersion` and migrates forward to the newest shape, so every caller downstream keeps
+ * seeing only the current `ProjectFile`. Add a version by extending that branch — never by
+ * redefining what an existing field means.
  *
  * Every field is copied out explicitly rather than spread, which is what makes unknown
  * extra keys tolerated on read and dropped on the next write.
@@ -202,7 +206,7 @@ function readDialogueContent(value: unknown, path: string): DialogueContent {
   }
 }
 
-function readGameMap(value: unknown, path: string): GameMap {
+function readGameMapV1(value: unknown, path: string): GameMapV1 {
   const raw = readObject(value, path)
   return {
     id: readMapId(raw.id, `${path}.id`),
@@ -210,6 +214,15 @@ function readGameMap(value: unknown, path: string): GameMap {
     file: readMediaFile(raw.file, `${path}.file`),
     width: readNumber(raw.width, `${path}.width`),
     height: readNumber(raw.height, `${path}.height`),
+  }
+}
+
+function readGameMap(value: unknown, path: string): GameMap {
+  const raw = readObject(value, path)
+  return {
+    ...readGameMapV1(value, path),
+    origin: readPoint(raw.origin, `${path}.origin`),
+    scale: readNumber(raw.scale, `${path}.scale`),
   }
 }
 
@@ -258,19 +271,22 @@ function readQuestStatus(value: unknown, path: string): Quest['status'] {
 
 function readProjectFile(value: unknown): ProjectFile {
   const raw = readObject(value, 'data.json')
-
-  // Branch here when ProjectFileV2 exists: read the old shape, migrate it forward, and
-  // return the current ProjectFile. Never redefine what an existing field means.
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
-  if (schemaVersion !== 1) {
-    throw new SchemaError('schemaVersion', `1, but found ${String(schemaVersion)}`)
+  switch (schemaVersion) {
+    case 1:
+      return migrateV1(readProjectFileV1(raw))
+    case 2:
+      return readProjectFileV2(raw)
+    default:
+      throw new SchemaError('schemaVersion', `1 or 2, but found ${String(schemaVersion)}`)
   }
+}
 
+/** Only `maps` differs between the versions; everything else is read by the same functions. */
+function readCommonFields(raw: Record<string, unknown>): Omit<ProjectFile, 'schemaVersion' | 'maps'> {
   return {
-    schemaVersion: 1,
     projectName: readString(raw.projectName, 'projectName'),
     savedAt: readString(raw.savedAt, 'savedAt'),
-    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
     zones: readArray(raw.zones, 'zones').map((zone, index) => readZone(zone, `zones[${index}]`)),
     dialogues: readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
       readDialogue(dialogue, `dialogues[${index}]`),
@@ -279,4 +295,33 @@ function readProjectFile(value: unknown): ProjectFile {
       readQuest(quest, `quests[${index}]`),
     ),
   }
+}
+
+function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
+  return {
+    schemaVersion: 1,
+    ...readCommonFields(raw),
+    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMapV1(map, `maps[${index}]`)),
+  }
+}
+
+function readProjectFileV2(raw: Record<string, unknown>): ProjectFile {
+  return {
+    schemaVersion: 2,
+    ...readCommonFields(raw),
+    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+  }
+}
+
+/**
+ * V1 had no shared canvas, so its maps have no placement. They are laid out left to right at
+ * native scale through the same `nextMapOrigin` an import uses, which is what guarantees a
+ * migrated project opens with nothing overlapping.
+ */
+function migrateV1(file: ProjectFileV1): ProjectFile {
+  const maps: GameMap[] = []
+  for (const map of file.maps) {
+    maps.push({ ...map, origin: nextMapOrigin(maps), scale: 1 })
+  }
+  return { ...file, schemaVersion: 2, maps }
 }

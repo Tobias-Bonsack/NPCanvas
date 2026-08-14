@@ -61,7 +61,17 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **Chromium-only by design.** Persistence is the File System Access API: the user picks a project
   folder holding `data.json` and a `media/` subfolder. Non-supporting browsers get an explicit
   unsupported screen. There is deliberately **no** download/export fallback — do not add one.
-- **`GameMap`, never `Map`.** The domain map type must not shadow the global `Map` constructor.
+- **`GameMap`, never `Map`.** The domain map type must not shadow the global `Map` constructor. A
+  `GameMap` carries its placement on the shared canvas: `origin` (top-left, canvas space) and
+  `scale` (canvas units per map pixel, `1` being native size).
+- **Two coordinate spaces, and only maps bridge them.** *Map-local* is pixels within one map image:
+  `Dialogue.position` and `Zone.polygon` are map-local and stay that way, and `Dialogue.mapId` is a
+  real association. *Canvas* is the shared space every map sits in. Storing positions in canvas
+  space would strand a map's pins where the map used to be as soon as it moved; instead the map
+  carries an origin and its contents ride along for free. `src/map/canvas-layout.ts` owns every
+  conversion and every placement policy — nothing re-derives one inline. This does not contradict
+  "location is derived, never stored": a zone is a region *within* a map, while a map is the
+  substrate the coordinates are expressed in.
 - **No enums** (`erasableSyntaxOnly` is on). The pattern is `export const X = [...] as const` plus
   `type X = (typeof X)[number]` — runtime list and union type from one declaration.
 - **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`) are constructed only in
@@ -89,9 +99,13 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type. To evolve: add `ProjectFileV2`, widen
-  `ProjectFile` to the union, branch in `parseProjectFile`, migrate forward on load. Never redefine
-  the meaning of an existing field.
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **2**. To
+  evolve: add `ProjectFileV3`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+  new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
+  union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
+  newest version, which is the only shape the store, the components, and writes ever see. Never
+  redefine the meaning of an existing field. The V1→V2 migration lays legacy maps out left to right
+  through `nextMapOrigin`, the same function an import uses, so both paths place maps identically.
 - **Canvas rendering is DOM plus one inline `<svg>` under a single CSS transform** — no `<canvas>`.
   Pins counter-scale via the `--map-zoom` custom property (one property write per frame instead of N
   element updates); zone strokes use `vector-effect="non-scaling-stroke"`. `wheel` must be bound with

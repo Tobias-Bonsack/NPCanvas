@@ -49,7 +49,7 @@ export function MapScreen({
             map is ideal. Its pixel dimensions become the coordinate system for every pin and
             zone, so import it once at the size you want to work at.
           </p>
-          <MapImportButton label="Choose a map image" />
+          <MapImportButton label="Choose a map image" maps={project.maps} />
         </div>
       </section>
     )
