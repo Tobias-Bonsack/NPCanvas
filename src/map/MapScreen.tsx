@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
+import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton, MapPicker } from './MapPicker.tsx'
 import './MapScreen.css'
 
@@ -50,9 +51,9 @@ export function MapScreen({
         <MapPicker project={project} activeMap={activeMap} />
       </header>
       <div className="map-screen__canvas">
-        <p className="map-screen__lead">
-          {activeMap.name} — {activeMap.width}×{activeMap.height}. Canvas arrives in #9.
-        </p>
+        {/* Keyed on the map so switching maps remounts the canvas: viewport, container
+            measurement, and object URL all belong to one map and none should carry over. */}
+        <MapCanvas key={activeMap.id} map={activeMap} />
       </div>
     </section>
   )

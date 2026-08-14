@@ -1,0 +1,78 @@
+.map-canvas {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* The browser must not claim the gesture for scrolling or pinch-zooming the page —
+     pointer events drive the pan, and the wheel listener drives the zoom. */
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  background:
+    repeating-conic-gradient(var(--surface-1) 0% 25%, var(--surface-0) 0% 50%) 0 0 / 32px 32px;
+}
+
+.map-canvas:active {
+  cursor: grabbing;
+}
+
+.map-canvas__world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Every transform in viewport.ts is expressed from the top-left; a centred origin would
+     silently offset every world-to-screen conversion by half the element. */
+  transform-origin: 0 0;
+  /* Set by MapCanvas as one property write per frame; pins counter-scale against it. */
+  --map-zoom: 1;
+}
+
+.map-canvas__image {
+  display: block;
+  /* Nearest-neighbour past 1:1 keeps game-map pixel art crisp instead of smeared. */
+  image-rendering: pixelated;
+}
+
+.map-canvas__hud {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  font-size: 0.8125rem;
+}
+
+.map-canvas__zoom {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  /* Fixed width so the HUD does not shuffle sideways as the readout goes 5% → 100% → 800%. */
+  min-width: 3.5rem;
+  text-align: right;
+}
+
+.map-canvas__reset {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.map-canvas__reset:hover {
+  background: var(--surface-3);
+}
+
+.map-canvas__notice {
+  position: absolute;
+  inset: auto 0 50% 0;
+  margin: 0;
+  padding: var(--space-3);
+  text-align: center;
+  color: var(--text-muted);
+}
