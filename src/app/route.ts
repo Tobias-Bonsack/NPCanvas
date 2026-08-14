@@ -1,17 +1,26 @@
 import { useSyncExternalStore } from 'react'
-import { asDialogueId } from '../project/ids.ts'
-import type { DialogueId } from '../project/types.ts'
+import { asDialogueId, asMapId } from '../project/ids.ts'
+import type { DialogueId, MapId } from '../project/types.ts'
 
 // Hash routing, not history routing: Pages serves static files, so history routing would
 // need a `404.html` copy of `index.html`. The URL carries view state only, never data.
 
 export type Route =
-  | { kind: 'canvas'; dialogueId: DialogueId | null }
+  | {
+      kind: 'canvas'
+      dialogueId: DialogueId | null
+      /**
+       * A one-shot navigation intent, not view state: the canvas jumps to this map once and
+       * then clears the parameter with a replacing navigation. Left in the hash it would
+       * fight a user who immediately pans away, re-focusing on every render.
+       */
+      focusMapId: MapId | null
+    }
   | { kind: 'quests' }
   | { kind: 'insights' }
 
 /** Shared reference, so an unparseable hash keeps returning the identical object. */
-const FALLBACK: Route = { kind: 'canvas', dialogueId: null }
+const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focusMapId: null }
 
 export function parseRoute(hash: string): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash
@@ -28,10 +37,13 @@ export function parseRoute(hash: string): Route {
     // an old link must still land on the canvas rather than render nothing.
     case 'canvas':
     case 'map': {
-      const dialogueParam = new URLSearchParams(query).get('dialogue')
+      const params = new URLSearchParams(query)
+      const dialogueParam = params.get('dialogue')
+      const focusParam = params.get('focus')
       return {
         kind: 'canvas',
         dialogueId: dialogueParam ? asDialogueId(dialogueParam) : null,
+        focusMapId: focusParam ? asMapId(focusParam) : null,
       }
     }
     default:
@@ -46,8 +58,11 @@ export function formatRoute(route: Route): string {
     case 'insights':
       return '#/insights'
     case 'canvas': {
-      if (route.dialogueId === null) return '#/canvas'
-      return `#/canvas?dialogue=${encodeURIComponent(route.dialogueId)}`
+      const params = new URLSearchParams()
+      if (route.dialogueId !== null) params.set('dialogue', route.dialogueId)
+      if (route.focusMapId !== null) params.set('focus', route.focusMapId)
+      const query = params.toString()
+      return query === '' ? '#/canvas' : `#/canvas?${query}`
     }
   }
 }

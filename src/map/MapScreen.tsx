@@ -1,10 +1,12 @@
 import type { ReactElement } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
+import { navigate } from '../app/route.ts'
 import type { CanvasTool, GameMap, ProjectFile, Selection } from '../project/types.ts'
 import type { MapDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
-import { MapImportButton, MapPicker } from './MapPicker.tsx'
+import { MapImportButton } from './MapImportButton.tsx'
+import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import './MapScreen.css'
 
@@ -13,6 +15,7 @@ type CanvasRoute = Extract<Route, { kind: 'canvas' }>
 export function MapScreen({
   project,
   selection,
+  route,
 }: {
   project: ProjectFile
   selection: Selection
@@ -28,6 +31,13 @@ export function MapScreen({
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
   const placedMaps = useMemo(() => withDragPreview(project.maps, mapDrag), [project.maps, mapDrag])
+
+  // `replace`, because focusing is a one-shot intent the user never asked to keep in history
+  // — and a stable identity, because the canvas consumes it from an effect.
+  const dialogueId = route.dialogueId
+  const onFocusApplied = useCallback(() => {
+    navigate({ kind: 'canvas', dialogueId, focusMapId: null }, { replace: true })
+  }, [dialogueId])
 
   if (project.maps.length === 0) {
     return (
@@ -48,22 +58,30 @@ export function MapScreen({
   return (
     <section className="map-screen">
       <header className="map-screen__bar">
-        <MapPicker project={project} />
         <ToolPicker tool={tool} onChange={setTool} />
       </header>
-      <div className="map-screen__canvas">
-        <MapCanvas
-          maps={placedMaps}
-          tool={tool}
-          selectedMapId={selection.kind === 'map' ? selection.id : null}
-          onMapDrag={setMapDrag}
-        >
-          <PinLayer
+      <div className="map-screen__body">
+        {/* A sidebar rather than a row in the bar: the list grows with the project, and it
+            has to scroll on its own instead of pushing the canvas off screen. */}
+        <aside className="map-screen__sidebar">
+          <MapList project={project} />
+        </aside>
+        <div className="map-screen__canvas">
+          <MapCanvas
             maps={placedMaps}
-            dialogues={project.dialogues}
-            selectedId={selection.kind === 'dialogue' ? selection.id : null}
-          />
-        </MapCanvas>
+            tool={tool}
+            selectedMapId={selection.kind === 'map' ? selection.id : null}
+            focusMapId={route.focusMapId}
+            onFocusApplied={onFocusApplied}
+            onMapDrag={setMapDrag}
+          >
+            <PinLayer
+              maps={placedMaps}
+              dialogues={project.dialogues}
+              selectedId={selection.kind === 'dialogue' ? selection.id : null}
+            />
+          </MapCanvas>
+        </div>
       </div>
     </section>
   )

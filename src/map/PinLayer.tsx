@@ -57,7 +57,7 @@ export const PinLayer = memo(function PinLayer({
 
   function select(id: DialogueId): void {
     dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-    navigate({ kind: 'canvas', dialogueId: id })
+    navigate({ kind: 'canvas', dialogueId: id, focusMapId: null })
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue): void {
@@ -119,7 +119,7 @@ export const PinLayer = memo(function PinLayer({
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
     setPendingDelete(null)
     dispatch({ kind: 'dialogue/deleted', dialogueId: dialogue.id })
-    navigate({ kind: 'canvas', dialogueId: null }, { replace: true })
+    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
 
     // Text dialogues own no file, but #12 makes this branch live and an orphan in media/
     // would be invisible from inside the app.

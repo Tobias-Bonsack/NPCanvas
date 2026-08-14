@@ -129,10 +129,12 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `MapScreen`, which composes them: it feeds the same previewed `maps` array to both, and returns
   the document's own array identically when no drag is in flight so the memo still holds.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
-  state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>`; the pre-M3.5
-  `#/map/<id>` still parses, dropping the id, so an old link lands on the canvas rather than
-  rendering nothing. Switching to history routing requires emitting `404.html` as a copy of
-  `index.html`.
+  state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>` and
+  `?focus=<mapId>`; the pre-M3.5 `#/map/<id>` still parses, dropping the id, so an old link lands
+  on the canvas rather than rendering nothing. `focus` is a **one-shot intent, not view state**:
+  the canvas jumps to that map once and clears the parameter with `navigate(..., { replace: true })`,
+  because a persistent one would re-focus on every render and fight a user who panned away. Switching
+  to history routing requires emitting `404.html` as a copy of `index.html`.
 - **Dependencies.** Runtime deps stay `react` + `react-dom`. Evaluated and rejected: zustand/redux
   (the store is ~25 lines of platform API), react-router, `idb`, `zod`, `uuid`
   (`crypto.randomUUID()`), `date-fns` (`Intl.DateTimeFormat`), any charting library (inline SVG by

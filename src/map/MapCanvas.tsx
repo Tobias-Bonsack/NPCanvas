@@ -18,6 +18,7 @@ import {
   canvasToMapLocal,
   clampMapScale,
   mapAtCanvasPoint,
+  mapCanvasRect,
   mapsBounds,
 } from './canvas-layout.ts'
 import type { Size } from './geometry.ts'
@@ -73,6 +74,8 @@ export function MapCanvas({
   maps,
   tool,
   selectedMapId,
+  focusMapId,
+  onFocusApplied,
   onMapDrag,
   children,
 }: {
@@ -80,6 +83,9 @@ export function MapCanvas({
   maps: readonly GameMap[]
   tool: CanvasTool
   selectedMapId: MapId | null
+  /** A map to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
+  focusMapId: MapId | null
+  onFocusApplied: () => void
   /**
    * Reports the live drag position upwards, because the pin layer is a sibling and its maps
    * must move with the image in the same frame. `null` ends the drag.
@@ -123,6 +129,22 @@ export function MapCanvas({
     fitted.current = true
     setViewport(fitRectToContainer(bounds, container))
   }, [maps, container])
+
+  // Focus is a one-shot intent, so it is consumed and cleared rather than held: leaving it
+  // in the hash would re-run this on every render and fight a user who panned away. An
+  // unknown id — a link to a map since deleted — is still cleared, so the hash never sticks.
+  useEffect(() => {
+    if (focusMapId === null) return
+    if (container.width === 0 || container.height === 0) return
+    const target = maps.find((map) => map.id === focusMapId)
+    if (target !== undefined) {
+      // Suppresses the fit-on-mount below: arriving at #/canvas?focus=<id> should land on
+      // that map, not fit everything and then jump.
+      fitted.current = true
+      setViewport(fitRectToContainer(mapCanvasRect(target), container))
+    }
+    onFocusApplied()
+  }, [focusMapId, maps, container, onFocusApplied])
 
   // Bound by hand with { passive: false }: React's onWheel is passive, so preventDefault()
   // there silently does nothing and the page scrolls instead of the map zooming.
@@ -272,7 +294,7 @@ export function MapCanvas({
       case 'inspect':
         // A click on bare canvas is how a selection is dismissed.
         dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-        navigate({ kind: 'canvas', dialogueId: null })
+        navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
         return
 
       case 'place-dialogue': {
@@ -293,7 +315,7 @@ export function MapCanvas({
         }
         dispatch({ kind: 'dialogue/added', dialogue })
         dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
-        navigate({ kind: 'canvas', dialogueId: dialogue.id })
+        navigate({ kind: 'canvas', dialogueId: dialogue.id, focusMapId: null })
         return
       }
 

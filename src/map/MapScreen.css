@@ -18,9 +18,28 @@
   background: var(--surface-1);
 }
 
-.map-screen__canvas {
+.map-screen__body {
   flex: 1;
   min-height: 0;
+  display: flex;
+}
+
+.map-screen__sidebar {
+  width: 16rem;
+  flex: none;
+  /* Scrolls on its own, so a project with many maps never pushes the canvas off screen. */
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-right: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.map-screen__canvas {
+  flex: 1;
+  /* Both axes: the canvas is a flex child of a row now, and without min-width a wide map
+     would refuse to shrink and push the sidebar off screen. */
+  min-height: 0;
+  min-width: 0;
   position: relative;
   overflow: hidden;
   background: var(--surface-0);
@@ -50,53 +69,98 @@
   color: var(--text-muted);
 }
 
-/* ---- picker ---- */
+/* ---- map list ---- */
 
-.map-picker {
+.map-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.map-list__heading {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.map-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.map-list__item {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   flex-wrap: wrap;
 }
 
-.map-picker__label {
-  color: var(--text-muted);
+/* The row's primary action, so it takes the leftover width and the two verbs stay narrow. */
+.map-list__name {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.map-list__name:hover {
+  background: var(--surface-2);
+}
+
+.map-list__form,
+.map-list__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
   font-size: 0.875rem;
 }
 
-.map-picker__select,
-.map-picker__input {
+.map-list__input {
+  flex: 1;
+  min-width: 6rem;
   font: inherit;
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
-  max-width: 16rem;
 }
 
-.map-picker__button {
+.map-list__button {
   font: inherit;
-  font-size: 0.875rem;
-  color: var(--text);
+  font-size: 0.75rem;
+  color: var(--text-muted);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   cursor: pointer;
 }
 
-.map-picker__button:hover {
+.map-list__button:hover {
+  color: var(--text);
   background: var(--surface-3);
 }
 
-.map-picker__button--danger {
+.map-list__button--danger {
   border-color: var(--border-strong);
   color: #ff8f8f;
-}
-
-.map-picker__confirm {
-  font-size: 0.875rem;
 }
 
 /* ---- tools ---- */
