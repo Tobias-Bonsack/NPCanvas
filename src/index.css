@@ -1,17 +1,60 @@
+/* Design tokens. Dark is the base palette — the app is a map canvas, and a dark
+   ground keeps map imagery and relevance hues from competing with the chrome.
+   The light theme overrides only the color tokens; every other token is shared. */
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-sans: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'Cascadia Mono', Menlo, monospace;
+
+  /* Surface ramp: 0 is the furthest back, 3 the most raised (popovers, menus). */
+  --surface-0: #14161a;
+  --surface-1: #1b1e24;
+  --surface-2: #23272f;
+  --surface-3: #2c313a;
+
+  --text: rgba(255, 255, 255, 0.92);
+  --text-muted: rgba(255, 255, 255, 0.58);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+
+  --accent: #6ea8fe;
+  --accent-contrast: #0b1220;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-1: 3px;
+  --radius-2: 6px;
+  --radius-3: 10px;
+  --radius-round: 999px;
+
+  color-scheme: light dark;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  color-scheme: light dark;
-  color: #213547;
-  background-color: #ffffff;
+  color: var(--text);
+  background-color: var(--surface-0);
 }
 
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #242424;
+    --surface-0: #ffffff;
+    --surface-1: #f5f6f8;
+    --surface-2: #eceef2;
+    --surface-3: #e2e5ea;
+
+    --text: #1a1f29;
+    --text-muted: rgba(26, 31, 41, 0.62);
+    --border: rgba(26, 31, 41, 0.16);
+    --border-strong: rgba(26, 31, 41, 0.32);
+
+    --accent: #1f5fd0;
+    --accent-contrast: #ffffff;
   }
 }
 
