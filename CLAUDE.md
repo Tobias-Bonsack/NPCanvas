@@ -98,6 +98,11 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `addEventListener(..., { passive: false })` — React's `onWheel` is passive and `preventDefault()`
   silently fails there. If pin counts exceed ~2000, cull to the visible world rect before considering
   `<canvas>`.
+- **World-space layers must stay viewport-independent.** `PinLayer` is `memo`'d and receives no prop
+  derived from the `Viewport`, which is what keeps panning from re-rendering every pin. A layer that
+  needs the current scale reads `--map-zoom` off its own computed style at `pointerdown` — passing a
+  `scale` prop would change every frame and defeat the memo. Any future zone or overlay layer
+  inherits this constraint. `MapCanvas` renders such layers via `children`, inside the world element.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
   state only, never data. Switching to history routing requires emitting `404.html` as a copy of
   `index.html`.
