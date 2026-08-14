@@ -125,6 +125,9 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   needs the current scale reads `--map-zoom` off its own computed style at `pointerdown` — passing a
   `scale` prop would change every frame and defeat the memo. Any future zone or overlay layer
   inherits this constraint. `MapCanvas` renders such layers via `children`, inside the world element.
+  Transient state two layers must share — the live position of a map being dragged — belongs to
+  `MapScreen`, which composes them: it feeds the same previewed `maps` array to both, and returns
+  the document's own array identically when no drag is in flight so the memo still holds.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
   state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>`; the pre-M3.5
   `#/map/<id>` still parses, dropping the id, so an old link lands on the canvas rather than

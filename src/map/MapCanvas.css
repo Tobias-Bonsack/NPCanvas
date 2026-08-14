@@ -19,6 +19,10 @@
   cursor: crosshair;
 }
 
+.map-canvas__map[data-draggable='true'] {
+  cursor: move;
+}
+
 .map-canvas__world {
   position: absolute;
   top: 0;
@@ -41,6 +45,13 @@
   top: 0;
   left: 0;
   transform-origin: 0 0;
+}
+
+/* Divided by the same product the pins counter-scale by, so the outline is the same few
+   screen pixels thick whatever the map scale and canvas zoom are. */
+.map-canvas__map[data-selected='true'] {
+  outline: calc(2px / (var(--map-zoom) * var(--map-scale))) solid var(--accent);
+  outline-offset: calc(2px / (var(--map-zoom) * var(--map-scale)));
 }
 
 .map-canvas__image {
@@ -90,8 +101,21 @@
   cursor: pointer;
 }
 
-.map-canvas__reset:hover {
+.map-canvas__reset:hover:not(:disabled) {
   background: var(--surface-3);
+}
+
+.map-canvas__reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.map-canvas__scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--border);
 }
 
 /* ---- pins ---- */

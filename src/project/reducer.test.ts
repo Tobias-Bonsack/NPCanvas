@@ -370,6 +370,27 @@ describe('reduce: map/deleted cascade', () => {
     ).toMatchObject({ selection: { kind: 'none' } })
   })
 
+  it('clears a selection of the deleted map itself', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'map', id: asMapId('harbour') },
+    })
+    const afterDelete = reduce(selected, { kind: 'map/deleted', mapId: asMapId('harbour') })
+    expect(afterDelete.kind === 'ready' && afterDelete.selection).toEqual({ kind: 'none' })
+  })
+
+  it('keeps a selection of a map that was not deleted', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'map', id: asMapId('forest') },
+    })
+    const afterDelete = reduce(selected, { kind: 'map/deleted', mapId: asMapId('harbour') })
+    expect(afterDelete.kind === 'ready' && afterDelete.selection).toEqual({
+      kind: 'map',
+      id: asMapId('forest'),
+    })
+  })
+
   it('keeps a selection that pointed into a surviving map', () => {
     const selected = reduce(ready(twoMapProject()), {
       kind: 'selection/set',
@@ -427,6 +448,21 @@ describe('reduce: dialogue actions', () => {
         position: { x: 1, y: 2 },
       }),
     ).toBe(state)
+  })
+
+  it('leaves a map selection alone when a dialogue is deleted', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'map', id: asMapId('harbour') },
+    })
+    const next = reduce(selected, {
+      kind: 'dialogue/deleted',
+      dialogueId: asDialogueId('dialogue-harbour'),
+    })
+    expect(next.kind === 'ready' && next.selection).toEqual({
+      kind: 'map',
+      id: asMapId('harbour'),
+    })
   })
 
   it('deletes a dialogue, prunes it from quests, and clears the selection', () => {

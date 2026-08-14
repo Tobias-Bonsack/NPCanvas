@@ -16,8 +16,8 @@ import type { Rect } from './geometry.ts'
 export const MAP_LAYOUT_GAP = 200
 
 /** Below 0.1 a map is a smudge on the canvas; above 10 it dwarfs every neighbour. */
-const MIN_MAP_SCALE = 0.1
-const MAX_MAP_SCALE = 10
+export const MIN_MAP_SCALE = 0.1
+export const MAX_MAP_SCALE = 10
 
 /**
  * A NaN scale would make the map's whole transform NaN and render it nowhere, with no error

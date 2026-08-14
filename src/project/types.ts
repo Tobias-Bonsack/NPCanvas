@@ -131,6 +131,7 @@ export type Selection =
   | { kind: 'none' }
   | { kind: 'dialogue'; id: DialogueId }
   | { kind: 'zone'; id: ZoneId }
+  | { kind: 'map'; id: MapId }
 
 export type AppState =
   | { kind: 'unsupported' }
@@ -149,4 +150,5 @@ export type AppState =
 export type CanvasTool =
   | { kind: 'inspect' }
   | { kind: 'place-dialogue' }
+  | { kind: 'move-map' }
   | { kind: 'draw-zone'; points: Point[] }

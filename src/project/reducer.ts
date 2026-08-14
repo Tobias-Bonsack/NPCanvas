@@ -152,7 +152,11 @@ export function reduce(state: AppState, action: Action): AppState {
           dialogues: project.dialogues.filter((dialogue) => !removedDialogueIds.has(dialogue.id)),
           quests: pruneQuestDialogues(project.quests, removedDialogueIds),
         },
-        selection: dropDeletedSelection(state.selection, removedDialogueIds, removedZoneIds),
+        selection: dropDeletedSelection(state.selection, {
+          dialogues: removedDialogueIds,
+          zones: removedZoneIds,
+          maps: new Set([action.mapId]),
+        }),
       }
     }
 
@@ -200,7 +204,11 @@ export function reduce(state: AppState, action: Action): AppState {
           dialogues: project.dialogues.filter((dialogue) => dialogue.id !== action.dialogueId),
           quests: pruneQuestDialogues(project.quests, removed),
         },
-        selection: dropDeletedSelection(state.selection, removed, EMPTY_ZONE_IDS),
+        selection: dropDeletedSelection(state.selection, {
+          dialogues: removed,
+          zones: EMPTY_ZONE_IDS,
+          maps: EMPTY_MAP_IDS,
+        }),
       }
     }
 
@@ -210,6 +218,7 @@ export function reduce(state: AppState, action: Action): AppState {
 }
 
 const EMPTY_ZONE_IDS: ReadonlySet<ZoneId> = new Set<ZoneId>()
+const EMPTY_MAP_IDS: ReadonlySet<MapId> = new Set<MapId>()
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
@@ -237,19 +246,24 @@ function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>):
   )
 }
 
+/** Everything one cascade took out, by kind — the input to `dropDeletedSelection`. */
+type RemovedIds = {
+  dialogues: ReadonlySet<DialogueId>
+  zones: ReadonlySet<ZoneId>
+  maps: ReadonlySet<MapId>
+}
+
 /** A selection pointing at a deleted entity would render as a detail panel for nothing. */
-function dropDeletedSelection(
-  selection: Selection,
-  removedDialogueIds: ReadonlySet<DialogueId>,
-  removedZoneIds: ReadonlySet<ZoneId>,
-): Selection {
+function dropDeletedSelection(selection: Selection, removed: RemovedIds): Selection {
   switch (selection.kind) {
     case 'none':
       return selection
     case 'dialogue':
-      return removedDialogueIds.has(selection.id) ? { kind: 'none' } : selection
+      return removed.dialogues.has(selection.id) ? { kind: 'none' } : selection
     case 'zone':
-      return removedZoneIds.has(selection.id) ? { kind: 'none' } : selection
+      return removed.zones.has(selection.id) ? { kind: 'none' } : selection
+    case 'map':
+      return removed.maps.has(selection.id) ? { kind: 'none' } : selection
     default:
       return assertNever(selection)
   }

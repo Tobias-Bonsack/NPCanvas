@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
-import type { CanvasTool, ProjectFile, Selection } from '../project/types.ts'
+import type { CanvasTool, GameMap, ProjectFile, Selection } from '../project/types.ts'
+import type { MapDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton, MapPicker } from './MapPicker.tsx'
 import { PinLayer } from './PinLayer.tsx'
@@ -19,6 +20,14 @@ export function MapScreen({
 }): ReactElement {
   // Which tool the canvas is in is transient UI, so it lives here and not in the store.
   const [tool, setTool] = useState<CanvasTool>({ kind: 'inspect' })
+  // A map drag in progress. It lives here, above both world-space layers, because the image
+  // and its pins have to move together in the same frame — and it stays out of the store,
+  // which would push a document-shaped update through autosave on every pointermove.
+  const [mapDrag, setMapDrag] = useState<MapDragPreview | null>(null)
+
+  // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
+  // and panning still costs no pin render.
+  const placedMaps = useMemo(() => withDragPreview(project.maps, mapDrag), [project.maps, mapDrag])
 
   if (project.maps.length === 0) {
     return (
@@ -43,9 +52,14 @@ export function MapScreen({
         <ToolPicker tool={tool} onChange={setTool} />
       </header>
       <div className="map-screen__canvas">
-        <MapCanvas maps={project.maps} tool={tool}>
+        <MapCanvas
+          maps={placedMaps}
+          tool={tool}
+          selectedMapId={selection.kind === 'map' ? selection.id : null}
+          onMapDrag={setMapDrag}
+        >
           <PinLayer
-            maps={project.maps}
+            maps={placedMaps}
             dialogues={project.dialogues}
             selectedId={selection.kind === 'dialogue' ? selection.id : null}
           />
@@ -55,10 +69,25 @@ export function MapScreen({
   )
 }
 
+/**
+ * The maps as they should be drawn right now: the document's, with the dragged one at its
+ * live position. Returns the original array when nothing is being dragged — a fresh array
+ * every render would defeat the memo on `PinLayer`.
+ */
+function withDragPreview(maps: GameMap[], drag: MapDragPreview | null): readonly GameMap[] {
+  if (drag === null) return maps
+  return maps.map((map) => (map.id === drag.id ? { ...map, origin: drag.origin } : map))
+}
+
 /** Only the tools that do something today. `draw-zone` is offered once M5 implements it. */
 const TOOLS: readonly { tool: CanvasTool; label: string; hint: string }[] = [
-  { tool: { kind: 'inspect' }, label: 'Inspect', hint: 'Pan the map and select pins' },
-  { tool: { kind: 'place-dialogue' }, label: 'Place dialogue', hint: 'Click the map to log a line' },
+  { tool: { kind: 'inspect' }, label: 'Inspect', hint: 'Pan the canvas and select pins' },
+  {
+    tool: { kind: 'place-dialogue' },
+    label: 'Place dialogue',
+    hint: 'Click a map to log a line',
+  },
+  { tool: { kind: 'move-map' }, label: 'Move map', hint: 'Drag a map to arrange the canvas' },
 ]
 
 function ToolPicker({
