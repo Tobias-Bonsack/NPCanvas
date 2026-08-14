@@ -116,14 +116,27 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 ## Commands
 
 ```bash
-npm run dev      # Vite dev server (base '/', http://localhost:5173)
-npm run build    # tsc -b (typecheck, project references) then vite build -> dist/
-npm run preview  # serve dist/ locally; served under /NPCanvas/
-npm run lint     # eslint (flat config)
+npm run dev        # Vite dev server (base '/', http://localhost:5173)
+npm run build      # tsc -b (typecheck, project references) then vite build -> dist/
+npm run preview    # serve dist/ locally; served under /NPCanvas/
+npm run lint       # eslint (flat config)
+npm test           # vitest run (single pass)
+npm run test:watch # vitest in watch mode
 ```
 
-No test runner is configured. If tests become worthwhile, add Vitest (shares Vite's config and
-transform pipeline) and wire it into `.github/workflows/deploy.yml` before the build step.
+## Testing scope
+
+Vitest, configured inside `vite.config.ts` (which therefore imports `defineConfig` from
+`vitest/config`, not from `vite`). `environment: 'node'`. **No `globals: true`** — tests
+`import { describe, it, expect } from 'vitest'` explicitly, which is what `verbatimModuleSyntax`
+wants and what keeps the `types` array untouched. Tests are colocated as `*.test.ts` next to the
+module they cover; `tsc -b` typechecks them because they live under `src/`. CI runs lint → test →
+build.
+
+**Test pure functions only:** viewport transforms, polygon predicates, zone indexing, schema
+parse/validate, reducer actions. Do not test components or File System Access IO — that needs jsdom,
+a fake filesystem, and a testing library, which is three dependencies for near-zero signal on code
+whose real failure modes are browser permission behaviour.
 
 ## Deployment
 
