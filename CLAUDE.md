@@ -41,6 +41,78 @@ The cost that matters is how many files an LLM must read to change something saf
 - **Minimal dependency surface.** Prefer the platform and what is already installed. Each new
   dependency is API surface a future session must learn before it can edit safely.
 
+## What this app is
+
+NPCanvas logs NPC dialogue encountered while playing a game, pinned onto that game's map. A dialogue
+records who said it, where on the map, what was said (text, image, gif, or a very short video), when
+in real time, and one or more relevance tags. Locations are named zones drawn on the map. Quests are
+user-created threads that reference dialogues. Three views, in priority order: map canvas, quest
+board, insights.
+
+Work is tracked as GitHub issues (`gh issue list`), grouped into milestones M1–M7. Each issue is
+sized to fit one Claude context window and leaves `main` deployable. Do not batch issues — one issue,
+one commit.
+
+## Domain and architecture decisions
+
+Decided once, up front. These are not derivable from the code, and re-deriving them costs a session
+its whole context budget. `src/project/types.ts` is the specification — read it first.
+
+- **Chromium-only by design.** Persistence is the File System Access API: the user picks a project
+  folder holding `data.json` and a `media/` subfolder. Non-supporting browsers get an explicit
+  unsupported screen. There is deliberately **no** download/export fallback — do not add one.
+- **`GameMap`, never `Map`.** The domain map type must not shadow the global `Map` constructor.
+- **No enums** (`erasableSyntaxOnly` is on). The pattern is `export const X = [...] as const` plus
+  `type X = (typeof X)[number]` — runtime list and union type from one declaration.
+- **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`) are constructed only in
+  `src/project/ids.ts`. Those are the only permitted `as` casts on ids.
+- **Store scope.** `src/project/store.ts` is a module-level store over a pure reducer, read through
+  `useSyncExternalStore`. It holds the persisted document, connection state, and selection.
+  Transient UI — canvas viewport, active tool, form drafts, filter bar — stays in component
+  `useState`. Do not migrate it into the store, and do not replace the store with context.
+- **`useSyncExternalStore` contract.** Pass `getState` by reference. A snapshot function that builds
+  a new object on each call is an infinite render loop.
+- **Async IO never enters the reducer.** `src/storage/project-directory.ts` awaits IO and dispatches
+  a plain action per step. No thunks, no middleware.
+- **Exhaustiveness uses `assertNever(value: never): never`**, not `const _never: never = x` —
+  `noUnusedLocals` fails the latter.
+- **Location is derived, never stored.** `Dialogue` carries no `zoneId`; `src/map/zone-index.ts`
+  computes membership by point-in-polygon, returning zone ids ordered by ascending area so the most
+  specific overlapping zone comes first. A cached FK would silently go stale when a zone moves. If an
+  explicit override is ever needed, add `locationOverride: ZoneId | null` — never a cache.
+- **Zones are polygons only.** Rectangles are 4-point polygons. Do not introduce a shape union.
+- **Media contract.** `data.json` stores `{ fileName, mimeType, byteSize }` plus intrinsic
+  dimensions — never URLs, paths, or data URLs. Files are `media/<dialogueId>.<ext>` with the
+  extension derived from the MIME type, never from the upload's filename (untrusted, and this makes
+  collisions impossible by construction). Object URLs are ref-counted with a 30 s deferred revoke in
+  `src/media/media-url-cache.ts`, because pins remount constantly while panning.
+- **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
+  tmp-file/rename scheme.
+- **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
+- **Schema versioning.** `schemaVersion` is a literal type. To evolve: add `ProjectFileV2`, widen
+  `ProjectFile` to the union, branch in `parseProjectFile`, migrate forward on load. Never redefine
+  the meaning of an existing field.
+- **Canvas rendering is DOM plus one inline `<svg>` under a single CSS transform** — no `<canvas>`.
+  Pins counter-scale via the `--map-zoom` custom property (one property write per frame instead of N
+  element updates); zone strokes use `vector-effect="non-scaling-stroke"`. `wheel` must be bound with
+  `addEventListener(..., { passive: false })` — React's `onWheel` is passive and `preventDefault()`
+  silently fails there. If pin counts exceed ~2000, cull to the visible world rect before considering
+  `<canvas>`.
+- **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
+  state only, never data. Switching to history routing requires emitting `404.html` as a copy of
+  `index.html`.
+- **Dependencies.** Runtime deps stay `react` + `react-dom`. Evaluated and rejected: zustand/redux
+  (the store is ~25 lines of platform API), react-router, `idb`, `zod`, `uuid`
+  (`crypto.randomUUID()`), `date-fns` (`Intl.DateTimeFormat`), any charting library (inline SVG by
+  hand), `@types/wicg-file-system-access` (conflicts with the interfaces `lib.dom` already ships).
+  One tripwire: if `parseProjectFile` exceeds ~250 lines, or a second schema version forces
+  per-version validation, `zod` becomes justified — nothing else on that list does.
+- **File System Access typings.** `lib.dom.d.ts` ships the handle interfaces but not
+  `showDirectoryPicker`, `queryPermission`/`requestPermission`, or `values()`. Those live in
+  `src/storage/file-system-access.d.ts` as augmentations, not redefinitions.
+- **Plain CSS, one file per component that needs one**, BEM-ish prefixed by feature
+  (`.map-canvas__pin`). Not CSS Modules — `styles.pin` is not greppable.
+
 ## Commands
 
 ```bash
