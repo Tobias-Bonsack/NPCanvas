@@ -19,13 +19,21 @@ export function newQuestId(): QuestId {
   return crypto.randomUUID() as QuestId
 }
 
-// Ids arriving from outside the document — today only the URL hash. Branding a raw string
-// is not a claim that the entity exists; callers must still look it up and handle a miss.
+// Ids arriving from outside the document — the URL hash and `data.json`. Branding a raw
+// string is not a claim that the entity exists; callers must still look it up and handle a miss.
 
 export function asMapId(raw: string): MapId {
   return raw as MapId
 }
 
+export function asZoneId(raw: string): ZoneId {
+  return raw as ZoneId
+}
+
 export function asDialogueId(raw: string): DialogueId {
   return raw as DialogueId
+}
+
+export function asQuestId(raw: string): QuestId {
+  return raw as QuestId
 }

@@ -1,5 +1,5 @@
 import { assertNever } from '../assert-never.ts'
-import type { AppState, ProjectFile, Selection } from './types.ts'
+import type { AppState, ProjectFile, SaveState, Selection } from './types.ts'
 
 export type Action =
   | { kind: 'project/unsupported' }
@@ -8,6 +8,10 @@ export type Action =
   | { kind: 'project/loading'; directoryName: string }
   | { kind: 'project/loaded'; directoryName: string; project: ProjectFile }
   | { kind: 'project/load-failed'; directoryName: string; message: string }
+  | { kind: 'save/pending' }
+  | { kind: 'save/saving' }
+  | { kind: 'save/saved'; at: string }
+  | { kind: 'save/failed'; message: string }
   | { kind: 'selection/set'; selection: Selection }
 
 /**
@@ -46,6 +50,18 @@ export function reduce(state: AppState, action: Action): AppState {
         message: action.message,
       }
 
+    case 'save/pending':
+      return withSaveState(state, { kind: 'pending' })
+
+    case 'save/saving':
+      return withSaveState(state, { kind: 'saving' })
+
+    case 'save/saved':
+      return withSaveState(state, { kind: 'saved', at: action.at })
+
+    case 'save/failed':
+      return withSaveState(state, { kind: 'failed', message: action.message })
+
     case 'selection/set': {
       if (state.kind !== 'ready') return state
       if (isSameSelection(state.selection, action.selection)) return state
@@ -55,6 +71,24 @@ export function reduce(state: AppState, action: Action): AppState {
     default:
       return assertNever(action)
   }
+}
+
+/**
+ * Autosave subscribes to the store, so a save action that changed nothing must return the
+ * identical state — otherwise marking a save "pending" would wake autosave, which would
+ * mark it pending again.
+ */
+function withSaveState(state: AppState, save: SaveState): AppState {
+  if (state.kind !== 'ready') return state
+  if (isSameSaveState(state.save, save)) return state
+  return { ...state, save }
+}
+
+function isSameSaveState(a: SaveState, b: SaveState): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === 'saved' && b.kind === 'saved') return a.at === b.at
+  if (a.kind === 'failed' && b.kind === 'failed') return a.message === b.message
+  return true
 }
 
 function isSameSelection(a: Selection, b: Selection): boolean {

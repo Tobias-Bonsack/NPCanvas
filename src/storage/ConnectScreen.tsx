@@ -1,7 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
 import { assertNever } from '../assert-never.ts'
-import { createEmptyProject } from '../project/data-file.ts'
-import { dispatch } from '../project/store.ts'
 import type { AppState } from '../project/types.ts'
 import { connectToNewDirectory, grantSavedDirectoryAccess } from './project-directory.ts'
 import './ConnectScreen.css'
@@ -43,20 +41,6 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
             onClick={() => void connectToNewDirectory()}
           >
             Choose project folder
-          </button>
-          {/* Temporary: keeps `ready` reachable without a folder. Removed by #5. */}
-          <button
-            type="button"
-            className="connect__dev-button"
-            onClick={() => {
-              dispatch({
-                kind: 'project/loaded',
-                directoryName: 'Demo',
-                project: createEmptyProject('Demo'),
-              })
-            }}
-          >
-            Load an in-memory demo project (dev only)
           </button>
         </Panel>
       )

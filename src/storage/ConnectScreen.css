@@ -62,17 +62,3 @@
   border-color: var(--border-strong);
   color: var(--text);
 }
-
-.connect__dev-button {
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-2);
-  background: var(--surface-1);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.connect__dev-button:hover {
-  background: var(--surface-2);
-}

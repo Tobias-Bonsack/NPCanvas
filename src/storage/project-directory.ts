@@ -1,6 +1,7 @@
 import { assertNever } from '../assert-never.ts'
-import { createEmptyProject } from '../project/data-file.ts'
+import { createEmptyProject, parseProjectFile, serializeProject } from '../project/data-file.ts'
 import { dispatch } from '../project/store.ts'
+import type { ProjectFile } from '../project/types.ts'
 import {
   clearDirectoryHandle,
   readDirectoryHandle,
@@ -10,6 +11,8 @@ import { isFileSystemAccessSupported } from './file-system-support.ts'
 
 // Every export here awaits IO and then dispatches plain actions, one per step. Nothing
 // asynchronous ever reaches the reducer: no thunks, no middleware, no promises in state.
+
+const DATA_FILE_NAME = 'data.json'
 
 /**
  * The live handle for the connected project folder. Module-level rather than in the store
@@ -113,18 +116,75 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
   await openProject(handle)
 }
 
+/**
+ * Writes `data.json`, resolving to the timestamp to show as "saved at".
+ *
+ * `createWritable()` already writes through a swap file and commits atomically on
+ * `close()`, so there is deliberately no tmp-file-plus-rename scheme layered on top.
+ */
+export async function writeProjectFile(project: ProjectFile): Promise<string> {
+  const handle = directoryHandle
+  if (handle === null) throw new Error('No project folder is connected')
+
+  const fileHandle = await handle.getFileHandle(DATA_FILE_NAME, { create: true })
+  const writable = await fileHandle.createWritable()
+  try {
+    await writable.write(serializeProject(project))
+    await writable.close()
+  } catch (error) {
+    // abort(), not close(): close() would commit the half-written swap file over the
+    // user's data. A failure to abort is not worth masking the original error.
+    await writable.abort().catch(() => undefined)
+    throw error
+  }
+  // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
+  // Reading it back out of the JSON just to display it is not worth the parse.
+  return new Date().toISOString()
+}
+
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   directoryHandle = handle
   dispatch({ kind: 'project/loading', directoryName: handle.name })
-  // #5 replaces this with a real read of <folder>/data.json. Until then a connected folder
-  // yields an empty in-memory project so the rest of the app stays reachable.
-  dispatch({
-    kind: 'project/loaded',
-    directoryName: handle.name,
-    project: createEmptyProject(handle.name),
-  })
+  try {
+    const project = await readOrCreateProjectFile(handle)
+    dispatch({ kind: 'project/loaded', directoryName: handle.name, project })
+  } catch (error) {
+    dispatch({
+      kind: 'project/load-failed',
+      directoryName: handle.name,
+      message: describeError(error),
+    })
+  }
+}
+
+async function readOrCreateProjectFile(handle: FileSystemDirectoryHandle): Promise<ProjectFile> {
+  let fileHandle: FileSystemFileHandle
+  try {
+    fileHandle = await handle.getFileHandle(DATA_FILE_NAME)
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error
+    // A folder without data.json is a new project, not a failure. Write it immediately so
+    // the folder is never left half-adopted — with nothing on disk, a reload that restores
+    // the handle would find an empty folder and bootstrap a *second* empty project.
+    const project = createEmptyProject(handle.name)
+    await writeProjectFile(project)
+    return project
+  }
+
+  const text = await (await fileHandle.getFile()).text()
+  const result = parseProjectFile(text)
+  if (!result.ok) throw new Error(result.message)
+  return result.file
+}
+
+export function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function isNotFoundError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotFoundError'
 }
