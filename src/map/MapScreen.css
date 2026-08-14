@@ -1,0 +1,148 @@
+.map-screen {
+  flex: 1;
+  /* Without min-height: 0 a flex child refuses to shrink below its content, and the canvas
+     below would push the page taller than the viewport instead of scrolling inside itself. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-screen__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.map-screen__canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+.map-screen--empty {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6) var(--space-5);
+}
+
+.map-screen__cta {
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.map-screen__title {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.map-screen__lead {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* ---- picker ---- */
+
+.map-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.map-picker__label {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.map-picker__select,
+.map-picker__input {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  max-width: 16rem;
+}
+
+.map-picker__button {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.map-picker__button:hover {
+  background: var(--surface-3);
+}
+
+.map-picker__button--danger {
+  border-color: var(--border-strong);
+  color: #ff8f8f;
+}
+
+.map-picker__confirm {
+  font-size: 0.875rem;
+}
+
+/* ---- import ---- */
+
+.map-import {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.map-import__label {
+  font-size: 0.875rem;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.map-import__label[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Visually hidden but still focusable and still the label's target, so keyboard users tab
+   to a real file input rather than to a label that does nothing on Enter. */
+.map-import__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* :has() rather than a sibling combinator — the label precedes the input in the DOM, and
+   Chromium-only means there is no reason to reorder the markup for a selector's sake. */
+.map-import:has(.map-import__input:focus-visible) .map-import__label {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.map-import__error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #ff8f8f;
+}

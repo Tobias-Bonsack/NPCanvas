@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
+import { MapScreen } from '../map/MapScreen.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
 import type { AppState } from '../project/types.ts'
 import { useAppState } from '../project/store.ts'
@@ -39,13 +40,8 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
 function ReadyView({ state, route }: { state: ReadyState; route: Route }): ReactElement {
   switch (route.kind) {
     case 'map':
-      return (
-        <Screen title={state.project.projectName}>
-          <p className="app__lead">
-            Connected to <strong>{state.directoryName}</strong>. Map canvas arrives in #9.
-          </p>
-        </Screen>
-      )
+      return <MapScreen project={state.project} route={route} />
+
     case 'quests':
       return (
         <Screen title="Quest board">

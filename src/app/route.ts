@@ -76,6 +76,19 @@ export function useRoute(): Route {
   return useSyncExternalStore(subscribeToHash, getRoute)
 }
 
-export function navigate(route: Route): void {
-  window.location.hash = formatRoute(route)
+/**
+ * `replace` is for corrections the user did not ask for — most importantly a `#/map/<id>`
+ * pointing at a map that no longer exists, which falls back to the first map. Pushing that
+ * would trap the back button on a URL that immediately corrects itself again.
+ *
+ * `location.replace` rather than `history.replaceState`, because replaceState does not fire
+ * `hashchange` and `useRoute` would keep serving the stale snapshot.
+ */
+export function navigate(route: Route, options?: { replace?: boolean }): void {
+  const hash = formatRoute(route)
+  if (options?.replace === true) {
+    window.location.replace(hash)
+    return
+  }
+  window.location.hash = hash
 }

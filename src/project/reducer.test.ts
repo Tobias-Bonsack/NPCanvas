@@ -1,20 +1,81 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyProject } from './data-file.ts'
-import { asDialogueId, asZoneId } from './ids.ts'
+import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
 import type { Action } from './reducer.ts'
 import { reduce } from './reducer.ts'
-import type { AppState } from './types.ts'
+import type { AppState, Dialogue, GameMap, MapId, ProjectFile, Quest, Zone } from './types.ts'
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
-function ready(): ReadyState {
-  const project = createEmptyProject('Harbour')
+function ready(project: ProjectFile = createEmptyProject('Harbour')): ReadyState {
   return {
     kind: 'ready',
     directoryName: 'Harbour',
     project,
     save: { kind: 'saved', at: project.savedAt },
     selection: { kind: 'none' },
+  }
+}
+
+function gameMap(id: string, name = id): GameMap {
+  return {
+    id: asMapId(id),
+    name,
+    file: { fileName: `map-${id}.png`, mimeType: 'image/png', byteSize: 10 },
+    width: 100,
+    height: 100,
+  }
+}
+
+function dialogue(id: string, mapId: MapId): Dialogue {
+  return {
+    id: asDialogueId(id),
+    mapId,
+    npcName: id,
+    position: { x: 1, y: 2 },
+    content: { kind: 'text', text: '' },
+    spokenAt: '2026-08-14T10:00:00.000Z',
+    relevance: [],
+  }
+}
+
+function zone(id: string, mapId: MapId): Zone {
+  return {
+    id: asZoneId(id),
+    mapId,
+    name: id,
+    polygon: [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ],
+    hue: 200,
+  }
+}
+
+function quest(id: string, dialogueIds: string[]): Quest {
+  return {
+    id: asQuestId(id),
+    name: id,
+    status: 'open',
+    dialogueIds: dialogueIds.map(asDialogueId),
+    note: '',
+  }
+}
+
+/** Two maps, each with a dialogue and a zone, plus a quest spanning both. */
+function twoMapProject(): ProjectFile {
+  const harbour = gameMap('harbour')
+  const forest = gameMap('forest')
+  return {
+    ...createEmptyProject('Harbour'),
+    maps: [harbour, forest],
+    zones: [zone('zone-harbour', harbour.id), zone('zone-forest', forest.id)],
+    dialogues: [
+      dialogue('dialogue-harbour', harbour.id),
+      dialogue('dialogue-forest', forest.id),
+    ],
+    quests: [quest('quest-1', ['dialogue-harbour', 'dialogue-forest'])],
   }
 }
 
@@ -33,6 +94,9 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'save/saved', at: '2026-08-14T10:00:00.000Z' },
   { kind: 'save/failed', message: 'disk full' },
   { kind: 'selection/set', selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') } },
+  { kind: 'map/added', map: gameMap('harbour') },
+  { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'Docks' },
+  { kind: 'map/deleted', mapId: asMapId('harbour') },
 ]
 
 describe('reduce: connection actions', () => {
@@ -161,6 +225,95 @@ describe('reduce: no-ops return the identical state reference', () => {
     expect(reduce(selected, { kind: 'selection/set', selection: { kind: 'dialogue', id } })).toBe(
       selected,
     )
+  })
+})
+
+describe('reduce: map actions', () => {
+  it('appends an imported map', () => {
+    const map = gameMap('harbour')
+    const next = reduce(ready(), { kind: 'map/added', map })
+    expect(next.kind === 'ready' && next.project.maps).toEqual([map])
+  })
+
+  it('renames a map without touching the others', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'map/renamed',
+      mapId: asMapId('harbour'),
+      name: 'Docks',
+    })
+    expect(next.kind === 'ready' && next.project.maps.map((map) => map.name)).toEqual([
+      'Docks',
+      'forest',
+    ])
+  })
+
+  it('ignores a rename of a map that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(reduce(state, { kind: 'map/renamed', mapId: asMapId('nope'), name: 'Docks' })).toBe(state)
+  })
+
+  it('ignores a rename to the name the map already has', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'harbour' }),
+    ).toBe(state)
+  })
+})
+
+// The cascade is the reason `map/deleted` is one action rather than three: autosave writes
+// whatever the store holds after any single dispatch.
+describe('reduce: map/deleted cascade', () => {
+  it('removes the map with its zones and dialogues, and leaves the other map intact', () => {
+    const next = reduce(ready(twoMapProject()), { kind: 'map/deleted', mapId: asMapId('harbour') })
+    expect(next.kind === 'ready' && next.project.maps.map((map) => map.id)).toEqual(['forest'])
+    expect(next.kind === 'ready' && next.project.zones.map((it) => it.id)).toEqual(['zone-forest'])
+    expect(next.kind === 'ready' && next.project.dialogues.map((it) => it.id)).toEqual([
+      'dialogue-forest',
+    ])
+  })
+
+  it('prunes quest references to the deleted dialogues but keeps the quest', () => {
+    const next = reduce(ready(twoMapProject()), { kind: 'map/deleted', mapId: asMapId('harbour') })
+    expect(next.kind === 'ready' && next.project.quests).toEqual([
+      quest('quest-1', ['dialogue-forest']),
+    ])
+  })
+
+  it('clears a selection that pointed into the deleted map', () => {
+    const selectedDialogue = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'dialogue', id: asDialogueId('dialogue-harbour') },
+    })
+    const afterDelete = reduce(selectedDialogue, {
+      kind: 'map/deleted',
+      mapId: asMapId('harbour'),
+    })
+    expect(afterDelete.kind === 'ready' && afterDelete.selection).toEqual({ kind: 'none' })
+
+    const selectedZone = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'zone', id: asZoneId('zone-harbour') },
+    })
+    expect(
+      reduce(selectedZone, { kind: 'map/deleted', mapId: asMapId('harbour') }),
+    ).toMatchObject({ selection: { kind: 'none' } })
+  })
+
+  it('keeps a selection that pointed into a surviving map', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'dialogue', id: asDialogueId('dialogue-forest') },
+    })
+    const afterDelete = reduce(selected, { kind: 'map/deleted', mapId: asMapId('harbour') })
+    expect(afterDelete.kind === 'ready' && afterDelete.selection).toEqual({
+      kind: 'dialogue',
+      id: asDialogueId('dialogue-forest'),
+    })
+  })
+
+  it('ignores a delete of a map that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(reduce(state, { kind: 'map/deleted', mapId: asMapId('nope') })).toBe(state)
   })
 })
 

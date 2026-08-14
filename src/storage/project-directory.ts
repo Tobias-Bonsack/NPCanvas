@@ -13,6 +13,7 @@ import { isFileSystemAccessSupported } from './file-system-support.ts'
 // asynchronous ever reaches the reducer: no thunks, no middleware, no promises in state.
 
 const DATA_FILE_NAME = 'data.json'
+const MEDIA_DIRECTORY_NAME = 'media'
 
 /**
  * The live handle for the connected project folder. Module-level rather than in the store
@@ -140,6 +141,69 @@ export async function writeProjectFile(project: ProjectFile): Promise<string> {
   // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
   // Reading it back out of the JSON just to display it is not worth the parse.
   return new Date().toISOString()
+}
+
+// ---- media/ ----
+//
+// Every media file the app writes is named from an id it generated, never from the upload's
+// filename, so nothing here needs to sanitise a path. See CLAUDE.md § Media contract.
+
+/** Writes (or overwrites) `media/<fileName>`, creating `media/` on first use. */
+export async function writeMediaFile(fileName: string, data: Blob): Promise<void> {
+  const media = await getMediaDirectory({ create: true })
+  const fileHandle = await media.getFileHandle(fileName, { create: true })
+  const writable = await fileHandle.createWritable()
+  try {
+    await writable.write(data)
+    await writable.close()
+  } catch (error) {
+    await writable.abort().catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Resolves to `null` when the file is absent, which is an expected state — the user can
+ * delete or move files in their own project folder between sessions.
+ */
+export async function readMediaFile(fileName: string): Promise<File | null> {
+  const media = await getMediaDirectory({ create: false })
+  if (media === null) return null
+  try {
+    return await (await media.getFileHandle(fileName)).getFile()
+  } catch (error) {
+    if (isNotFoundError(error)) return null
+    throw error
+  }
+}
+
+/** Deleting an already-absent file is success: the caller wanted it gone, and it is. */
+export async function deleteMediaFile(fileName: string): Promise<void> {
+  const media = await getMediaDirectory({ create: false })
+  if (media === null) return
+  try {
+    await media.removeEntry(fileName)
+  } catch (error) {
+    if (!isNotFoundError(error)) throw error
+  }
+}
+
+async function getMediaDirectory(options: { create: true }): Promise<FileSystemDirectoryHandle>
+async function getMediaDirectory(options: {
+  create: false
+}): Promise<FileSystemDirectoryHandle | null>
+async function getMediaDirectory(options: {
+  create: boolean
+}): Promise<FileSystemDirectoryHandle | null> {
+  const handle = directoryHandle
+  if (handle === null) throw new Error('No project folder is connected')
+  try {
+    return await handle.getDirectoryHandle(MEDIA_DIRECTORY_NAME, { create: options.create })
+  } catch (error) {
+    // Only reachable with create: false — a read against a project that has no media yet.
+    if (isNotFoundError(error)) return null
+    throw error
+  }
 }
 
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
