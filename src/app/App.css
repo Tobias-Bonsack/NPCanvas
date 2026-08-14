@@ -33,17 +33,3 @@
   font-family: var(--font-mono);
   font-size: 0.875rem;
 }
-
-.app__dev-button {
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-2);
-  background: var(--surface-1);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.app__dev-button:hover {
-  background: var(--surface-2);
-}

@@ -1,0 +1,78 @@
+.connect {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.connect__title {
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+.connect__lead {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.connect__note {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  border-left: 2px solid var(--border-strong);
+  padding-left: var(--space-3);
+}
+
+.connect__error {
+  margin: 0;
+  align-self: stretch;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.connect__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.connect__button {
+  font: inherit;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+}
+
+.connect__button:hover {
+  filter: brightness(1.1);
+}
+
+.connect__button--quiet {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.connect__dev-button {
+  font: inherit;
+  padding: var(--space-2) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.connect__dev-button:hover {
+  background: var(--surface-2);
+}
