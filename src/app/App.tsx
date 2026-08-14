@@ -40,7 +40,7 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
 function ReadyView({ state, route }: { state: ReadyState; route: Route }): ReactElement {
   switch (route.kind) {
     case 'map':
-      return <MapScreen project={state.project} route={route} />
+      return <MapScreen project={state.project} selection={state.selection} route={route} />
 
     case 'quests':
       return (

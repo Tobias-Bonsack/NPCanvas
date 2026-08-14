@@ -1,13 +1,24 @@
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+  ReactNode,
+} from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import type { MediaUrl } from '../media/media-url-cache.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
-import type { GameMap, Point } from '../project/types.ts'
+import { newDialogueId } from '../project/ids.ts'
+import { dispatch } from '../project/store.ts'
+import type { CanvasTool, Dialogue, GameMap, Point } from '../project/types.ts'
+import { navigate } from '../app/route.ts'
 import type { Size } from './geometry.ts'
 import type { Viewport } from './viewport.ts'
-import { fitToContainer, zoomAt } from './viewport.ts'
+import { fitToContainer, screenToWorld, zoomAt } from './viewport.ts'
 import './MapCanvas.css'
+
+/** Screen pixels of travel before a press stops being a click and becomes a pan. */
+const CLICK_THRESHOLD = 4
 
 /**
  * The transform surface everything else sits on: DOM under one CSS transform, not
@@ -16,7 +27,16 @@ import './MapCanvas.css'
  * `Viewport` is component state, not store state — it is transient UI, and putting it in the
  * store would push a document-shaped update through autosave on every pointermove.
  */
-export function MapCanvas({ map }: { map: GameMap }): ReactElement {
+export function MapCanvas({
+  map,
+  tool,
+  children,
+}: {
+  map: GameMap
+  tool: CanvasTool
+  /** Rendered inside the world element, so children position in world coordinates. */
+  children?: ReactNode
+}): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const [container, setContainer] = useState<Size>({ width: 0, height: 0 })
   const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, scale: 1 })
@@ -73,7 +93,12 @@ export function MapCanvas({ map }: { map: GameMap }): ReactElement {
   // The viewport at pointerdown is captured here rather than read from state during the
   // drag, so the delta is always measured against the same origin and no stale closure can
   // make the map jitter.
-  const pan = useRef<{ pointerId: number; origin: Point; from: Viewport } | null>(null)
+  const pan = useRef<{
+    pointerId: number
+    origin: Point
+    from: Viewport
+    moved: boolean
+  } | null>(null)
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
@@ -84,30 +109,76 @@ export function MapCanvas({ map }: { map: GameMap }): ReactElement {
       pointerId: event.pointerId,
       origin: { x: event.clientX, y: event.clientY },
       from: viewport,
+      moved: false,
     }
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
     const drag = pan.current
     if (drag === null || drag.pointerId !== event.pointerId) return
+    const dx = event.clientX - drag.origin.x
+    const dy = event.clientY - drag.origin.y
+    // Below the threshold the press is still a candidate click, and panning by a pixel of
+    // hand-shake would otherwise swallow it.
+    if (!drag.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
+    drag.moved = true
     setViewport({
       ...drag.from,
-      x: drag.from.x - (event.clientX - drag.origin.x) / drag.from.scale,
-      y: drag.from.y - (event.clientY - drag.origin.y) / drag.from.scale,
+      x: drag.from.x - dx / drag.from.scale,
+      y: drag.from.y - dy / drag.from.scale,
     })
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (pan.current?.pointerId !== event.pointerId) return
+    const drag = pan.current
+    if (drag === null || drag.pointerId !== event.pointerId) return
     pan.current = null
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    if (drag.moved) return
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    onCanvasClick({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, drag.from)
+  }
+
+  /** Exhaustive over `CanvasTool`. `draw-zone` is claimed by M5 and deliberately inert. */
+  function onCanvasClick(anchor: Point, at: Viewport): void {
+    switch (tool.kind) {
+      case 'inspect':
+        // A click on bare map is how a selection is dismissed.
+        dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
+        navigate({ kind: 'map', mapId: map.id, dialogueId: null })
+        return
+
+      case 'place-dialogue': {
+        const dialogue: Dialogue = {
+          id: newDialogueId(),
+          mapId: map.id,
+          npcName: '',
+          position: screenToWorld(at, anchor),
+          content: { kind: 'text', text: '' },
+          spokenAt: new Date().toISOString(),
+          relevance: [],
+        }
+        dispatch({ kind: 'dialogue/added', dialogue })
+        dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
+        navigate({ kind: 'map', mapId: map.id, dialogueId: dialogue.id })
+        return
+      }
+
+      case 'draw-zone':
+        return
+
+      default:
+        assertNever(tool)
     }
   }
 
   return (
     <div
       className="map-canvas"
+      data-tool={tool.kind}
       ref={containerRef}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -125,6 +196,7 @@ export function MapCanvas({ map }: { map: GameMap }): ReactElement {
             draggable={false}
           />
         )}
+        {children}
       </div>
 
       {/* Outside the world element on purpose: a notice inside the transform would be

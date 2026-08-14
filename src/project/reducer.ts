@@ -1,10 +1,13 @@
 import { assertNever } from '../assert-never.ts'
 import type {
   AppState,
+  Dialogue,
   DialogueId,
   GameMap,
   MapId,
+  Point,
   ProjectFile,
+  Quest,
   SaveState,
   Selection,
   ZoneId,
@@ -25,6 +28,9 @@ export type Action =
   | { kind: 'map/added'; map: GameMap }
   | { kind: 'map/renamed'; mapId: MapId; name: string }
   | { kind: 'map/deleted'; mapId: MapId }
+  | { kind: 'dialogue/added'; dialogue: Dialogue }
+  | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
+  | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
 
 /**
  * Pure. Returns the *same* reference for a no-op, which is how `dispatch` skips notifying
@@ -128,25 +134,78 @@ export function reduce(state: AppState, action: Action): AppState {
           maps: project.maps.filter((map) => map.id !== action.mapId),
           zones: project.zones.filter((zone) => !removedZoneIds.has(zone.id)),
           dialogues: project.dialogues.filter((dialogue) => !removedDialogueIds.has(dialogue.id)),
-          // Quests are not scoped to a map, so they survive — but a dangling DialogueId in
-          // one is a reference to nothing that every later reader would have to defend
-          // against. Pruned here, at the only place that can create one.
-          quests: project.quests.map((quest) =>
-            quest.dialogueIds.some((id) => removedDialogueIds.has(id))
-              ? {
-                  ...quest,
-                  dialogueIds: quest.dialogueIds.filter((id) => !removedDialogueIds.has(id)),
-                }
-              : quest,
-          ),
+          quests: pruneQuestDialogues(project.quests, removedDialogueIds),
         },
         selection: dropDeletedSelection(state.selection, removedDialogueIds, removedZoneIds),
+      }
+    }
+
+    case 'dialogue/added': {
+      if (state.kind !== 'ready') return state
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          dialogues: [...state.project.dialogues, action.dialogue],
+        },
+      }
+    }
+
+    // Fires once per drag, on pointerup — not per pointermove. The dragged pin follows the
+    // cursor from PinLayer's own state, so autosave sees one document change, not sixty.
+    case 'dialogue/moved': {
+      if (state.kind !== 'ready') return state
+      const target = state.project.dialogues.find((dialogue) => dialogue.id === action.dialogueId)
+      if (target === undefined) return state
+      if (target.position.x === action.position.x && target.position.y === action.position.y) {
+        return state
+      }
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          dialogues: state.project.dialogues.map((dialogue) =>
+            dialogue === target ? { ...dialogue, position: action.position } : dialogue,
+          ),
+        },
+      }
+    }
+
+    case 'dialogue/deleted': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (!project.dialogues.some((dialogue) => dialogue.id === action.dialogueId)) return state
+
+      const removed = new Set<DialogueId>([action.dialogueId])
+      return {
+        ...state,
+        project: {
+          ...project,
+          dialogues: project.dialogues.filter((dialogue) => dialogue.id !== action.dialogueId),
+          quests: pruneQuestDialogues(project.quests, removed),
+        },
+        selection: dropDeletedSelection(state.selection, removed, EMPTY_ZONE_IDS),
       }
     }
 
     default:
       return assertNever(action)
   }
+}
+
+const EMPTY_ZONE_IDS: ReadonlySet<ZoneId> = new Set<ZoneId>()
+
+/**
+ * Quests are not scoped to a map, so they outlive any cascade — but a dangling `DialogueId`
+ * in one is a reference to nothing that every later reader would have to defend against.
+ * Pruned at the only two places that can create one.
+ */
+function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>): Quest[] {
+  return quests.map((quest) =>
+    quest.dialogueIds.some((id) => removed.has(id))
+      ? { ...quest, dialogueIds: quest.dialogueIds.filter((id) => !removed.has(id)) }
+      : quest,
+  )
 }
 
 /** A selection pointing at a deleted entity would render as a detail panel for nothing. */

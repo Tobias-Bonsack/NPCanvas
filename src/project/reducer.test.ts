@@ -97,6 +97,9 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'map/added', map: gameMap('harbour') },
   { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'Docks' },
   { kind: 'map/deleted', mapId: asMapId('harbour') },
+  { kind: 'dialogue/added', dialogue: dialogue('dialogue-1', asMapId('harbour')) },
+  { kind: 'dialogue/moved', dialogueId: asDialogueId('dialogue-1'), position: { x: 0, y: 0 } },
+  { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-1') },
 ]
 
 describe('reduce: connection actions', () => {
@@ -314,6 +317,96 @@ describe('reduce: map/deleted cascade', () => {
   it('ignores a delete of a map that does not exist', () => {
     const state = ready(twoMapProject())
     expect(reduce(state, { kind: 'map/deleted', mapId: asMapId('nope') })).toBe(state)
+  })
+})
+
+describe('reduce: dialogue actions', () => {
+  it('appends a placed dialogue', () => {
+    const placed = dialogue('dialogue-new', asMapId('harbour'))
+    const next = reduce(ready(twoMapProject()), { kind: 'dialogue/added', dialogue: placed })
+    expect(next.kind === 'ready' && next.project.dialogues.map((it) => it.id)).toEqual([
+      'dialogue-harbour',
+      'dialogue-forest',
+      'dialogue-new',
+    ])
+  })
+
+  it('moves a dialogue without touching the others', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/moved',
+      dialogueId: asDialogueId('dialogue-harbour'),
+      position: { x: 40, y: 90 },
+    })
+    expect(next.kind === 'ready' && next.project.dialogues.map((it) => it.position)).toEqual([
+      { x: 40, y: 90 },
+      { x: 1, y: 2 },
+    ])
+  })
+
+  it('ignores a move of a dialogue that does not exist, or to the position it already has', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, {
+        kind: 'dialogue/moved',
+        dialogueId: asDialogueId('nope'),
+        position: { x: 1, y: 1 },
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'dialogue/moved',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        position: { x: 1, y: 2 },
+      }),
+    ).toBe(state)
+  })
+
+  it('deletes a dialogue, prunes it from quests, and clears the selection', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'dialogue', id: asDialogueId('dialogue-harbour') },
+    })
+    const next = reduce(selected, {
+      kind: 'dialogue/deleted',
+      dialogueId: asDialogueId('dialogue-harbour'),
+    })
+    expect(next.kind === 'ready' && next.project.dialogues.map((it) => it.id)).toEqual([
+      'dialogue-forest',
+    ])
+    expect(next.kind === 'ready' && next.project.quests).toEqual([
+      quest('quest-1', ['dialogue-forest']),
+    ])
+    expect(next.kind === 'ready' && next.selection).toEqual({ kind: 'none' })
+  })
+
+  it('keeps a selection pointing at a different dialogue', () => {
+    const selected = reduce(ready(twoMapProject()), {
+      kind: 'selection/set',
+      selection: { kind: 'dialogue', id: asDialogueId('dialogue-forest') },
+    })
+    const next = reduce(selected, {
+      kind: 'dialogue/deleted',
+      dialogueId: asDialogueId('dialogue-harbour'),
+    })
+    expect(next.kind === 'ready' && next.selection).toEqual({
+      kind: 'dialogue',
+      id: asDialogueId('dialogue-forest'),
+    })
+  })
+
+  it('leaves the maps and zones alone when a dialogue is deleted', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), {
+      kind: 'dialogue/deleted',
+      dialogueId: asDialogueId('dialogue-harbour'),
+    })
+    expect(next.kind === 'ready' && next.project.maps).toBe(before.maps)
+    expect(next.kind === 'ready' && next.project.zones).toBe(before.zones)
+  })
+
+  it('ignores a delete of a dialogue that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(reduce(state, { kind: 'dialogue/deleted', dialogueId: asDialogueId('nope') })).toBe(state)
   })
 })
 

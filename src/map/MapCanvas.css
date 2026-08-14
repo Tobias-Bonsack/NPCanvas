@@ -15,6 +15,10 @@
   cursor: grabbing;
 }
 
+.map-canvas[data-tool='place-dialogue'] {
+  cursor: crosshair;
+}
+
 .map-canvas__world {
   position: absolute;
   top: 0;
@@ -66,6 +70,96 @@
 
 .map-canvas__reset:hover {
   background: var(--surface-3);
+}
+
+/* ---- pins ---- */
+
+/* A zero-size layer: it exists only to give the pins a positioning context that is not
+   the map image, which may be absent while the media is loading or missing. */
+.pin-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+}
+
+.pin {
+  position: absolute;
+  /* The counter-scale is the whole reason --map-zoom exists: pins keep a constant on-screen
+     size through one custom property written by the world element, rather than N per-pin
+     style updates every frame. translate(-50%, -50%) centres the pin on its world point. */
+  transform: translate(-50%, -50%) scale(calc(1 / var(--map-zoom)));
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.pin__marker {
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-round);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  /* The layer is zero-size and the map underneath handles panning, so only the pins
+     themselves may take the pointer. */
+  pointer-events: auto;
+}
+
+.pin__marker::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-round);
+  background: var(--accent);
+}
+
+.pin__marker:hover {
+  background: var(--surface-3);
+}
+
+.pin__marker[data-selected='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.pin__marker[data-selected='true']::before {
+  background: var(--accent-contrast);
+}
+
+.pin__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-3);
+}
+
+.pin__button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+}
+
+.pin__button--danger {
+  color: #ff8f8f;
+  border-color: var(--border-strong);
 }
 
 .map-canvas__notice {
