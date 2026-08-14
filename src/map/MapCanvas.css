@@ -82,6 +82,15 @@
   left: 0;
   width: 0;
   height: 0;
+  /* The map underneath owns panning, so the layer and each pin's box are transparent to the
+     pointer and only the controls inside them take it. Otherwise a pin's flex gap would
+     swallow canvas clicks. */
+  pointer-events: none;
+}
+
+.pin__marker,
+.pin__confirm {
+  pointer-events: auto;
 }
 
 .pin {
@@ -109,9 +118,6 @@
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
-  /* The layer is zero-size and the map underneath handles panning, so only the pins
-     themselves may take the pointer. */
-  pointer-events: auto;
 }
 
 .pin__marker::before {

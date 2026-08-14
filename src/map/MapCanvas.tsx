@@ -21,6 +21,22 @@ import './MapCanvas.css'
 const CLICK_THRESHOLD = 4
 
 /**
+ * Controls layered over the map — the HUD, a pin's delete confirmation — carry
+ * `data-canvas-ui`, and a press starting inside one is that control's business, not a
+ * canvas gesture.
+ *
+ * Without this the container captures the pointer even for a press that began on a button.
+ * Capture retargets `pointerup` to the container, so the browser fires `click` on the
+ * nearest common ancestor of the down and up targets — the container — and the button's
+ * own `onClick` never runs. Keyboard activation is unaffected, which is why such a button
+ * appears to work with Enter and be dead to the mouse.
+ */
+function isCanvasChrome(target: EventTarget): boolean {
+  // `instanceof` rather than a cast: React types `target` as the bare `EventTarget`.
+  return target instanceof Element && target.closest('[data-canvas-ui]') !== null
+}
+
+/**
  * The transform surface everything else sits on: DOM under one CSS transform, not
  * `<canvas>`. See CLAUDE.md § Domain and architecture decisions.
  *
@@ -102,6 +118,7 @@ export function MapCanvas({
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
+    if (isCanvasChrome(event.target)) return
     // Capture keeps pointermove flowing after the cursor leaves the element, so a fast drag
     // does not strand the map mid-pan.
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -203,7 +220,7 @@ export function MapCanvas({
           scaled and translated along with the map, and unreadable at low zoom. */}
       <MediaNotice map={map} media={media} />
 
-      <div className="map-canvas__hud">
+      <div className="map-canvas__hud" data-canvas-ui>
         <span className="map-canvas__zoom" aria-label="Zoom level">
           {Math.round(viewport.scale * 100)}%
         </span>

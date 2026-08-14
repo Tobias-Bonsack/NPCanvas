@@ -199,7 +199,7 @@ function Pin({
       </button>
 
       {confirmingDelete && (
-        <div className="pin__confirm" role="alert">
+        <div className="pin__confirm" role="alert" data-canvas-ui>
           <span>Delete this dialogue?</span>
           <button type="button" className="pin__button pin__button--danger" autoFocus onClick={onConfirmDelete}>
             Delete
