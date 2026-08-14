@@ -1,0 +1,43 @@
+.app {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.app__title {
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+.app__lead {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.app__error {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.app__dev-button {
+  font: inherit;
+  padding: var(--space-2) var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.app__dev-button:hover {
+  background: var(--surface-2);
+}

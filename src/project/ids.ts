@@ -1,4 +1,4 @@
-import type { DialogueId, MapId, QuestId, ZoneId } from './types'
+import type { DialogueId, MapId, QuestId, ZoneId } from './types.ts'
 
 // The only permitted `as` casts on ids in the codebase. Every other module must
 // obtain ids from here, so a branded id can never be forged from a raw string.

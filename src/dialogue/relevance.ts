@@ -1,4 +1,4 @@
-import type { RelevanceTag } from '../project/types'
+import type { RelevanceTag } from '../project/types.ts'
 
 export type RelevanceStyle = {
   label: string
