@@ -39,7 +39,7 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
 /** Exhaustive over `Route`; the `ReactElement` return type rejects a new view silently added. */
 function ReadyView({ state, route }: { state: ReadyState; route: Route }): ReactElement {
   switch (route.kind) {
-    case 'map':
+    case 'canvas':
       return <MapScreen project={state.project} selection={state.selection} route={route} />
 
     case 'quests':

@@ -12,13 +12,18 @@ import { newDialogueId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { CanvasTool, Dialogue, GameMap, Point } from '../project/types.ts'
 import { navigate } from '../app/route.ts'
+import { canvasToMapLocal, mapAtCanvasPoint, mapsBounds } from './canvas-layout.ts'
 import type { Size } from './geometry.ts'
+import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
-import { fitToContainer, screenToWorld, zoomAt } from './viewport.ts'
+import { fitRectToContainer, screenToWorld, zoomAt } from './viewport.ts'
 import './MapCanvas.css'
 
 /** Screen pixels of travel before a press stops being a click and becomes a pan. */
 const CLICK_THRESHOLD = 4
+
+/** Where the viewport lands when a project has no maps to fit to. */
+const EMPTY_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 }
 
 /**
  * Controls layered over the map — the HUD, a pin's delete confirmation — carry
@@ -40,25 +45,26 @@ function isCanvasChrome(target: EventTarget): boolean {
  * The transform surface everything else sits on: DOM under one CSS transform, not
  * `<canvas>`. See CLAUDE.md § Domain and architecture decisions.
  *
+ * Every map in the project is on screen at once, each in its own group placed by `origin`
+ * and sized by `scale`. The canvas transform is *canvas* space; a map's contents are
+ * map-local and ride along inside its group.
+ *
  * `Viewport` is component state, not store state — it is transient UI, and putting it in the
  * store would push a document-shaped update through autosave on every pointermove.
  */
 export function MapCanvas({
-  map,
+  maps,
   tool,
   children,
 }: {
-  map: GameMap
+  maps: readonly GameMap[]
   tool: CanvasTool
-  /** Rendered inside the world element, so children position in world coordinates. */
+  /** Rendered inside the world element, so children position in canvas coordinates. */
   children?: ReactNode
 }): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const [container, setContainer] = useState<Size>({ width: 0, height: 0 })
-  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, scale: 1 })
-  const media = useMediaUrl(map.file)
-
-  const world: Size = { width: map.width, height: map.height }
+  const [viewport, setViewport] = useState<Viewport>(EMPTY_VIEWPORT)
 
   useEffect(() => {
     const element = containerRef.current
@@ -71,17 +77,25 @@ export function MapCanvas({
     return () => observer.disconnect()
   }, [])
 
-  // Fit on first mount and on every map change — but *not* on every resize, which would
-  // yank the view out from under a user who is only dragging the window edge. The ref
-  // records which map has already been fitted, and the container size is only a gate: the
-  // first measurement arrives a frame after mount, when it is still zero.
-  const fittedMapId = useRef<string | null>(null)
+  function fitToMaps(): void {
+    const bounds = mapsBounds(maps)
+    setViewport(bounds === null ? EMPTY_VIEWPORT : fitRectToContainer(bounds, container))
+  }
+
+  // Fit once, when the container has actually been measured — not on every resize, which
+  // would yank the view out from under a user dragging the window edge, and not when a map
+  // is imported or moved, which must leave the view where the user put it. The first
+  // measurement arrives a frame after mount, when the container is still zero-sized, so the
+  // size is a gate rather than a dependency.
+  const fitted = useRef(false)
   useEffect(() => {
+    if (fitted.current) return
     if (container.width === 0 || container.height === 0) return
-    if (fittedMapId.current === map.id) return
-    fittedMapId.current = map.id
-    setViewport(fitToContainer({ width: map.width, height: map.height }, container))
-  }, [map.id, map.width, map.height, container])
+    const bounds = mapsBounds(maps)
+    if (bounds === null) return
+    fitted.current = true
+    setViewport(fitRectToContainer(bounds, container))
+  }, [maps, container])
 
   // Bound by hand with { passive: false }: React's onWheel is passive, so preventDefault()
   // there silently does nothing and the page scrolls instead of the map zooming.
@@ -163,24 +177,30 @@ export function MapCanvas({
   function onCanvasClick(anchor: Point, at: Viewport): void {
     switch (tool.kind) {
       case 'inspect':
-        // A click on bare map is how a selection is dismissed.
+        // A click on bare canvas is how a selection is dismissed.
         dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-        navigate({ kind: 'map', mapId: map.id, dialogueId: null })
+        navigate({ kind: 'canvas', dialogueId: null })
         return
 
       case 'place-dialogue': {
+        const canvasPoint = screenToWorld(at, anchor)
+        const map = mapAtCanvasPoint(maps, canvasPoint)
+        // A Dialogue requires a real mapId, so a click on bare canvas places nothing rather
+        // than inventing an association.
+        if (map === null) return
+
         const dialogue: Dialogue = {
           id: newDialogueId(),
           mapId: map.id,
           npcName: '',
-          position: screenToWorld(at, anchor),
+          position: canvasToMapLocal(map, canvasPoint),
           content: { kind: 'text', text: '' },
           spokenAt: new Date().toISOString(),
           relevance: [],
         }
         dispatch({ kind: 'dialogue/added', dialogue })
         dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
-        navigate({ kind: 'map', mapId: map.id, dialogueId: dialogue.id })
+        navigate({ kind: 'canvas', dialogueId: dialogue.id })
         return
       }
 
@@ -203,32 +223,17 @@ export function MapCanvas({
       onPointerCancel={onPointerUp}
     >
       <div className="map-canvas__world" style={worldStyle(viewport)}>
-        {media.kind === 'ready' && (
-          <img
-            className="map-canvas__image"
-            src={media.url}
-            alt={map.name}
-            width={map.width}
-            height={map.height}
-            draggable={false}
-          />
-        )}
+        {maps.map((map) => (
+          <MapImage key={map.id} map={map} />
+        ))}
         {children}
       </div>
-
-      {/* Outside the world element on purpose: a notice inside the transform would be
-          scaled and translated along with the map, and unreadable at low zoom. */}
-      <MediaNotice map={map} media={media} />
 
       <div className="map-canvas__hud" data-canvas-ui>
         <span className="map-canvas__zoom" aria-label="Zoom level">
           {Math.round(viewport.scale * 100)}%
         </span>
-        <button
-          type="button"
-          className="map-canvas__reset"
-          onClick={() => setViewport(fitToContainer(world, container))}
-        >
+        <button type="button" className="map-canvas__reset" onClick={fitToMaps}>
           Reset view
         </button>
       </div>
@@ -252,27 +257,57 @@ function worldStyle(viewport: Viewport): CSSProperties & Record<'--map-zoom', st
   }
 }
 
-/** Exhaustive over `MediaUrl`; the explicit return type rejects a silently added variant. */
+/**
+ * The map image, or a footprint-sized placeholder while it loads or if it has gone missing.
+ * A placeholder rather than an overlay notice: with every map on screen at once, the message
+ * has to say *which* map it is about, and occupying the map's own rectangle says it best.
+ */
+function MapImage({ map }: { map: GameMap }): ReactElement {
+  const media = useMediaUrl(map.file)
+
+  return (
+    <div className="map-canvas__map" style={mapGroupStyle(map)}>
+      {media.kind === 'ready' ? (
+        <img
+          className="map-canvas__image"
+          src={media.url}
+          alt={map.name}
+          width={map.width}
+          height={map.height}
+          draggable={false}
+        />
+      ) : (
+        <div
+          className="map-canvas__placeholder"
+          style={{ width: `${map.width}px`, height: `${map.height}px` }}
+        >
+          {/* Counter-scaled in CSS, so the message stays legible however small the map is. */}
+          <p className="map-canvas__notice" role={media.kind === 'loading' ? undefined : 'alert'}>
+            <MediaNotice map={map} media={media} />
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Exhaustive over the non-ready `MediaUrl` variants; `ready` renders the image instead. */
 function MediaNotice({ map, media }: { map: GameMap; media: MediaUrl }): ReactElement | null {
   switch (media.kind) {
     case 'ready':
       return null
 
     case 'loading':
-      return <p className="map-canvas__notice">Loading {map.name}…</p>
+      return <>Loading {map.name}…</>
 
     case 'missing':
-      return (
-        <p className="map-canvas__notice" role="alert">
-          {map.file.fileName} is no longer in the project’s media folder.
-        </p>
-      )
+      return <>{map.file.fileName} is no longer in the project’s media folder.</>
 
     case 'failed':
       return (
-        <p className="map-canvas__notice" role="alert">
+        <>
           {map.name} could not be read: {media.message}
-        </p>
+        </>
       )
 
     default:

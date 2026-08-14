@@ -1,17 +1,17 @@
 import { useSyncExternalStore } from 'react'
-import { asDialogueId, asMapId } from '../project/ids.ts'
-import type { DialogueId, MapId } from '../project/types.ts'
+import { asDialogueId } from '../project/ids.ts'
+import type { DialogueId } from '../project/types.ts'
 
 // Hash routing, not history routing: Pages serves static files, so history routing would
 // need a `404.html` copy of `index.html`. The URL carries view state only, never data.
 
 export type Route =
-  | { kind: 'map'; mapId: MapId | null; dialogueId: DialogueId | null }
+  | { kind: 'canvas'; dialogueId: DialogueId | null }
   | { kind: 'quests' }
   | { kind: 'insights' }
 
 /** Shared reference, so an unparseable hash keeps returning the identical object. */
-const FALLBACK: Route = { kind: 'map', mapId: null, dialogueId: null }
+const FALLBACK: Route = { kind: 'canvas', dialogueId: null }
 
 export function parseRoute(hash: string): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash
@@ -23,12 +23,14 @@ export function parseRoute(hash: string): Route {
       return { kind: 'quests' }
     case 'insights':
       return { kind: 'insights' }
+    // `map` is the pre-M3.5 path, when the canvas showed one map at a time and named it in
+    // the hash. Every map is on screen now, so the id is dropped rather than honoured — but
+    // an old link must still land on the canvas rather than render nothing.
+    case 'canvas':
     case 'map': {
-      const mapSegment = segments[1]
       const dialogueParam = new URLSearchParams(query).get('dialogue')
       return {
-        kind: 'map',
-        mapId: mapSegment ? asMapId(decodeURIComponent(mapSegment)) : null,
+        kind: 'canvas',
         dialogueId: dialogueParam ? asDialogueId(dialogueParam) : null,
       }
     }
@@ -43,10 +45,9 @@ export function formatRoute(route: Route): string {
       return '#/quests'
     case 'insights':
       return '#/insights'
-    case 'map': {
-      const path = route.mapId === null ? '#/map' : `#/map/${encodeURIComponent(route.mapId)}`
-      if (route.dialogueId === null) return path
-      return `${path}?dialogue=${encodeURIComponent(route.dialogueId)}`
+    case 'canvas': {
+      if (route.dialogueId === null) return '#/canvas'
+      return `#/canvas?dialogue=${encodeURIComponent(route.dialogueId)}`
     }
   }
 }
@@ -77,9 +78,9 @@ export function useRoute(): Route {
 }
 
 /**
- * `replace` is for corrections the user did not ask for — most importantly a `#/map/<id>`
- * pointing at a map that no longer exists, which falls back to the first map. Pushing that
- * would trap the back button on a URL that immediately corrects itself again.
+ * `replace` is for corrections and one-shot intents the user did not ask to keep in history
+ * — a deep link to a dialogue that has since been deleted, say. Pushing those would trap the
+ * back button on a URL that immediately corrects itself again.
  *
  * `location.replace` rather than `history.replaceState`, because replaceState does not fire
  * `hashchange` and `useRoute` would keep serving the stale snapshot.

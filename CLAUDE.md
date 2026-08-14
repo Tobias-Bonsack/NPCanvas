@@ -106,9 +106,17 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. The V1→V2 migration lays legacy maps out left to right
   through `nextMapOrigin`, the same function an import uses, so both paths place maps identically.
+- **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
+  world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
+  pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first
+  measured; importing or moving a map deliberately does not move the viewport.
 - **Canvas rendering is DOM plus one inline `<svg>` under a single CSS transform** — no `<canvas>`.
-  Pins counter-scale via the `--map-zoom` custom property (one property write per frame instead of N
-  element updates); zone strokes use `vector-effect="non-scaling-stroke"`. `wheel` must be bound with
+  Pins counter-scale via `calc(1 / (var(--map-zoom) * var(--map-scale)))`: `--map-zoom` is one
+  property write per frame on the world element, `--map-scale` one per map on its group, and both
+  inherit — so a zoom still costs no per-pin style update. Their product is screen pixels per
+  map-local pixel, which is also what a pin drag delta must be divided by. `mapGroupStyle` in
+  `src/map/map-group-style.ts` emits that group for both the image layer and the pin layer, so the
+  two transforms cannot drift apart. Zone strokes use `vector-effect="non-scaling-stroke"`. `wheel` must be bound with
   `addEventListener(..., { passive: false })` — React's `onWheel` is passive and `preventDefault()`
   silently fails there. If pin counts exceed ~2000, cull to the visible world rect before considering
   `<canvas>`.
@@ -118,7 +126,9 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `scale` prop would change every frame and defeat the memo. Any future zone or overlay layer
   inherits this constraint. `MapCanvas` renders such layers via `children`, inside the world element.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
-  state only, never data. Switching to history routing requires emitting `404.html` as a copy of
+  state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>`; the pre-M3.5
+  `#/map/<id>` still parses, dropping the id, so an old link lands on the canvas rather than
+  rendering nothing. Switching to history routing requires emitting `404.html` as a copy of
   `index.html`.
 - **Dependencies.** Runtime deps stay `react` + `react-dom`. Evaluated and rejected: zustand/redux
   (the store is ~25 lines of platform API), react-router, `idb`, `zod`, `uuid`

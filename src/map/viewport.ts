@@ -7,6 +7,9 @@ import type { Rect, Size } from './geometry.ts'
  *
  * `x`/`y` is the **world point at the screen origin**, so the CSS the canvas emits is
  * `scale(scale) translate(-x, -y)`, in that order.
+ *
+ * World space here is *canvas* space — the shared space maps are placed into, not any one
+ * map's pixels. See `canvas-layout.ts` for the conversion into a map's own coordinates.
  */
 export type Viewport = { x: number; y: number; scale: number }
 
@@ -51,14 +54,18 @@ export function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
 }
 
-/** Largest scale that shows the whole map, with the map centred in the container. */
-export function fitToContainer(world: Size, container: Size): Viewport {
+/**
+ * Largest scale that shows the whole rectangle, centred in the container. Takes a `Rect`
+ * rather than a `Size` because the canvas is shared: `mapsBounds` may start anywhere,
+ * including at negative coordinates, so an origin of 0,0 cannot be assumed.
+ */
+export function fitRectToContainer(rect: Rect, container: Size): Viewport {
   const scale = clampScale(
-    Math.min(container.width / world.width, container.height / world.height),
+    Math.min(container.width / rect.width, container.height / rect.height),
   )
   return {
-    x: world.width / 2 - container.width / (2 * scale),
-    y: world.height / 2 - container.height / (2 * scale),
+    x: rect.x + rect.width / 2 - container.width / (2 * scale),
+    y: rect.y + rect.height / 2 - container.height / (2 * scale),
     scale,
   }
 }

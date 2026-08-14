@@ -1,6 +1,5 @@
 import type { ChangeEvent, ReactElement } from 'react'
 import { useId, useState } from 'react'
-import { navigate } from '../app/route.ts'
 import { importMapImage } from '../media/import-media.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
@@ -16,19 +15,13 @@ type PickerMode =
   | { kind: 'renaming'; draft: string }
   | { kind: 'confirming-delete' }
 
-export function MapPicker({
-  project,
-  activeMap,
-}: {
-  project: ProjectFile
-  activeMap: GameMap
-}): ReactElement {
+export function MapPicker({ project }: { project: ProjectFile }): ReactElement {
   const [mode, setMode] = useState<PickerMode>({ kind: 'idle' })
+  // Every map is on the canvas now, so the `<select>` no longer switches the view — it picks
+  // which map rename and delete act on. #25 replaces the whole control with a list.
+  const [targetId, setTargetId] = useState<MapId | null>(null)
   const selectId = useId()
-
-  function onSwitchMap(event: ChangeEvent<HTMLSelectElement>): void {
-    navigate({ kind: 'map', mapId: asExistingMapId(project, event.target.value), dialogueId: null })
-  }
+  const activeMap = resolveTarget(project, targetId)
 
   function onRenameSubmit(draft: string): void {
     const name = draft.trim()
@@ -40,14 +33,10 @@ export function MapPicker({
     // File names are collected *before* the dispatch, because the cascade removes the very
     // dialogues that name the files — afterwards nothing would say what to clean up.
     const orphanedFiles = mediaFileNamesOf(project, activeMap.id)
-    const remaining = project.maps.filter((other) => other.id !== activeMap.id)
 
     dispatch({ kind: 'map/deleted', mapId: activeMap.id })
     setMode({ kind: 'idle' })
-    navigate(
-      { kind: 'map', mapId: remaining.length === 0 ? null : remaining[0].id, dialogueId: null },
-      { replace: true },
-    )
+    setTargetId(null)
 
     // The document is already correct, so a file that resists deletion is dead weight in
     // media/, not a broken project. Reported, not surfaced as app state.
@@ -114,7 +103,12 @@ export function MapPicker({
       <label className="map-picker__label" htmlFor={selectId}>
         Map
       </label>
-      <select id={selectId} className="map-picker__select" value={activeMap.id} onChange={onSwitchMap}>
+      <select
+        id={selectId}
+        className="map-picker__select"
+        value={activeMap.id}
+        onChange={(event) => setTargetId(asExistingMapId(project, event.target.value))}
+      >
         {project.maps.map((map) => (
           <option key={map.id} value={map.id}>
             {map.name}
@@ -167,9 +161,9 @@ export function MapImportButton({
     setError(null)
     setImporting(true)
     try {
-      const map = await importMapImage(file, nextMapOrigin(maps))
-      dispatch({ kind: 'map/added', map })
-      navigate({ kind: 'map', mapId: map.id, dialogueId: null })
+      // No navigation and no viewport change: the new map appears beside the others, and
+      // yanking the view to it would lose wherever the user was working.
+      dispatch({ kind: 'map/added', map: await importMapImage(file, nextMapOrigin(maps)) })
     } catch (importError) {
       setError(describeError(importError))
     } finally {
@@ -219,7 +213,15 @@ function mediaFileNamesOf(project: ProjectFile, mapId: MapId): string[] {
   return names
 }
 
-/** The `<select>` value is a raw string; only one that names a real map may be routed to. */
+/** The `<select>` value is a raw string; only one that names a real map may be targeted. */
 function asExistingMapId(project: ProjectFile, value: string): MapId | null {
   return project.maps.find((map) => map.id === value)?.id ?? null
+}
+
+/**
+ * Falls back to the first map, which is what makes a target survive its map being deleted.
+ * Only called with at least one map: `MapScreen` renders the import call to action instead.
+ */
+function resolveTarget(project: ProjectFile, targetId: MapId | null): GameMap {
+  return project.maps.find((map) => map.id === targetId) ?? project.maps[0]
 }

@@ -1,9 +1,10 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, DialogueId, MapId, Point } from '../project/types.ts'
+import type { Dialogue, DialogueId, GameMap, MapId, Point } from '../project/types.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
+import { mapGroupStyle } from './map-group-style.ts'
 
 /** Screen pixels of travel before a press stops being a click and becomes a drag. */
 const DRAG_THRESHOLD = 4
@@ -13,7 +14,10 @@ type DragState = {
   id: DialogueId
   origin: Point
   from: Point
-  /** Read once at pointerdown: the drag must not shift if the map is zoomed mid-gesture. */
+  /**
+   * Screen pixels per map-local pixel, read once at pointerdown: the drag must not shift if
+   * the canvas is zoomed mid-gesture.
+   */
   scale: number
   /** Mirrors the rendered drag position, so pointerup does not depend on a state closure. */
   latest: Point | null
@@ -21,19 +25,20 @@ type DragState = {
 }
 
 /**
- * Pins live *inside* the world element, positioned in world coordinates, so panning and
- * zooming move them for free — one transform on the parent instead of N style writes.
+ * Pins live *inside* the world element, grouped by map and positioned in that map's own
+ * coordinates, so panning, zooming, and moving a map all carry them for free — one transform
+ * per map instead of N style writes.
  *
  * `memo` is load-bearing: `MapCanvas` re-renders on every pointermove while panning, and
  * every prop here is deliberately independent of the viewport so this subtree does not.
  */
 export const PinLayer = memo(function PinLayer({
+  maps,
   dialogues,
-  mapId,
   selectedId,
 }: {
+  maps: readonly GameMap[]
   dialogues: Dialogue[]
-  mapId: MapId
   selectedId: DialogueId | null
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
@@ -46,9 +51,13 @@ export const PinLayer = memo(function PinLayer({
   // must not leave a stray prompt hanging over the map.
   useEffect(() => setPendingDelete(null), [selectedId])
 
+  // Rebuilding this per render would hand every group a fresh array and undo the memo above,
+  // which is the whole reason panning does not touch this subtree.
+  const byMap = useMemo(() => groupByMap(maps, dialogues), [maps, dialogues])
+
   function select(id: DialogueId): void {
     dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-    navigate({ kind: 'map', mapId, dialogueId: id })
+    navigate({ kind: 'canvas', dialogueId: id })
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue): void {
@@ -61,7 +70,7 @@ export const PinLayer = memo(function PinLayer({
       id: dialogue.id,
       origin: { x: event.clientX, y: event.clientY },
       from: dialogue.position,
-      scale: readMapZoom(event.currentTarget),
+      scale: readScreenScale(event.currentTarget),
       latest: null,
       moved: false,
     }
@@ -110,7 +119,7 @@ export const PinLayer = memo(function PinLayer({
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
     setPendingDelete(null)
     dispatch({ kind: 'dialogue/deleted', dialogueId: dialogue.id })
-    navigate({ kind: 'map', mapId, dialogueId: null }, { replace: true })
+    navigate({ kind: 'canvas', dialogueId: null }, { replace: true })
 
     // Text dialogues own no file, but #12 makes this branch live and an orphan in media/
     // would be invisible from inside the app.
@@ -124,24 +133,45 @@ export const PinLayer = memo(function PinLayer({
 
   return (
     <div className="pin-layer">
-      {dialogues.map((dialogue) => (
-        <Pin
-          key={dialogue.id}
-          dialogue={dialogue}
-          position={dragged !== null && dragged.id === dialogue.id ? dragged.position : dialogue.position}
-          selected={dialogue.id === selectedId}
-          confirmingDelete={pendingDelete === dialogue.id}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onRequestDelete={() => setPendingDelete(dialogue.id)}
-          onCancelDelete={() => setPendingDelete(null)}
-          onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
-        />
+      {maps.map((map) => (
+        <div key={map.id} className="pin-layer__map" style={mapGroupStyle(map)}>
+          {(byMap.get(map.id) ?? []).map((dialogue) => (
+            <Pin
+              key={dialogue.id}
+              dialogue={dialogue}
+              position={
+                dragged !== null && dragged.id === dialogue.id ? dragged.position : dialogue.position
+              }
+              selected={dialogue.id === selectedId}
+              confirmingDelete={pendingDelete === dialogue.id}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onRequestDelete={() => setPendingDelete(dialogue.id)}
+              onCancelDelete={() => setPendingDelete(null)}
+              onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
+            />
+          ))}
+        </div>
       ))}
     </div>
   )
 })
+
+/**
+ * Dialogues bucketed by map, in one pass. A dialogue naming a map that is not in `maps`
+ * belongs to no group and is simply not rendered — the cascade in `map/deleted` means that
+ * can only be a transient mid-dispatch state, never a document a user sees.
+ */
+function groupByMap(
+  maps: readonly GameMap[],
+  dialogues: readonly Dialogue[],
+): ReadonlyMap<MapId, Dialogue[]> {
+  const byMap = new Map<MapId, Dialogue[]>()
+  for (const map of maps) byMap.set(map.id, [])
+  for (const dialogue of dialogues) byMap.get(dialogue.mapId)?.push(dialogue)
+  return byMap
+}
 
 function Pin({
   dialogue,
@@ -236,11 +266,19 @@ function pinStyle(position: Point): CSSProperties {
 }
 
 /**
- * The current zoom, read from the DOM at pointerdown rather than passed in as a prop —
- * a `scale` prop would change on every wheel notch and defeat the `memo` above. The world
- * element already publishes it, and custom properties inherit down to the pin.
+ * Screen pixels per map-local pixel: the product of the canvas zoom and the map's own scale,
+ * which is exactly what a drag delta must be divided by to land in map-local coordinates.
+ *
+ * Read from the DOM at pointerdown rather than passed in as a prop — a `scale` prop would
+ * change on every wheel notch and defeat the `memo` above. The world element publishes
+ * `--map-zoom` and each map group publishes `--map-scale`; both inherit down to the pin.
  */
-function readMapZoom(element: Element): number {
-  const raw = Number.parseFloat(getComputedStyle(element).getPropertyValue('--map-zoom'))
+function readScreenScale(element: Element): number {
+  const style = getComputedStyle(element)
+  return readPositiveNumber(style, '--map-zoom') * readPositiveNumber(style, '--map-scale')
+}
+
+function readPositiveNumber(style: CSSStyleDeclaration, property: string): number {
+  const raw = Number.parseFloat(style.getPropertyValue(property))
   return Number.isFinite(raw) && raw > 0 ? raw : 1
 }

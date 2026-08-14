@@ -9,7 +9,7 @@ import './Nav.css'
 // Real anchors, not buttons: the hash is the navigation mechanism, so middle-click,
 // bookmarking, and the back button all work without any handler of ours.
 const NAV_ITEMS: readonly { label: string; route: Route }[] = [
-  { label: 'Map', route: { kind: 'map', mapId: null, dialogueId: null } },
+  { label: 'Canvas', route: { kind: 'canvas', dialogueId: null } },
   { label: 'Quests', route: { kind: 'quests' } },
   { label: 'Insights', route: { kind: 'insights' } },
 ]

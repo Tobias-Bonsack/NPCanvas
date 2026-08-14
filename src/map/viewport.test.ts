@@ -3,7 +3,7 @@ import type { Point } from '../project/types.ts'
 import type { Viewport } from './viewport.ts'
 import {
   clampScale,
-  fitToContainer,
+  fitRectToContainer,
   screenToWorld,
   visibleWorldRect,
   worldToScreen,
@@ -95,23 +95,23 @@ describe('clampScale', () => {
   })
 })
 
-describe('fitToContainer', () => {
-  it('centres a map in a container wider than the map aspect', () => {
-    const world = { width: 1000, height: 1000 }
+describe('fitRectToContainer', () => {
+  it('centres a rect in a container wider than the rect aspect', () => {
+    const rect = { x: 0, y: 0, width: 1000, height: 1000 }
     const container = { width: 800, height: 400 }
-    const viewport = fitToContainer(world, container)
+    const viewport = fitRectToContainer(rect, container)
 
-    // Height is the binding dimension, so the whole map height exactly fills the container.
+    // Height is the binding dimension, so the whole rect height exactly fills the container.
     expect(viewport.scale).toBeCloseTo(0.4, 9)
     expectClose(worldToScreen(viewport, { x: 500, y: 500 }), { x: 400, y: 200 })
     expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 200, y: 0 })
     expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 600, y: 400 })
   })
 
-  it('centres a map in a container taller than the map aspect', () => {
-    const world = { width: 1000, height: 1000 }
+  it('centres a rect in a container taller than the rect aspect', () => {
+    const rect = { x: 0, y: 0, width: 1000, height: 1000 }
     const container = { width: 400, height: 800 }
-    const viewport = fitToContainer(world, container)
+    const viewport = fitRectToContainer(rect, container)
 
     expect(viewport.scale).toBeCloseTo(0.4, 9)
     expectClose(worldToScreen(viewport, { x: 500, y: 500 }), { x: 200, y: 400 })
@@ -119,17 +119,38 @@ describe('fitToContainer', () => {
     expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 400, y: 600 })
   })
 
-  it('centres a non-square map too', () => {
-    const viewport = fitToContainer({ width: 4000, height: 1000 }, { width: 800, height: 800 })
+  it('centres a non-square rect too', () => {
+    const viewport = fitRectToContainer(
+      { x: 0, y: 0, width: 4000, height: 1000 },
+      { width: 800, height: 800 },
+    )
     expect(viewport.scale).toBeCloseTo(0.2, 9)
     expectClose(worldToScreen(viewport, { x: 2000, y: 500 }), { x: 400, y: 400 })
   })
 
+  // The canvas is shared, so `mapsBounds` may start anywhere — a fit that assumed an origin
+  // of 0,0 would put the maps off screen by exactly the bounds offset.
+  it('honours a rect that does not start at the origin, including negative coordinates', () => {
+    const rect = { x: -3000, y: 500, width: 1000, height: 1000 }
+    const container = { width: 800, height: 400 }
+    const viewport = fitRectToContainer(rect, container)
+
+    expect(viewport.scale).toBeCloseTo(0.4, 9)
+    expectClose(worldToScreen(viewport, { x: -2500, y: 1000 }), { x: 400, y: 200 })
+    expectClose(worldToScreen(viewport, { x: -3000, y: 500 }), { x: 200, y: 0 })
+    expectClose(worldToScreen(viewport, { x: -2000, y: 1500 }), { x: 600, y: 400 })
+  })
+
   it('clamps a fit that would exceed the scale range', () => {
-    expect(fitToContainer({ width: 10, height: 10 }, { width: 4000, height: 4000 }).scale).toBe(8)
-    expect(fitToContainer({ width: 100000, height: 100000 }, { width: 100, height: 100 }).scale).toBe(
-      0.05,
-    )
+    expect(
+      fitRectToContainer({ x: 0, y: 0, width: 10, height: 10 }, { width: 4000, height: 4000 }).scale,
+    ).toBe(8)
+    expect(
+      fitRectToContainer(
+        { x: 0, y: 0, width: 100000, height: 100000 },
+        { width: 100, height: 100 },
+      ).scale,
+    ).toBe(0.05)
   })
 })
 

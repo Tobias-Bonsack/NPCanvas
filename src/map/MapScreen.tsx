@@ -1,45 +1,26 @@
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { Route } from '../app/route.ts'
-import { navigate } from '../app/route.ts'
-import type { CanvasTool, GameMap, MapId, ProjectFile, Selection } from '../project/types.ts'
+import type { CanvasTool, ProjectFile, Selection } from '../project/types.ts'
 import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton, MapPicker } from './MapPicker.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import './MapScreen.css'
 
-type MapRoute = Extract<Route, { kind: 'map' }>
+type CanvasRoute = Extract<Route, { kind: 'canvas' }>
 
 export function MapScreen({
   project,
   selection,
-  route,
 }: {
   project: ProjectFile
   selection: Selection
-  route: MapRoute
+  route: CanvasRoute
 }): ReactElement {
-  const activeMap = resolveActiveMap(project.maps, route.mapId)
   // Which tool the canvas is in is transient UI, so it lives here and not in the store.
   const [tool, setTool] = useState<CanvasTool>({ kind: 'inspect' })
 
-  // The URL is corrected to name the map actually being shown, so that a stale or bare
-  // `#/map` link becomes shareable and a later dialogue deep link has a map to hang off.
-  // `replace`, because the user never asked to go to the wrong map.
-  useEffect(() => {
-    if (activeMap === null || activeMap.id === route.mapId) return
-    navigate({ kind: 'map', mapId: activeMap.id, dialogueId: route.dialogueId }, { replace: true })
-  }, [activeMap, route.mapId, route.dialogueId])
-
-  // Memoised because `PinLayer` is memoised: a fresh array on every render of this screen
-  // would re-render every pin whenever the save indicator ticked.
-  const activeMapId = activeMap?.id ?? null
-  const pinnedDialogues = useMemo(
-    () => project.dialogues.filter((dialogue) => dialogue.mapId === activeMapId),
-    [project.dialogues, activeMapId],
-  )
-
-  if (activeMap === null) {
+  if (project.maps.length === 0) {
     return (
       <section className="map-screen map-screen--empty">
         <div className="map-screen__cta">
@@ -58,16 +39,14 @@ export function MapScreen({
   return (
     <section className="map-screen">
       <header className="map-screen__bar">
-        <MapPicker project={project} activeMap={activeMap} />
+        <MapPicker project={project} />
         <ToolPicker tool={tool} onChange={setTool} />
       </header>
       <div className="map-screen__canvas">
-        {/* Keyed on the map so switching maps remounts the canvas: viewport, container
-            measurement, and object URL all belong to one map and none should carry over. */}
-        <MapCanvas key={activeMap.id} map={activeMap} tool={tool}>
+        <MapCanvas maps={project.maps} tool={tool}>
           <PinLayer
-            dialogues={pinnedDialogues}
-            mapId={activeMap.id}
+            maps={project.maps}
+            dialogues={project.dialogues}
             selectedId={selection.kind === 'dialogue' ? selection.id : null}
           />
         </MapCanvas>
@@ -105,11 +84,4 @@ function ToolPicker({
       ))}
     </div>
   )
-}
-
-/** An unknown `mapId` falls back to the first map rather than rendering nothing. */
-function resolveActiveMap(maps: GameMap[], mapId: MapId | null): GameMap | null {
-  if (maps.length === 0) return null
-  const requested = maps.find((map) => map.id === mapId)
-  return requested === undefined ? maps[0] : requested
 }
