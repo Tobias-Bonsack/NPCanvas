@@ -1,4 +1,5 @@
-import type { ReactElement, ReactNode } from 'react'
+import type { ReactElement } from 'react'
+import { InsightsScreen } from '../insights/InsightsScreen.tsx'
 import { MapScreen } from '../map/MapScreen.tsx'
 import { QuestBoard } from '../quest/QuestBoard.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
@@ -16,15 +17,6 @@ export default function App(): ReactElement {
   const state = useAppState()
   if (state.kind !== 'ready') return <ConnectScreen state={state} />
   return <ReadyScreen state={state} />
-}
-
-function Screen({ title, children }: { title: string; children?: ReactNode }): ReactElement {
-  return (
-    <main className="app">
-      <h1 className="app__title">{title}</h1>
-      {children}
-    </main>
-  )
 }
 
 function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
@@ -47,10 +39,6 @@ function ReadyView({ state, route }: { state: ReadyState; route: Route }): React
       return <QuestBoard project={state.project} route={route} />
 
     case 'insights':
-      return (
-        <Screen title="Insights">
-          <p className="app__lead">{state.project.dialogues.length} dialogues logged.</p>
-        </Screen>
-      )
+      return <InsightsScreen project={state.project} />
   }
 }
