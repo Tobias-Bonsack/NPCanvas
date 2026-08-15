@@ -46,6 +46,7 @@ export type Action =
   | { kind: 'dialogue/added'; dialogue: Dialogue }
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
   | { kind: 'dialogue/npc-named'; dialogueId: DialogueId; npcName: string }
+  | { kind: 'npc/renamed'; from: string; to: string }
   | { kind: 'dialogue/text-set'; dialogueId: DialogueId; text: string }
   | { kind: 'dialogue/content-set'; dialogueId: DialogueId; content: DialogueContent }
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
@@ -271,6 +272,33 @@ export function reduce(state: AppState, action: Action): AppState {
       const target = findDialogue(state.project, action.dialogueId)
       if (target === null || target.npcName === action.npcName) return state
       return withDialogue(state, target, { ...target, npcName: action.npcName })
+    }
+
+    /**
+     * An NPC is not an entity — there is no `Npc` record, only a name repeated on every line
+     * they said. So "rename this NPC" is one action over the whole document rather than a loop
+     * of `dialogue/npc-named` from a component: a loop would write a document per line, and
+     * autosave would persist a project half-way through the rename.
+     *
+     * Matching is on the *trimmed* name, which is the identity the insights view groups by
+     * (`npcKey`). Exact otherwise: 'Mara' leaves 'mara' and 'Mara the Elder' alone.
+     *
+     * Renaming onto a name that already exists **merges** the two — the lines simply end up
+     * carrying one name. That is the correct outcome for the case this exists for (a typo
+     * discovered fifty lines later), so it is stated rather than stumbled into.
+     */
+    case 'npc/renamed': {
+      if (state.kind !== 'ready') return state
+      const from = action.from.trim()
+      const to = action.to.trim()
+      if (from === to) return state
+      const dialogues = state.project.dialogues.map((dialogue) =>
+        dialogue.npcName.trim() === from ? { ...dialogue, npcName: to } : dialogue,
+      )
+      if (dialogues.every((dialogue, index) => dialogue === state.project.dialogues[index])) {
+        return state
+      }
+      return { ...state, project: { ...state.project, dialogues } }
     }
 
     // Only meaningful for a text dialogue: media content has no text body, and inventing one

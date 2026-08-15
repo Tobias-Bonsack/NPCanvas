@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
 import type { ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import { FilterBar } from './FilterBar.tsx'
+import { NpcDossier } from './NpcDossier.tsx'
 import { RelevanceBreakdown } from './RelevanceBreakdown.tsx'
 import { Timeline } from './Timeline.tsx'
 import type { DialogueFilter } from './filters.ts'
@@ -71,6 +72,12 @@ export function InsightsScreen({ project }: { project: ProjectFile }): ReactElem
             zoneIndex={zoneIndex}
             filter={filter}
             onChange={setFilter}
+          />
+          <NpcDossier
+            dialogues={dialogues}
+            quests={project.quests}
+            zonesById={zonesById}
+            zoneIndex={zoneIndex}
           />
         </>
       )}

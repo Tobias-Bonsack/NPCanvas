@@ -473,3 +473,234 @@
   font-size: 0.75rem;
   white-space: nowrap;
 }
+
+/* ---- npc dossier ---- */
+
+/* A list beside a detail pane, collapsing to one column where there is no room for both. */
+.npc-dossier {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 52rem) {
+  .npc-dossier {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The patterns live in a zero-size svg because both the sparklines and the profile bar
+   reference them by id, and a <defs> only has to exist in the document, not be visible. */
+.npc-dossier__defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.npc-dossier__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  max-height: 26rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-0);
+}
+
+.npc-dossier__list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.npc-dossier__entry {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.npc-dossier__entry:hover {
+  background: var(--surface-2);
+}
+
+.npc-dossier__entry[aria-pressed='true'] {
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.npc-dossier__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.npc-dossier__lines {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Composition, not magnitude: every NPC's bar is full width, so the shapes compare. */
+.npc-dossier__spark {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 0.375rem;
+  border-radius: var(--radius-1);
+}
+
+.npc-dossier__profile {
+  width: 100%;
+  height: 0.75rem;
+  border-radius: var(--radius-1);
+}
+
+.npc-dossier__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.npc-dossier__rename {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.npc-dossier__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.npc-dossier__input {
+  flex: 1;
+  min-width: 9rem;
+  max-width: 18rem;
+}
+
+.npc-dossier__merge {
+  width: 100%;
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--quest);
+}
+
+.npc-dossier__facts {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.npc-dossier__fact dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.npc-dossier__fact dd {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.npc-dossier__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.npc-dossier__section-title {
+  margin: 0;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.npc-dossier__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.75rem;
+}
+
+.npc-dossier__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+}
+
+.npc-dossier__dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-round);
+}
+
+/* The same hue the quest wears on its card and on the pins that fly its flag. */
+.npc-dossier__quest {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-round);
+  border: 1px solid hsl(var(--quest-hue) 70% 55%);
+  background: hsl(var(--quest-hue) 70% 55% / 0.18);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.npc-dossier__lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.npc-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-0);
+}
+
+.npc-line__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+}
+
+/* Pushed right, so the line's own content starts at a predictable left edge. */
+.npc-line__link {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.npc-line__link:hover {
+  text-decoration: underline;
+}

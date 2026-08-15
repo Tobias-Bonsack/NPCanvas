@@ -120,6 +120,7 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'dialogue/added', dialogue: dialogue('dialogue-1', asMapId('harbour')) },
   { kind: 'dialogue/moved', dialogueId: asDialogueId('dialogue-1'), position: { x: 0, y: 0 } },
   { kind: 'dialogue/npc-named', dialogueId: asDialogueId('dialogue-1'), npcName: 'Ferryman' },
+  { kind: 'npc/renamed', from: 'Mara', to: 'Ferryman' },
   { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' },
   {
     kind: 'dialogue/content-set',
@@ -899,5 +900,79 @@ describe('reduce: quests', () => {
       }),
     ).toBe(state)
     expect(reduce(state, { kind: 'quest/deleted', questId: asQuestId('missing') })).toBe(state)
+  })
+})
+
+describe('reduce: npc/renamed', () => {
+  const HARBOUR = asMapId('harbour')
+
+  /** Four lines: two by Mara, one by a near-miss name, one with no speaker recorded. */
+  function npcProject(): ProjectFile {
+    return {
+      ...createEmptyProject('Harbour'),
+      maps: [gameMap('harbour')],
+      dialogues: [
+        { ...dialogue('d1', HARBOUR), npcName: 'Mara' },
+        { ...dialogue('d2', HARBOUR), npcName: '  Mara  ' },
+        { ...dialogue('d3', HARBOUR), npcName: 'Mara the Elder' },
+        { ...dialogue('d4', HARBOUR), npcName: '' },
+      ],
+      quests: [],
+    }
+  }
+
+  function namesOf(state: AppState): string[] {
+    return readyOf(state).project.dialogues.map((each) => each.npcName)
+  }
+
+  it('renames every line of one NPC in a single action', () => {
+    const next = reduce(ready(npcProject()), { kind: 'npc/renamed', from: 'Mara', to: 'Ferryman' })
+    expect(namesOf(next)).toEqual(['Ferryman', 'Ferryman', 'Mara the Elder', ''])
+  })
+
+  it('renames only exact matches, case included', () => {
+    const state = ready(npcProject())
+    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'mara', to: 'X' }))).toEqual([
+      'Mara',
+      '  Mara  ',
+      'Mara the Elder',
+      '',
+    ])
+    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'Mar', to: 'X' }))).toEqual([
+      'Mara',
+      '  Mara  ',
+      'Mara the Elder',
+      '',
+    ])
+  })
+
+  it('merges two NPCs when the new name is one that already exists', () => {
+    const next = reduce(ready(npcProject()), {
+      kind: 'npc/renamed',
+      from: 'Mara the Elder',
+      to: 'Mara',
+    })
+    const names = new Set(namesOf(next).filter((name) => name.trim() !== ''))
+    expect(names).toEqual(new Set(['Mara', '  Mara  ']))
+    expect(namesOf(next)[2]).toBe('Mara')
+  })
+
+  it('names the lines that never had a speaker, and takes them back', () => {
+    const named = reduce(ready(npcProject()), { kind: 'npc/renamed', from: '', to: 'Ferryman' })
+    expect(namesOf(named)).toEqual(['Mara', '  Mara  ', 'Mara the Elder', 'Ferryman'])
+    expect(namesOf(reduce(named, { kind: 'npc/renamed', from: 'Ferryman', to: '' }))[3]).toBe('')
+  })
+
+  it('leaves the other dialogues untouched by reference', () => {
+    const before = npcProject()
+    const next = readyOf(reduce(ready(before), { kind: 'npc/renamed', from: 'Mara', to: 'X' }))
+    expect(next.project.dialogues[2]).toBe(before.dialogues[2])
+    expect(next.project.dialogues[3]).toBe(before.dialogues[3])
+  })
+
+  it('returns the identical state when nothing matches or the name is unchanged', () => {
+    const state = ready(npcProject())
+    expect(reduce(state, { kind: 'npc/renamed', from: 'Nobody', to: 'X' })).toBe(state)
+    expect(reduce(state, { kind: 'npc/renamed', from: 'Mara', to: '  Mara  ' })).toBe(state)
   })
 })
