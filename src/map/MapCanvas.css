@@ -23,6 +23,10 @@
   cursor: move;
 }
 
+.map-canvas[data-tool='draw-zone'] {
+  cursor: crosshair;
+}
+
 /* Promotes the world to its own composited layer, so a pan is a compositor translate rather
    than a re-raster of everything in it. Measured with 500 pins on one map, half of them
    showing thumbnails: ~27 ms per frame without it, a locked 16.7 ms with. The pins are the
@@ -54,9 +58,11 @@
   --map-scale: 1;
 }
 
-/* One group per map, placed on the shared canvas. Both the image layer and the pin layer
-   emit this group for the same map — see mapGroupStyle in MapCanvas.tsx. */
+/* One group per map, placed on the shared canvas. The image layer, the zone layer and the pin
+   layer all emit this group for the same map — see mapGroupStyle in map-group-style.ts. */
 .map-canvas__map,
+.map-canvas__zone-group,
+.zone-layer__map,
 .pin-layer__map {
   position: absolute;
   top: 0;
@@ -133,6 +139,71 @@
   gap: var(--space-2);
   padding-right: var(--space-2);
   border-right: 1px solid var(--border);
+}
+
+/* ---- zones ---- */
+
+/* A zero-size layer, like .pin-layer: it exists only to give the per-map svg groups a
+   positioning context. Never takes the pointer — zones are hit-tested geometrically in
+   MapCanvas, so a press inside one can still pan the canvas. */
+.zone-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* The svg's viewBox is the map's own pixel grid, so a polygon's points are the stored
+   map-local coordinates verbatim. Overflow is visible because a zone may be dragged past the
+   map's edge, and clipping it would hide the very thing being moved. */
+.zone-layer__svg {
+  display: block;
+  overflow: visible;
+}
+
+/* Fill and stroke are one hue at two alphas — see zoneHueStyle. The stroke width is in screen
+   pixels rather than map units thanks to vector-effect on the element. */
+.zone-layer__shape {
+  fill: hsl(var(--zone-hue) 70% 55% / 0.16);
+  stroke: hsl(var(--zone-hue) 75% 62%);
+  stroke-width: 2;
+}
+
+.zone-layer__shape[data-selected='true'] {
+  fill: hsl(var(--zone-hue) 70% 55% / 0.32);
+  stroke-width: 3;
+  stroke-dasharray: 6 3;
+}
+
+/* Counter-scaled against the same product the pins use, so the name is a constant size on
+   screen. transform-box: fill-box is what makes transform-origin resolve against the label's
+   own box — the SVG default is the viewport's origin, which would fling the text away from
+   its centroid as soon as the canvas zoomed. */
+.zone-layer__label {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  fill: hsl(var(--zone-hue) 80% 78%);
+  /* The label sits over arbitrary map imagery, so it carries its own contrast rather than
+     trusting the ground beneath it. */
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+/* The rectangle being dragged out. Dashed and accent-coloured so it reads as a gesture in
+   progress rather than as a zone that already exists. */
+.map-canvas__zone-draft {
+  position: absolute;
+  border: calc(2px / (var(--map-zoom) * var(--map-scale))) dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
 }
 
 /* ---- pins ---- */

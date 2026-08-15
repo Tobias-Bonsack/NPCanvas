@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { asMapId } from '../project/ids.ts'
-import type { GameMap, Point } from '../project/types.ts'
+import { asMapId, asZoneId } from '../project/ids.ts'
+import type { GameMap, Point, Zone } from '../project/types.ts'
 import {
   MAP_LAYOUT_GAP,
   canvasRectToMapLocal,
@@ -12,7 +12,10 @@ import {
   mapsBounds,
   nextMapOrigin,
   originForScale,
+  zoneAtCanvasPoint,
 } from './canvas-layout.ts'
+import type { Rect } from './geometry.ts'
+import { rectToPolygon } from './geometry.ts'
 
 function gameMap(
   id: string,
@@ -198,5 +201,46 @@ describe('clampMapScale', () => {
     expect(clampMapScale(Number.NaN)).toBe(1)
     expect(clampMapScale(Number.POSITIVE_INFINITY)).toBe(10)
     expect(clampMapScale(Number.NEGATIVE_INFINITY)).toBe(0.1)
+  })
+})
+
+describe('zoneAtCanvasPoint', () => {
+  const map = gameMap('a', { origin: { x: 100, y: 100 }, scale: 2 })
+  const neighbour = gameMap('b', { origin: { x: 500, y: 100 }, scale: 1 })
+
+  function zone(id: string, mapId: string, rect: Rect): Zone {
+    return {
+      id: asZoneId(id),
+      mapId: asMapId(mapId),
+      name: id,
+      polygon: rectToPolygon(rect),
+      hue: 200,
+    }
+  }
+
+  const town = zone('town', 'a', { x: 0, y: 0, width: 80, height: 80 })
+  const shop = zone('shop', 'a', { x: 10, y: 10, width: 20, height: 20 })
+  const elsewhere = zone('elsewhere', 'b', { x: 0, y: 0, width: 80, height: 80 })
+
+  it('converts the query point into map-local space before testing', () => {
+    // Canvas (140, 140) is map-local (20, 20) at origin 100 and scale 2 — inside the shop.
+    expect(zoneAtCanvasPoint([map], [town], { x: 140, y: 140 })?.id).toBe(town.id)
+    expect(zoneAtCanvasPoint([map], [town], { x: 100, y: 100 })?.id).toBe(town.id)
+  })
+
+  it('returns the smallest containing zone, whatever order they are listed in', () => {
+    expect(zoneAtCanvasPoint([map], [town, shop], { x: 140, y: 140 })?.id).toBe(shop.id)
+    expect(zoneAtCanvasPoint([map], [shop, town], { x: 140, y: 140 })?.id).toBe(shop.id)
+    // Inside the town but outside the shop.
+    expect(zoneAtCanvasPoint([map], [town, shop], { x: 220, y: 220 })?.id).toBe(town.id)
+  })
+
+  it('never picks a zone belonging to another map', () => {
+    expect(zoneAtCanvasPoint([map, neighbour], [elsewhere], { x: 140, y: 140 })).toBeNull()
+  })
+
+  it('is null on bare canvas and on bare map', () => {
+    expect(zoneAtCanvasPoint([map], [town], { x: 0, y: 0 })).toBeNull()
+    expect(zoneAtCanvasPoint([map], [shop], { x: 280, y: 280 })).toBeNull()
   })
 })

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Polygon } from '../project/types.ts'
 import {
+  isSamePolygon,
   pointInPolygon,
   polygonArea,
   polygonBounds,
   polygonCentroid,
   rectContains,
   rectToPolygon,
+  translatePolygon,
 } from './geometry.ts'
 
 describe('rectContains', () => {
@@ -207,5 +209,52 @@ describe('rectToPolygon', () => {
     const rect = { x: -5, y: 7, width: 30, height: 40 }
     expect(polygonBounds(rectToPolygon(rect))).toEqual(rect)
     expect(polygonArea(rectToPolygon(rect))).toBeCloseTo(1200, 9)
+  })
+})
+
+describe('translatePolygon', () => {
+  it('shifts every vertex and leaves area and shape alone', () => {
+    const moved = translatePolygon(rectToPolygon({ x: 0, y: 0, width: 10, height: 20 }), {
+      x: -3,
+      y: 4,
+    })
+    expect(moved).toEqual([
+      { x: -3, y: 4 },
+      { x: 7, y: 4 },
+      { x: 7, y: 24 },
+      { x: -3, y: 24 },
+    ])
+    expect(polygonArea(moved)).toBeCloseTo(200, 9)
+  })
+
+  it('keeps the vertices beyond the third, which the tuple type does not name', () => {
+    const pentagon: Polygon = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 12, y: 6 },
+      { x: 5, y: 10 },
+      { x: -2, y: 6 },
+    ]
+    expect(translatePolygon(pentagon, { x: 1, y: 1 })).toHaveLength(5)
+  })
+})
+
+describe('isSamePolygon', () => {
+  const rect = rectToPolygon({ x: 0, y: 0, width: 10, height: 10 })
+
+  it('accepts a vertex-wise identical polygon and rejects any difference', () => {
+    expect(isSamePolygon(rect, rectToPolygon({ x: 0, y: 0, width: 10, height: 10 }))).toBe(true)
+    expect(isSamePolygon(rect, translatePolygon(rect, { x: 0, y: 1 }))).toBe(false)
+    expect(isSamePolygon(rect, translatePolygon(rect, { x: 0, y: 0 }))).toBe(true)
+  })
+
+  it('rejects polygons of different lengths', () => {
+    expect(
+      isSamePolygon(rect, [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 10, y: 10 },
+      ]),
+    ).toBe(false)
   })
 })

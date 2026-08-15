@@ -162,8 +162,12 @@ export type AppState =
       selection: Selection
     }
 
+/**
+ * Which gesture the canvas is in. A tool carries no draft: an in-progress rectangle lives in
+ * `MapCanvas`'s own refs and state, because it changes every frame and the tool is a prop.
+ */
 export type CanvasTool =
   | { kind: 'inspect' }
   | { kind: 'place-dialogue' }
   | { kind: 'move-map' }
-  | { kind: 'draw-zone'; points: Point[] }
+  | { kind: 'draw-zone' }

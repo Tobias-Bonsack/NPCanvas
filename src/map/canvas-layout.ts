@@ -1,6 +1,6 @@
-import type { GameMap, Point } from '../project/types.ts'
+import type { GameMap, Point, Zone } from '../project/types.ts'
 import type { Rect } from './geometry.ts'
-import { rectContains } from './geometry.ts'
+import { pointInPolygon, polygonArea, polygonBounds, rectContains } from './geometry.ts'
 
 // Canvas space is the shared coordinate system every map is placed into; one canvas unit is
 // one map pixel at `scale: 1`. Map-local space is pixels within a single map image, which is
@@ -115,6 +115,40 @@ export function mapAtCanvasPoint(maps: readonly GameMap[], point: Point): GameMa
     if (rectContains(mapCanvasRect(map), point)) return map
   }
   return null
+}
+
+/**
+ * The zone under a canvas point, smallest first — a shop drawn inside a town wins, because
+ * the more specific region is the one a click means. `null` on bare canvas or bare map.
+ *
+ * The point is converted into map-local space once and the polygons are left alone: they are
+ * *stored* map-local, and converting every vertex per hit test would be the expensive
+ * direction as well as the one that drifts. Only the topmost map is consulted, so a zone can
+ * never be picked through a map lying over it.
+ */
+export function zoneAtCanvasPoint(
+  maps: readonly GameMap[],
+  zones: readonly Zone[],
+  point: Point,
+): Zone | null {
+  const map = mapAtCanvasPoint(maps, point)
+  if (map === null) return null
+
+  const local = canvasToMapLocal(map, point)
+  let best: Zone | null = null
+  let bestArea = Infinity
+  for (const zone of zones) {
+    if (zone.mapId !== map.id) continue
+    // The bounding box rejects the common case — most zones are nowhere near the click —
+    // for a quarter of the work of the ray cast.
+    if (!rectContains(polygonBounds(zone.polygon), local)) continue
+    if (!pointInPolygon(local, zone.polygon)) continue
+    const area = polygonArea(zone.polygon)
+    if (area >= bestArea) continue
+    best = zone
+    bestArea = area
+  }
+  return best
 }
 
 /**

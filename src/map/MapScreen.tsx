@@ -5,13 +5,15 @@ import { navigate } from '../app/route.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
-import type { CanvasTool, GameMap, ProjectFile, Selection } from '../project/types.ts'
+import type { CanvasTool, GameMap, ProjectFile, Selection, Zone } from '../project/types.ts'
 import type { Rect } from './geometry.ts'
-import type { MapDragPreview } from './MapCanvas.tsx'
+import type { MapDragPreview, ZoneDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
+import { ZoneLayer } from './ZoneLayer.tsx'
+import { ZoneList } from './ZoneList.tsx'
 import './MapScreen.css'
 
 type CanvasRoute = Extract<Route, { kind: 'canvas' }>
@@ -31,6 +33,10 @@ export function MapScreen({
   // and its pins have to move together in the same frame — and it stays out of the store,
   // which would push a document-shaped update through autosave on every pointermove.
   const [mapDrag, setMapDrag] = useState<MapDragPreview | null>(null)
+  // A zone drag in progress, held here for the same reason: the zone layer and everything
+  // derived from the zones — labels, counts — must see the live polygon, and none of it
+  // belongs in a document that autosaves.
+  const [zoneDrag, setZoneDrag] = useState<ZoneDragPreview | null>(null)
   // The culling input for the pin layer. It lives here rather than in `MapCanvas` because
   // both are children of this screen, and it changes only when the view settles — `setState`
   // is passed straight down, so the callback identity is stable for MapCanvas's effect.
@@ -39,6 +45,10 @@ export function MapScreen({
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
   const placedMaps = useMemo(() => withDragPreview(project.maps, mapDrag), [project.maps, mapDrag])
+  const drawnZones = useMemo(
+    () => withZonePreview(project.zones, zoneDrag),
+    [project.zones, zoneDrag],
+  )
 
   // `replace`, because focusing is a one-shot intent the user never asked to keep in history
   // — and a stable identity, because the canvas consumes it from an effect.
@@ -103,17 +113,30 @@ export function MapScreen({
             has to scroll on its own instead of pushing the canvas off screen. */}
         <aside className="map-screen__sidebar">
           <MapList project={project} />
+          <ZoneList
+            project={project}
+            selectedId={selection.kind === 'zone' ? selection.id : null}
+          />
         </aside>
         <div className="map-screen__canvas">
           <MapCanvas
             maps={placedMaps}
+            zones={drawnZones}
             tool={tool}
             selectedMapId={selection.kind === 'map' ? selection.id : null}
             focusMapId={route.focusMapId}
             onFocusApplied={onFocusApplied}
             onMapDrag={setMapDrag}
+            onZoneDrag={setZoneDrag}
             onVisibleRectChange={setVisibleRect}
           >
+            {/* Before the pins in the DOM, and therefore beneath them: a zone is the ground a
+                dialogue was heard on, never something that can cover its pin. */}
+            <ZoneLayer
+              maps={placedMaps}
+              zones={drawnZones}
+              selectedId={selection.kind === 'zone' ? selection.id : null}
+            />
             <PinLayer
               maps={placedMaps}
               dialogues={project.dialogues}
@@ -144,13 +167,23 @@ function withDragPreview(maps: GameMap[], drag: MapDragPreview | null): readonly
   return maps.map((map) => (map.id === drag.id ? { ...map, origin: drag.origin } : map))
 }
 
-/** Only the tools that do something today. `draw-zone` is offered once M5 implements it. */
+/** The zones as they should be drawn right now, mirroring `withDragPreview` exactly. */
+function withZonePreview(zones: Zone[], drag: ZoneDragPreview | null): readonly Zone[] {
+  if (drag === null) return zones
+  return zones.map((zone) => (zone.id === drag.id ? { ...zone, polygon: drag.polygon } : zone))
+}
+
 const TOOLS: readonly { tool: CanvasTool; label: string; hint: string }[] = [
-  { tool: { kind: 'inspect' }, label: 'Inspect', hint: 'Pan the canvas and select pins' },
+  { tool: { kind: 'inspect' }, label: 'Inspect', hint: 'Pan the canvas and select pins or zones' },
   {
     tool: { kind: 'place-dialogue' },
     label: 'Place dialogue',
     hint: 'Click a map to log a line',
+  },
+  {
+    tool: { kind: 'draw-zone' },
+    label: 'Draw zone',
+    hint: 'Drag a rectangle on a map, or drag an existing zone to move it',
   },
   { tool: { kind: 'move-map' }, label: 'Move map', hint: 'Drag a map to arrange the canvas' },
 ]

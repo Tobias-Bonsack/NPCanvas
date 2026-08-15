@@ -8,9 +8,18 @@ import { useEffect, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import type { MediaUrl } from '../media/media-url-cache.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
-import { newDialogueId } from '../project/ids.ts'
+import { newDialogueId, newZoneId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
-import type { CanvasTool, Dialogue, GameMap, MapId, Point } from '../project/types.ts'
+import type {
+  CanvasTool,
+  Dialogue,
+  GameMap,
+  MapId,
+  Point,
+  Polygon,
+  Zone,
+  ZoneId,
+} from '../project/types.ts'
 import { navigate } from '../app/route.ts'
 import {
   MAX_MAP_SCALE,
@@ -20,11 +29,14 @@ import {
   mapAtCanvasPoint,
   mapCanvasRect,
   mapsBounds,
+  zoneAtCanvasPoint,
 } from './canvas-layout.ts'
 import type { Rect, Size } from './geometry.ts'
+import { rectToPolygon, translatePolygon } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
+import { nextZoneHue } from './zone-style.ts'
 import './MapCanvas.css'
 
 /** Screen pixels of travel before a press stops being a click and becomes a pan. */
@@ -60,6 +72,19 @@ const SCALE_STEP = 1.25
 export type MapDragPreview = { id: MapId; origin: Point }
 
 /**
+ * A zone being dragged, in that zone's own map-local space. A preview for the same reason
+ * `MapDragPreview` is: `zone/moved` lands once, on pointerup.
+ */
+export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }
+
+/**
+ * Map-local pixels a zone drag must cover on both axes before it commits. Below this the
+ * gesture was a click that wobbled, and a two-pixel zone is a region nobody can select,
+ * rename or see.
+ */
+const MIN_ZONE_SIZE = 4
+
+/**
  * Controls layered over the map — the HUD, a pin's delete confirmation — carry
  * `data-canvas-ui`, and a press starting inside one is that control's business, not a
  * canvas gesture.
@@ -88,16 +113,24 @@ function isCanvasChrome(target: EventTarget): boolean {
  */
 export function MapCanvas({
   maps,
+  zones,
   tool,
   selectedMapId,
   focusMapId,
   onFocusApplied,
   onMapDrag,
+  onZoneDrag,
   onVisibleRectChange,
   children,
 }: {
   /** Already carrying any in-progress drag preview — see `MapScreen`. */
   maps: readonly GameMap[]
+  /**
+   * Not for rendering — `ZoneLayer` does that — but for hit-testing: a zone's clickable area
+   * is its geometry, tested here, rather than a filled SVG polygon that would swallow every
+   * pan starting inside it.
+   */
+  zones: readonly Zone[]
   tool: CanvasTool
   selectedMapId: MapId | null
   /** A map to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
@@ -108,6 +141,8 @@ export function MapCanvas({
    * must move with the image in the same frame. `null` ends the drag.
    */
   onMapDrag: (preview: MapDragPreview | null) => void
+  /** The same contract as `onMapDrag`, for a zone being moved. `null` ends the drag. */
+  onZoneDrag: (preview: ZoneDragPreview | null) => void
   /**
    * The canvas-space rectangle on screen, republished once the view settles rather than per
    * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
@@ -221,6 +256,9 @@ export function MapCanvas({
     // Capture keeps pointermove flowing after the cursor leaves the element, so a fast drag
     // does not strand the map mid-pan.
     event.currentTarget.setPointerCapture(event.pointerId)
+    // The zone tool claims a press that landed on a map; one on bare canvas falls through to
+    // a pan, so the canvas is still navigable without switching tools.
+    if (tool.kind === 'draw-zone' && beginZoneGesture(event)) return
     pan.current = {
       pointerId: event.pointerId,
       origin: { x: event.clientX, y: event.clientY },
@@ -230,6 +268,10 @@ export function MapCanvas({
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (zone.current !== null) {
+      onZonePointerMove(event)
+      return
+    }
     const drag = pan.current
     if (drag === null || drag.pointerId !== event.pointerId) return
     const dx = event.clientX - drag.origin.x
@@ -251,6 +293,10 @@ export function MapCanvas({
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (zone.current !== null) {
+      onZonePointerUp(event)
+      return
+    }
     const drag = pan.current
     if (drag === null || drag.pointerId !== event.pointerId) return
     pan.current = null
@@ -262,6 +308,122 @@ export function MapCanvas({
 
     const bounds = event.currentTarget.getBoundingClientRect()
     onCanvasClick({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, drag.from)
+  }
+
+  /**
+   * The zone tool's gesture, which is two gestures wearing one tool: a press inside an
+   * existing zone moves it, a press anywhere else on a map drags out a new rectangle. The
+   * viewport is captured at pointerdown for the same reason the pan captures it — the delta
+   * must be measured against one origin however the view changes mid-drag.
+   */
+  const zone = useRef<
+    | { kind: 'draw'; pointerId: number; map: GameMap; from: Point; view: Viewport; latest: Rect | null }
+    | {
+        kind: 'move'
+        pointerId: number
+        target: Zone
+        /** Screen pixels per map-local pixel, so a drag delta lands in the polygon's space. */
+        scale: number
+        origin: Point
+        latest: Polygon | null
+        moved: boolean
+      }
+    | null
+  >(null)
+  // The rectangle being dragged out, redrawn every frame. It is `MapCanvas`'s own state, not
+  // a prop to the memo'd `ZoneLayer`, which must stay free of anything that changes per frame.
+  const [draft, setDraft] = useState<{ mapId: MapId; rect: Rect } | null>(null)
+
+  /** True when the zone tool took the press; false leaves it to the pan. */
+  function beginZoneGesture(event: ReactPointerEvent<HTMLDivElement>): boolean {
+    const canvasPoint = screenToWorld(viewport, anchorOf(event))
+    const map = mapAtCanvasPoint(maps, canvasPoint)
+    if (map === null) return false
+
+    const target = zoneAtCanvasPoint(maps, zones, canvasPoint)
+    if (target !== null) {
+      zone.current = {
+        kind: 'move',
+        pointerId: event.pointerId,
+        target,
+        scale: viewport.scale * map.scale,
+        origin: { x: event.clientX, y: event.clientY },
+        latest: null,
+        moved: false,
+      }
+      return true
+    }
+
+    zone.current = {
+      kind: 'draw',
+      pointerId: event.pointerId,
+      map,
+      from: canvasToMapLocal(map, canvasPoint),
+      view: viewport,
+      latest: null,
+    }
+    return true
+  }
+
+  function onZonePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = zone.current
+    if (gesture === null || gesture.pointerId !== event.pointerId) return
+
+    if (gesture.kind === 'draw') {
+      const to = canvasToMapLocal(gesture.map, screenToWorld(gesture.view, anchorOf(event)))
+      const rect = rectBetween(gesture.from, to)
+      gesture.latest = rect
+      setDraft({ mapId: gesture.map.id, rect })
+      return
+    }
+
+    const dx = event.clientX - gesture.origin.x
+    const dy = event.clientY - gesture.origin.y
+    if (!gesture.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
+    gesture.moved = true
+
+    const polygon = translatePolygon(gesture.target.polygon, {
+      x: dx / gesture.scale,
+      y: dy / gesture.scale,
+    })
+    gesture.latest = polygon
+    onZoneDrag({ id: gesture.target.id, polygon })
+  }
+
+  function onZonePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = zone.current
+    if (gesture === null || gesture.pointerId !== event.pointerId) return
+    zone.current = null
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    if (gesture.kind === 'move') {
+      const final = gesture.latest
+      onZoneDrag(null)
+      if (!gesture.moved || final === null) {
+        // A press that never moved is how a zone is picked up *and* how it is selected.
+        dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: gesture.target.id } })
+        return
+      }
+      dispatch({ kind: 'zone/moved', zoneId: gesture.target.id, polygon: final })
+      return
+    }
+
+    const rect = gesture.latest
+    setDraft(null)
+    // A click, or a drag too small to be a region anyone could work with, leaves no trace.
+    if (rect === null || rect.width < MIN_ZONE_SIZE || rect.height < MIN_ZONE_SIZE) return
+
+    const created: Zone = {
+      id: newZoneId(),
+      mapId: gesture.map.id,
+      name: `Zone ${zones.filter((candidate) => candidate.mapId === gesture.map.id).length + 1}`,
+      polygon: rectToPolygon(rect),
+      hue: nextZoneHue(zones, gesture.map.id),
+    }
+    dispatch({ kind: 'zone/added', zone: created })
+    dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: created.id } })
   }
 
   // The map drag mirrors the pan above: the bookkeeping lives in a ref so a sub-threshold
@@ -329,15 +491,26 @@ export function MapCanvas({
     }
   }
 
-  /** Exhaustive over `CanvasTool`. `draw-zone` is claimed by M5 and deliberately inert. */
+  /** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures above. */
   function onCanvasClick(anchor: Point, at: Viewport): void {
     switch (tool.kind) {
       case 'move-map':
-      case 'inspect':
         // A click on bare canvas is how a selection is dismissed.
         dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
         navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
         return
+
+      // Pins stop propagation, so a click reaching here missed every pin: what is left under
+      // the cursor is a zone, or nothing.
+      case 'inspect': {
+        const hit = zoneAtCanvasPoint(maps, zones, screenToWorld(at, anchor))
+        dispatch({
+          kind: 'selection/set',
+          selection: hit === null ? { kind: 'none' } : { kind: 'zone', id: hit.id },
+        })
+        navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
+        return
+      }
 
       case 'place-dialogue': {
         const canvasPoint = screenToWorld(at, anchor)
@@ -365,7 +538,7 @@ export function MapCanvas({
         return
 
       default:
-        assertNever(tool)
+        return assertNever(tool)
     }
   }
 
@@ -394,6 +567,7 @@ export function MapCanvas({
           />
         ))}
         {children}
+        <ZoneDraft draft={draft} maps={maps} />
       </div>
 
       <div className="map-canvas__hud" data-canvas-ui>
@@ -407,6 +581,52 @@ export function MapCanvas({
       </div>
     </div>
   )
+}
+
+/**
+ * The rectangle being dragged out, inside its map's own group so it is expressed in the same
+ * map-local pixels that will be committed — what is on screen is exactly what is stored.
+ * Rendered here rather than in `ZoneLayer` because it changes every frame, and that layer is
+ * memo'd precisely so nothing per-frame reaches it.
+ */
+function ZoneDraft({
+  draft,
+  maps,
+}: {
+  draft: { mapId: MapId; rect: Rect } | null
+  maps: readonly GameMap[]
+}): ReactElement | null {
+  const map = draft === null ? undefined : maps.find((candidate) => candidate.id === draft.mapId)
+  if (draft === null || map === undefined) return null
+  return (
+    <div className="map-canvas__zone-group" style={mapGroupStyle(map)}>
+      <div
+        className="map-canvas__zone-draft"
+        style={{
+          left: `${draft.rect.x}px`,
+          top: `${draft.rect.y}px`,
+          width: `${draft.rect.width}px`,
+          height: `${draft.rect.height}px`,
+        }}
+      />
+    </div>
+  )
+}
+
+/** Container-relative coordinates, which is the space every viewport transform expects. */
+function anchorOf(event: ReactPointerEvent<HTMLDivElement>): Point {
+  const bounds = event.currentTarget.getBoundingClientRect()
+  return { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+}
+
+/** Normalized, so dragging up and to the left describes the same rectangle as down-right. */
+function rectBetween(a: Point, b: Point): Rect {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(a.x - b.x),
+    height: Math.abs(a.y - b.y),
+  }
 }
 
 /** Grows a rectangle by `margin` of its own size on every side. */

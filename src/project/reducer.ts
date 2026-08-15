@@ -1,5 +1,6 @@
 import { assertNever } from '../assert-never.ts'
 import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
+import { isSamePolygon } from '../map/geometry.ts'
 import type {
   AppState,
   Dialogue,
@@ -8,11 +9,13 @@ import type {
   GameMap,
   MapId,
   Point,
+  Polygon,
   ProjectFile,
   Quest,
   RelevanceTag,
   SaveState,
   Selection,
+  Zone,
   ZoneId,
 } from './types.ts'
 import { RELEVANCE_TAGS } from './types.ts'
@@ -34,6 +37,11 @@ export type Action =
   | { kind: 'map/moved'; mapId: MapId; origin: Point }
   | { kind: 'map/scaled'; mapId: MapId; scale: number }
   | { kind: 'map/deleted'; mapId: MapId }
+  | { kind: 'zone/added'; zone: Zone }
+  | { kind: 'zone/renamed'; zoneId: ZoneId; name: string }
+  | { kind: 'zone/hue-set'; zoneId: ZoneId; hue: number }
+  | { kind: 'zone/moved'; zoneId: ZoneId; polygon: Polygon }
+  | { kind: 'zone/deleted'; zoneId: ZoneId }
   | { kind: 'dialogue/added'; dialogue: Dialogue }
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
   | { kind: 'dialogue/npc-named'; dialogueId: DialogueId; npcName: string }
@@ -168,6 +176,60 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    case 'zone/added': {
+      if (state.kind !== 'ready') return state
+      return {
+        ...state,
+        project: { ...state.project, zones: [...state.project.zones, action.zone] },
+      }
+    }
+
+    case 'zone/renamed': {
+      if (state.kind !== 'ready') return state
+      const target = findZone(state.project, action.zoneId)
+      if (target === null || target.name === action.name) return state
+      return withZone(state, target, { ...target, name: action.name })
+    }
+
+    case 'zone/hue-set': {
+      if (state.kind !== 'ready') return state
+      const target = findZone(state.project, action.zoneId)
+      if (target === null || target.hue === action.hue) return state
+      return withZone(state, target, { ...target, hue: action.hue })
+    }
+
+    // Fires once per drag, on pointerup, like `map/moved` and `dialogue/moved`. Nothing here
+    // touches a `Dialogue`: which zone a dialogue is in is derived from the geometry on every
+    // read, so moving a zone reclassifies its contents with zero writes. See CLAUDE.md.
+    case 'zone/moved': {
+      if (state.kind !== 'ready') return state
+      const target = findZone(state.project, action.zoneId)
+      if (target === null || isSamePolygon(target.polygon, action.polygon)) return state
+      return withZone(state, target, { ...target, polygon: action.polygon })
+    }
+
+    // No cascade, deliberately: a zone owns nothing. Dialogues inside it merely stop deriving
+    // a location from it, which is the point of never storing the association.
+    case 'zone/deleted': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (!project.zones.some((zone) => zone.id === action.zoneId)) return state
+
+      const removed = new Set<ZoneId>([action.zoneId])
+      return {
+        ...state,
+        project: {
+          ...project,
+          zones: project.zones.filter((zone) => zone.id !== action.zoneId),
+        },
+        selection: dropDeletedSelection(state.selection, {
+          dialogues: EMPTY_DIALOGUE_IDS,
+          zones: removed,
+          maps: EMPTY_MAP_IDS,
+        }),
+      }
+    }
+
     case 'dialogue/added': {
       if (state.kind !== 'ready') return state
       return {
@@ -267,6 +329,7 @@ export function reduce(state: AppState, action: Action): AppState {
   }
 }
 
+const EMPTY_DIALOGUE_IDS: ReadonlySet<DialogueId> = new Set<DialogueId>()
 const EMPTY_ZONE_IDS: ReadonlySet<ZoneId> = new Set<ZoneId>()
 const EMPTY_MAP_IDS: ReadonlySet<MapId> = new Set<MapId>()
 
@@ -296,8 +359,23 @@ function withDialogue(state: ReadyState, target: Dialogue, replacement: Dialogue
   }
 }
 
+/** Replaces one zone by reference identity, mirroring `withMap`. */
+function withZone(state: ReadyState, target: Zone, replacement: Zone): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      zones: state.project.zones.map((zone) => (zone === target ? replacement : zone)),
+    },
+  }
+}
+
 function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {
   return project.dialogues.find((dialogue) => dialogue.id === id) ?? null
+}
+
+function findZone(project: ProjectFile, id: ZoneId): Zone | null {
+  return project.zones.find((zone) => zone.id === id) ?? null
 }
 
 /**

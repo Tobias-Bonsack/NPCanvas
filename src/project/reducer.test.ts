@@ -26,6 +26,12 @@ function ready(project: ProjectFile = createEmptyProject('Harbour')): ReadyState
   }
 }
 
+/** Narrows a reduced state back to `ready`, so an assertion stays one expression. */
+function readyOf(state: AppState): ReadyState {
+  if (state.kind !== 'ready') throw new Error(`expected ready, got ${state.kind}`)
+  return state
+}
+
 function gameMap(id: string, name = id): GameMap {
   return {
     id: asMapId(id),
@@ -126,6 +132,19 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   },
   { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('dialogue-1'), relevance: ['other'] },
   { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-1') },
+  { kind: 'zone/added', zone: zone('zone-1', asMapId('harbour')) },
+  { kind: 'zone/renamed', zoneId: asZoneId('zone-1'), name: 'Docks' },
+  { kind: 'zone/hue-set', zoneId: asZoneId('zone-1'), hue: 40 },
+  {
+    kind: 'zone/moved',
+    zoneId: asZoneId('zone-1'),
+    polygon: [
+      { x: 1, y: 1 },
+      { x: 11, y: 1 },
+      { x: 11, y: 11 },
+    ],
+  },
+  { kind: 'zone/deleted', zoneId: asZoneId('zone-1') },
 ]
 
 describe('reduce: connection actions', () => {
@@ -664,5 +683,82 @@ describe('reduce: ready-scoped actions outside ready', () => {
         expect(reduce(state, action)).toBe(state)
       }
     }
+  })
+})
+
+describe('reduce: zone actions', () => {
+  const HARBOUR = asMapId('harbour')
+
+  function withOneZone(): ReadyState {
+    const project: ProjectFile = {
+      ...createEmptyProject('Harbour'),
+      maps: [gameMap('harbour')],
+      zones: [zone('zone-1', HARBOUR)],
+      dialogues: [dialogue('dialogue-1', HARBOUR)],
+    }
+    return ready(project)
+  }
+
+  it('appends a drawn zone', () => {
+    const state = reduce(ready(), { kind: 'zone/added', zone: zone('zone-1', HARBOUR) })
+    expect(readyOf(state).project.zones.map((each) => each.id)).toEqual([asZoneId('zone-1')])
+  })
+
+  it('renames and recolours in place', () => {
+    const renamed = reduce(withOneZone(), {
+      kind: 'zone/renamed',
+      zoneId: asZoneId('zone-1'),
+      name: 'Docks',
+    })
+    expect(readyOf(renamed).project.zones[0].name).toBe('Docks')
+
+    const recoloured = reduce(renamed, { kind: 'zone/hue-set', zoneId: asZoneId('zone-1'), hue: 40 })
+    expect(readyOf(recoloured).project.zones[0].hue).toBe(40)
+  })
+
+  it('moves a zone without writing to any dialogue', () => {
+    const state = withOneZone()
+    const before = readyOf(state).project.dialogues
+    const moved = reduce(state, {
+      kind: 'zone/moved',
+      zoneId: asZoneId('zone-1'),
+      polygon: [
+        { x: 5, y: 5 },
+        { x: 15, y: 5 },
+        { x: 15, y: 15 },
+      ],
+    })
+    expect(readyOf(moved).project.zones[0].polygon[0]).toEqual({ x: 5, y: 5 })
+    // Reference identity, not deep equality: the point is that nothing was rewritten.
+    expect(readyOf(moved).project.dialogues).toBe(before)
+  })
+
+  it('deletes a zone and leaves every dialogue in place', () => {
+    const state = withOneZone()
+    const deleted = reduce(state, { kind: 'zone/deleted', zoneId: asZoneId('zone-1') })
+    expect(readyOf(deleted).project.zones).toEqual([])
+    expect(readyOf(deleted).project.dialogues).toBe(readyOf(state).project.dialogues)
+  })
+
+  it('drops a selection pointing at the deleted zone', () => {
+    const selected = reduce(withOneZone(), {
+      kind: 'selection/set',
+      selection: { kind: 'zone', id: asZoneId('zone-1') },
+    })
+    const deleted = reduce(selected, { kind: 'zone/deleted', zoneId: asZoneId('zone-1') })
+    expect(readyOf(deleted).selection).toEqual({ kind: 'none' })
+  })
+
+  it('returns the identical state for an edit that changes nothing', () => {
+    const state = withOneZone()
+    const current = readyOf(state).project.zones[0]
+    expect(reduce(state, { kind: 'zone/renamed', zoneId: current.id, name: current.name })).toBe(
+      state,
+    )
+    expect(reduce(state, { kind: 'zone/hue-set', zoneId: current.id, hue: current.hue })).toBe(state)
+    expect(reduce(state, { kind: 'zone/moved', zoneId: current.id, polygon: current.polygon })).toBe(
+      state,
+    )
+    expect(reduce(state, { kind: 'zone/deleted', zoneId: asZoneId('missing') })).toBe(state)
   })
 })

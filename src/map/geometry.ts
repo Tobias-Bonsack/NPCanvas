@@ -105,6 +105,25 @@ export function rectToPolygon(rect: Rect): Polygon {
   ]
 }
 
+/**
+ * The polygon shifted by `delta`, in its own space. Destructured rather than `.map()`ed
+ * because `Polygon` guarantees three vertices and `map` would widen it back to `Point[]`,
+ * which is exactly the guarantee an `as` cast would throw away.
+ */
+export function translatePolygon(polygon: Polygon, delta: Point): Polygon {
+  const shift = (point: Point): Point => ({ x: point.x + delta.x, y: point.y + delta.y })
+  const [a, b, c, ...rest] = polygon
+  return [shift(a), shift(b), shift(c), ...rest.map(shift)]
+}
+
+/** Vertex-wise equality. The reducer's no-op test, so a settled drag writes nothing. */
+export function isSamePolygon(a: Polygon, b: Polygon): boolean {
+  return (
+    a.length === b.length &&
+    a.every((point, index) => point.x === b[index].x && point.y === b[index].y)
+  )
+}
+
 function vertexAverage(polygon: Polygon): Point {
   let x = 0
   let y = 0
