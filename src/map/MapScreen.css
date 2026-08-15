@@ -288,6 +288,13 @@
   border-color: var(--accent);
 }
 
+.map-screen__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 /* ---- quest filter ---- */
 
 /* Pressed, it takes the quest colour rather than --accent: the pins it keeps are flagged in
@@ -303,7 +310,10 @@
   cursor: pointer;
 }
 
-.quest-filter:hover:not(:disabled) {
+/* Excludes the pressed state explicitly: `:hover:not(:disabled)` outweighs the attribute
+   selector below on specificity, so without this the toggle loses its gold the moment the
+   pointer that just pressed it is still resting on it — which is always. */
+.quest-filter:not(:disabled):not([aria-pressed='true']):hover {
   background: var(--surface-3);
 }
 

@@ -159,21 +159,25 @@ export function MapScreen({
   return (
     <section className="map-screen">
       <header className="map-screen__bar">
-        <ToolPicker tool={tool} onChange={setTool} />
-        <button
-          type="button"
-          className="quest-filter"
-          aria-pressed={questFilter}
-          disabled={questLinked.size === 0}
-          title={
-            questLinked.size === 0
-              ? 'No dialogue is attached to a quest yet'
-              : 'Dim every pin no quest names'
-          }
-          onClick={() => setQuestFilter((on) => !on)}
-        >
-          Quest pins only
-        </button>
+        {/* Grouped, because both are controls that change what the canvas does; the legend on
+            the far side only explains what is already drawn. */}
+        <div className="map-screen__controls">
+          <ToolPicker tool={tool} onChange={setTool} />
+          <button
+            type="button"
+            className="quest-filter"
+            aria-pressed={questFilter}
+            disabled={questLinked.size === 0}
+            title={
+              questLinked.size === 0
+                ? 'No dialogue is attached to a quest yet'
+                : 'Dim every pin no quest names'
+            }
+            onClick={() => setQuestFilter((on) => !on)}
+          >
+            Quest pins only
+          </button>
+        </div>
         <CanvasLegend />
       </header>
       <div className="map-screen__body">

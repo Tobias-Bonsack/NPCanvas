@@ -277,10 +277,10 @@
    can make assumptions about. */
 .pin__quest {
   position: absolute;
-  top: -5px;
-  right: -3px;
-  width: 0.75rem;
-  height: 0.75rem;
+  top: -6px;
+  right: -4px;
+  width: 0.875rem;
+  height: 0.875rem;
   color: var(--quest);
   filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9));
 }
