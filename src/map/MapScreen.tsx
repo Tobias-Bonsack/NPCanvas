@@ -14,6 +14,7 @@ import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import { ZoneLayer } from './ZoneLayer.tsx'
 import { ZoneList } from './ZoneList.tsx'
+import { countDialoguesByZone, dialoguesInZone, indexDialoguesByZone } from './zone-index.ts'
 import './MapScreen.css'
 
 type CanvasRoute = Extract<Route, { kind: 'canvas' }>
@@ -74,10 +75,34 @@ export function MapScreen({
     navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
   }, [dialogueId, dialogues])
 
+  // The derived locations, computed once per state change rather than per render — and keyed
+  // on the *previewed* zones, so a zone being dragged reclassifies its dialogues live, with
+  // no write to any of them. This is the whole payoff of never storing a zoneId.
+  const zoneIndex = useMemo(
+    () => indexDialoguesByZone(dialogues, drawnZones),
+    [dialogues, drawnZones],
+  )
+  const zoneCounts = useMemo(() => countDialoguesByZone(zoneIndex), [zoneIndex])
+
+  const selectedZoneId = selection.kind === 'zone' ? selection.id : null
+  // `null` rather than an empty set when no zone is selected: "nothing to dim" and "this zone
+  // is empty" must not look the same to the pin layer.
+  const insideSelectedZone = useMemo(
+    () => (selectedZoneId === null ? null : dialoguesInZone(zoneIndex, selectedZoneId)),
+    [zoneIndex, selectedZoneId],
+  )
+
   const selectedDialogue =
     selection.kind === 'dialogue'
       ? (dialogues.find((dialogue) => dialogue.id === selection.id) ?? null)
       : null
+
+  // Resolved from the index in the order it returns — most specific zone first.
+  const selectedLocations = useMemo(() => {
+    if (selectedDialogue === null) return []
+    const zoneIds = zoneIndex.get(selectedDialogue.id) ?? []
+    return zoneIds.flatMap((id) => drawnZones.filter((zone) => zone.id === id))
+  }, [selectedDialogue, zoneIndex, drawnZones])
 
   // Closing is a deselection *and* a navigation: the hash carries the open panel, so leaving
   // the parameter behind would reopen it on the next render pass through the effect above.
@@ -113,10 +138,7 @@ export function MapScreen({
             has to scroll on its own instead of pushing the canvas off screen. */}
         <aside className="map-screen__sidebar">
           <MapList project={project} />
-          <ZoneList
-            project={project}
-            selectedId={selection.kind === 'zone' ? selection.id : null}
-          />
+          <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />
         </aside>
         <div className="map-screen__canvas">
           <MapCanvas
@@ -132,15 +154,12 @@ export function MapScreen({
           >
             {/* Before the pins in the DOM, and therefore beneath them: a zone is the ground a
                 dialogue was heard on, never something that can cover its pin. */}
-            <ZoneLayer
-              maps={placedMaps}
-              zones={drawnZones}
-              selectedId={selection.kind === 'zone' ? selection.id : null}
-            />
+            <ZoneLayer maps={placedMaps} zones={drawnZones} selectedId={selectedZoneId} />
             <PinLayer
               maps={placedMaps}
               dialogues={project.dialogues}
               selectedId={selection.kind === 'dialogue' ? selection.id : null}
+              insideSelectedZone={insideSelectedZone}
               visibleRect={visibleRect}
             />
           </MapCanvas>
@@ -149,6 +168,7 @@ export function MapScreen({
           <DialoguePanel
             project={project}
             dialogue={selectedDialogue}
+            locations={selectedLocations}
             onClose={onCloseDialogue}
           />
         )}

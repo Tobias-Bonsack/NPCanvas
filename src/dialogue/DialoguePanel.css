@@ -55,6 +55,33 @@
   color: var(--text-muted);
 }
 
+.dialogue-panel__location {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+}
+
+/* Coloured to match the zone on the canvas, so the panel and the map name the same region
+   without the reader having to compare two words. */
+.dialogue-panel__zone {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-round);
+  border: 1px solid hsl(var(--zone-hue) 75% 62%);
+  background: hsl(var(--zone-hue) 70% 55% / 0.18);
+}
+
+/* Zones are ordered most specific first, so everything after the first is broader context. */
+.dialogue-panel__zone:not(:first-child) {
+  opacity: 0.7;
+}
+
+.dialogue-panel__nowhere {
+  color: var(--text-muted);
+}
+
 /* ---- media ---- */
 
 .dialogue-media {

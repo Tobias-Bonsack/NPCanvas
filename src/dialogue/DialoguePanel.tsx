@@ -2,8 +2,9 @@ import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
 import { MediaView } from '../media/MediaView.tsx'
+import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, DialogueContent, ProjectFile } from '../project/types.ts'
+import type { Dialogue, DialogueContent, ProjectFile, Zone } from '../project/types.ts'
 import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import './DialoguePanel.css'
@@ -29,10 +30,16 @@ type ImportState =
 export function DialoguePanel({
   project,
   dialogue,
+  locations,
   onClose,
 }: {
   project: ProjectFile
   dialogue: Dialogue
+  /**
+   * The zones this dialogue's pin falls inside, most specific first — derived by the caller
+   * from the geometry, never read off the dialogue, which stores no zone at all.
+   */
+  locations: readonly Zone[]
   /** Must be stable — the Escape listener below depends on it. */
   onClose: () => void
 }): ReactElement {
@@ -120,6 +127,20 @@ export function DialoguePanel({
       {/* The map association is not editable — a dialogue belongs to the map it was pinned
           onto, and moving it between maps would strand its map-local position. */}
       <p className="dialogue-panel__map">on {map === null ? 'an unknown map' : map.name}</p>
+
+      {/* Not editable, and not stored: where a dialogue happened is decided by where its pin
+          sits, so moving either the pin or the zone changes this line with no write here. */}
+      <p className="dialogue-panel__location">
+        {locations.length === 0 ? (
+          <span className="dialogue-panel__nowhere">Outside any zone</span>
+        ) : (
+          locations.map((zone) => (
+            <span key={zone.id} className="dialogue-panel__zone" style={zoneHueStyle(zone.hue)}>
+              {zone.name}
+            </span>
+          ))
+        )}
+      </p>
 
       <DialogueForm dialogue={dialogue} npcNames={npcNames} />
 

@@ -24,9 +24,15 @@ type ZoneListMode =
 export function ZoneList({
   project,
   selectedId,
+  counts,
 }: {
   project: ProjectFile
   selectedId: ZoneId | null
+  /**
+   * Dialogues per zone, derived — see `zone-index.ts`. A zone with none is simply absent from
+   * the map, which is why every read here defaults to zero.
+   */
+  counts: ReadonlyMap<ZoneId, number>
 }): ReactElement {
   const [mode, setMode] = useState<ZoneListMode>({ kind: 'idle' })
 
@@ -51,6 +57,7 @@ export function ZoneList({
             map={map}
             zones={project.zones.filter((zone) => zone.mapId === map.id)}
             selectedId={selectedId}
+            counts={counts}
             mode={mode}
             onSetMode={setMode}
             onRenameSubmit={onRenameSubmit}
@@ -66,6 +73,7 @@ function ZoneGroup({
   map,
   zones,
   selectedId,
+  counts,
   mode,
   onSetMode,
   onRenameSubmit,
@@ -73,6 +81,7 @@ function ZoneGroup({
   map: GameMap
   zones: readonly Zone[]
   selectedId: ZoneId | null
+  counts: ReadonlyMap<ZoneId, number>
   mode: ZoneListMode
   onSetMode: (mode: ZoneListMode) => void
   onRenameSubmit: (id: ZoneId, draft: string) => void
@@ -87,6 +96,7 @@ function ZoneGroup({
             <ZoneRow
               zone={zone}
               selected={zone.id === selectedId}
+              count={counts.get(zone.id) ?? 0}
               // Only the row the mode names is in that mode; every other row stays idle.
               mode={'id' in mode && mode.id === zone.id ? mode : { kind: 'idle' }}
               onSetMode={onSetMode}
@@ -103,12 +113,15 @@ function ZoneGroup({
 function ZoneRow({
   zone,
   selected,
+  count,
   mode,
   onSetMode,
   onRenameSubmit,
 }: {
   zone: Zone
   selected: boolean
+  /** Dialogues currently inside, recomputed from the geometry on every state change. */
+  count: number
   mode: ZoneListMode
   onSetMode: (mode: ZoneListMode) => void
   onRenameSubmit: (draft: string) => void
@@ -215,7 +228,10 @@ function ZoneRow({
               dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: zone.id } })
             }
           >
-            {zone.name}
+            <span className="zone-list__label">{zone.name}</span>
+            <span className="zone-list__count" title={`${count} dialogue${count === 1 ? '' : 's'}`}>
+              {count}
+            </span>
           </button>
           <button
             type="button"

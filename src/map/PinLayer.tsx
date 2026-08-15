@@ -52,11 +52,18 @@ export const PinLayer = memo(function PinLayer({
   maps,
   dialogues,
   selectedId,
+  insideSelectedZone,
   visibleRect,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
   selectedId: DialogueId | null
+  /**
+   * The dialogues the selected zone contains, derived — see `zone-index.ts`. Everything else
+   * is dimmed, which is what makes a zone's membership visible on the map itself. `null` when
+   * no zone is selected, so "nothing to dim" cannot be confused with "this zone is empty".
+   */
+  insideSelectedZone: ReadonlySet<DialogueId> | null
   /**
    * Canvas space. Pins outside it keep their glyph instead of reading a thumbnail off disk.
    * `null` until the container has been measured, which simply means no thumbnails yet.
@@ -170,6 +177,7 @@ export const PinLayer = memo(function PinLayer({
                     : dialogue.position
                 }
                 onScreen={visible !== null && rectContains(visible, dialogue.position)}
+                dimmed={insideSelectedZone !== null && !insideSelectedZone.has(dialogue.id)}
                 selected={dialogue.id === selectedId}
                 confirmingDelete={pendingDelete === dialogue.id}
                 onPointerDown={onPointerDown}
@@ -206,6 +214,7 @@ function Pin({
   dialogue,
   position,
   onScreen,
+  dimmed,
   selected,
   confirmingDelete,
   onPointerDown,
@@ -219,6 +228,8 @@ function Pin({
   position: Point
   /** Inside the visible world rect, and therefore allowed to read a thumbnail off disk. */
   onScreen: boolean
+  /** Outside the selected zone. Still selectable — dimmed is context, not disabled. */
+  dimmed: boolean
   selected: boolean
   confirmingDelete: boolean
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
@@ -238,7 +249,7 @@ function Pin({
   }, [selected, confirmingDelete])
 
   return (
-    <div className="pin" style={pinStyle(position)}>
+    <div className="pin" data-dimmed={dimmed ? 'true' : undefined} style={pinStyle(position)}>
       <button
         ref={buttonRef}
         type="button"

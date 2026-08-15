@@ -116,7 +116,11 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   inherit — so a zoom still costs no per-pin style update. Their product is screen pixels per
   map-local pixel, which is also what a pin drag delta must be divided by. `mapGroupStyle` in
   `src/map/map-group-style.ts` emits that group for both the image layer and the pin layer, so the
-  two transforms cannot drift apart. Zone strokes use `vector-effect="non-scaling-stroke"`. `wheel` must be bound with
+  two transforms cannot drift apart. Zone strokes use `vector-effect="non-scaling-stroke"`. `ZoneLayer`
+  takes **no pointer events**: a zone is hit-tested geometrically by `zoneAtCanvasPoint`, because a
+  filled `<polygon>` that took the pointer would swallow every pan beginning inside a zone — and the
+  canvas's own pointer capture retargets the `pointerup` anyway, so the polygon would never see the
+  click it captured. `wheel` must be bound with
   `addEventListener(..., { passive: false })` — React's `onWheel` is passive and `preventDefault()`
   silently fails there. If pin counts exceed ~2000, cull to the visible world rect before considering
   `<canvas>`.

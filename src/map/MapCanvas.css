@@ -241,6 +241,18 @@
   white-space: nowrap;
 }
 
+/* Outside the selected zone. Faded rather than hidden — which dialogues a zone leaves out is
+   as much a part of reading it as which it takes in — and still fully interactive, so a dimmed
+   pin can be selected without deselecting the zone first. */
+.pin[data-dimmed='true'] {
+  opacity: 0.28;
+}
+
+.pin[data-dimmed='true']:hover,
+.pin[data-dimmed='true']:focus-within {
+  opacity: 1;
+}
+
 /* The pin body carries the relevance fill, written inline from relevancePinBackground: one
    vertical band per tag, or the chrome's own surface when untagged. */
 .pin__marker {
