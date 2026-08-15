@@ -20,6 +20,8 @@ const AXIS_Y = PLOT_TOP + PLOT_HEIGHT
 const HEIGHT = AXIS_Y + 22
 /** Roughly this many axis labels, whatever the bucket count — more and they collide. */
 const AXIS_TICKS = 8
+/** A bar never grows past this, however few buckets there are. */
+const MAX_BAR_WIDTH = 40
 
 /** A brush in progress. Both ends are bucket indices, and `from` may be after `to`. */
 type Brush = { from: number; to: number }
@@ -59,8 +61,11 @@ export function Timeline({
     return (
       <TimelinePanel unit={unit} hasRange={hasRange} onClearRange={clearRange}>
         <p className="insights__empty">
-          Nothing to place on a timeline yet — no dialogue in this selection carries a readable
-          date.
+          {/* Two ways to have no axis, and they call for different fixes: widen the filter, or
+              go and repair a spokenAt that will not parse. */}
+          {dialogues.length === 0
+            ? 'Nothing to place on a timeline — no dialogue matches the filter.'
+            : 'Nothing to place on a timeline — no dialogue here carries a readable date.'}
         </p>
       </TimelinePanel>
     )
@@ -261,8 +266,11 @@ function TimelineBar({
   onOpen: () => void
 }): ReactElement {
   // A gap only where there is room for one; below that the bars merge into a continuous band,
-  // which is the honest reading of "more buckets than pixels".
-  const barWidth = Math.max(width - (width > 4 ? 1.5 : 0), 0.5)
+  // which is the honest reading of "more buckets than pixels". Capped and centred in its slot at
+  // the other end: one lonely bucket stretched across the whole plot reads as a solid backdrop
+  // rather than as a single measurement.
+  const barWidth = Math.min(Math.max(width - (width > 4 ? 1.5 : 0), 0.5), MAX_BAR_WIDTH)
+  const left = x + (width - barWidth) / 2
   const label = `${describeBucket(bucket, unit)}: ${bucket.dialogues.length}`
   let y = PLOT_TOP + PLOT_HEIGHT
 
@@ -288,8 +296,14 @@ function TimelineBar({
         y -= height
         return (
           <g key={segment}>
-            <rect x={x} y={y} width={barWidth} height={height} fill={SEGMENT_COLOR[segment]} />
-            <rect x={x} y={y} width={barWidth} height={height} fill={`url(#timeline-${segment})`} />
+            <rect x={left} y={y} width={barWidth} height={height} fill={SEGMENT_COLOR[segment]} />
+            <rect
+              x={left}
+              y={y}
+              width={barWidth}
+              height={height}
+              fill={`url(#timeline-${segment})`}
+            />
           </g>
         )
       })}
@@ -298,7 +312,7 @@ function TimelineBar({
       {bucket.dialogues.length === 0 && (
         <rect
           className="timeline__empty-bucket"
-          x={x}
+          x={left}
           y={PLOT_TOP + PLOT_HEIGHT - 1}
           width={barWidth}
           height={1}
