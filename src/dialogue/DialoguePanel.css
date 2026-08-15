@@ -1,0 +1,119 @@
+/* A sibling of the canvas, not an overlay on it: the map has to stay visible and pannable
+   while a line is being written. Fixed width for the same reason the map sidebar has one —
+   the canvas is what should absorb a window resize. */
+.dialogue-panel {
+  width: 22rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+/* The whole panel is the drop zone, so the feedback is on the whole panel. An inset shadow
+   rather than a border: a border would resize the box and reflow the form under the cursor. */
+.dialogue-panel[data-drop-target='true'] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.dialogue-panel__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dialogue-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dialogue-panel__button {
+  font: inherit;
+  font-size: 0.75rem;
+  align-self: flex-start;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.dialogue-panel__button:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.dialogue-panel__map {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* ---- media ---- */
+
+.dialogue-media {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.dialogue-media__label {
+  font-size: 0.8125rem;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.dialogue-media__label[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* Visually hidden but still focusable and still the label's target, so keyboard users tab to
+   a real file input rather than to a label that does nothing on Enter. */
+.dialogue-media__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.dialogue-media:has(.dialogue-media__input:focus-visible) .dialogue-media__label {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.dialogue-media__hint,
+.dialogue-media__warning,
+.dialogue-media__error {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.dialogue-media__hint {
+  color: var(--text-muted);
+}
+
+.dialogue-media__warning {
+  color: #ffcf8f;
+}
+
+.dialogue-media__error {
+  color: #ff8f8f;
+}

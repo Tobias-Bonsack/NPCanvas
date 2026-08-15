@@ -1,6 +1,14 @@
+import { assertNever } from '../assert-never.ts'
 import { newMapId } from '../project/ids.ts'
-import type { GameMap, Point } from '../project/types.ts'
+import type {
+  DialogueId,
+  DialogueMediaContent,
+  GameMap,
+  MediaFile,
+  Point,
+} from '../project/types.ts'
 import { writeMediaFile } from '../storage/project-directory.ts'
+import { invalidateMediaFile } from './media-url-cache.ts'
 
 /**
  * MIME → extension, explicit and closed. The extension is **never** taken from the upload's
@@ -73,4 +81,145 @@ async function probeImageSize(file: File): Promise<{ width: number; height: numb
 function mapNameFrom(fileName: string): string {
   const withoutExtension = fileName.replace(/\.[^./\\]+$/, '').trim()
   return withoutExtension === '' ? 'Untitled map' : withoutExtension
+}
+
+// ---- dialogue media ----
+
+/**
+ * The whole project folder is read into memory on load, so a single huge clip makes every
+ * later session slow. Warned about rather than blocked: it is the user's folder, and a short
+ * capture at a high bitrate is a legitimate thing to log.
+ */
+const LARGE_FILE_BYTES = 20 * 1024 * 1024
+
+/**
+ * MIME → content kind and extension, explicit and closed, for the same reason the map table
+ * above is: the extension is derived from the type, never from the untrusted upload name.
+ *
+ * A closed table rather than an `image/*` / `video/*` prefix rule, because a prefix rule
+ * decides the *kind* but leaves the extension undecidable — `video/x-matroska` would have to
+ * be written as some invented name Chromium then cannot play back anyway. Rejecting it names
+ * the type, which is more useful than a file that silently fails to decode later.
+ */
+const DIALOGUE_MEDIA_TYPES: Readonly<
+  Record<string, { kind: DialogueMediaContent['kind']; extension: string } | undefined>
+> = {
+  'image/png': { kind: 'image', extension: 'png' },
+  'image/jpeg': { kind: 'image', extension: 'jpg' },
+  'image/webp': { kind: 'image', extension: 'webp' },
+  'image/avif': { kind: 'image', extension: 'avif' },
+  // Before the other image types in intent, not in position: a gif is animated, and the
+  // canvas treats it differently from a still.
+  'image/gif': { kind: 'gif', extension: 'gif' },
+  'video/mp4': { kind: 'video', extension: 'mp4' },
+  'video/webm': { kind: 'video', extension: 'webm' },
+  'video/ogg': { kind: 'video', extension: 'ogv' },
+  'video/quicktime': { kind: 'video', extension: 'mov' },
+}
+
+/** The `accept` attribute for any control that takes dialogue media. */
+export const DIALOGUE_MEDIA_ACCEPT = Object.keys(DIALOGUE_MEDIA_TYPES).join(',')
+
+export type DialogueMediaImport = {
+  content: DialogueMediaContent
+  /** Non-null when the import succeeded but the file is big enough to be worth saying so. */
+  warning: string | null
+}
+
+/**
+ * Copies a picked file into `media/<dialogueId>.<ext>`, probes its intrinsic size, and returns
+ * the content for the caller to dispatch. Naming the file from the dialogue's id makes
+ * collisions impossible by construction — and means a re-import overwrites in place, which is
+ * why the URL cache is invalidated here rather than left to each caller to remember.
+ */
+export async function importDialogueMedia(
+  dialogueId: DialogueId,
+  file: File,
+): Promise<DialogueMediaImport> {
+  const type = DIALOGUE_MEDIA_TYPES[file.type]
+  if (type === undefined) {
+    const supplied = file.type === '' ? 'an unrecognised file type' : file.type
+    throw new Error(
+      `${supplied} cannot be used as dialogue content. ` +
+        `Supported: ${Object.keys(DIALOGUE_MEDIA_TYPES).join(', ')}.`,
+    )
+  }
+
+  // Probed before the write, so a corrupt file is rejected without leaving bytes in media/
+  // that no dialogue references.
+  const content = await probeContent(type.kind, file, {
+    fileName: `${dialogueId}.${type.extension}`,
+    mimeType: file.type,
+    byteSize: file.size,
+  })
+
+  await writeMediaFile(content.file.fileName, file)
+  invalidateMediaFile(content.file.fileName)
+
+  return { content, warning: largeFileWarning(file) }
+}
+
+/** Exhaustive over the media kinds, which is what keeps a new one from defaulting to a still. */
+async function probeContent(
+  kind: DialogueMediaContent['kind'],
+  file: File,
+  mediaFile: MediaFile,
+): Promise<DialogueMediaContent> {
+  switch (kind) {
+    case 'image':
+    case 'gif': {
+      const { width, height } = await probeImageSize(file)
+      return { kind, file: mediaFile, width, height }
+    }
+    case 'video': {
+      const { width, height, durationMs } = await probeVideoSize(file)
+      return { kind, file: mediaFile, width, height, durationMs }
+    }
+    default:
+      return assertNever(kind)
+  }
+}
+
+function largeFileWarning(file: File): string | null {
+  if (file.size <= LARGE_FILE_BYTES) return null
+  return (
+    `This file is ${Math.round(file.size / (1024 * 1024))} MB. It was imported, but the whole ` +
+    'project folder is read into memory on load, so a few of these will make opening slow.'
+  )
+}
+
+/**
+ * Video metadata off-DOM: an element that is never attached, given an object URL only long
+ * enough for `loadedmetadata` to populate the intrinsic size and duration.
+ */
+async function probeVideoSize(
+  file: File,
+): Promise<{ width: number; height: number; durationMs: number }> {
+  const url = URL.createObjectURL(file)
+  try {
+    const video = document.createElement('video')
+    // Metadata is all this needs; `auto` would pull the whole clip through memory for a
+    // measurement that is available in the first few kilobytes.
+    video.preload = 'metadata'
+    video.src = url
+
+    await new Promise<void>((resolve, reject) => {
+      video.addEventListener('loadedmetadata', () => resolve(), { once: true })
+      video.addEventListener(
+        'error',
+        () => reject(new Error(`${file.name} could not be decoded as a video.`)),
+        { once: true },
+      )
+    })
+
+    return {
+      width: video.videoWidth,
+      height: video.videoHeight,
+      // A stream with no known length reports Infinity, and `Math.round(Infinity)` is not a
+      // storable number. Zero is the honest "unknown" and renders as no duration at all.
+      durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0,
+    }
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }

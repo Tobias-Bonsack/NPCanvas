@@ -1,0 +1,21 @@
+/* The intrinsic width/height attributes reserve the right box before the bytes arrive; these
+   rules then let it shrink into whatever container it is in without distorting. */
+.media-view__image,
+.media-view__video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-2);
+  background: var(--surface-0);
+}
+
+.media-view__text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.media-view__notice {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}

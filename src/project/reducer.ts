@@ -3,6 +3,7 @@ import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
 import type {
   AppState,
   Dialogue,
+  DialogueContent,
   DialogueId,
   GameMap,
   MapId,
@@ -37,6 +38,7 @@ export type Action =
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
   | { kind: 'dialogue/npc-named'; dialogueId: DialogueId; npcName: string }
   | { kind: 'dialogue/text-set'; dialogueId: DialogueId; text: string }
+  | { kind: 'dialogue/content-set'; dialogueId: DialogueId; content: DialogueContent }
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
   | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTag[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
@@ -211,6 +213,16 @@ export function reduce(state: AppState, action: Action): AppState {
         ...target,
         content: { kind: 'text', text: action.text },
       })
+    }
+
+    // Replaces the content wholesale, which is what changing *kind* is — `dialogue/text-set`
+    // edits a text body in place and cannot express this. Deleting the file the old content
+    // referenced is the caller's job: it is IO, and IO never enters the reducer.
+    case 'dialogue/content-set': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null) return state
+      return withDialogue(state, target, { ...target, content: action.content })
     }
 
     case 'dialogue/spoken-at-set': {

@@ -35,6 +35,13 @@ export type DialogueContent =
   | { kind: 'gif'; file: MediaFile; width: number; height: number }
   | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
 
+/**
+ * The variants that own a file in `media/`. Derived rather than declared, so a fifth content
+ * kind joins it automatically and every `file`-handling site fails to compile until it is
+ * handled.
+ */
+export type DialogueMediaContent = Exclude<DialogueContent, { kind: 'text' }>
+
 export type GameMap = {
   id: MapId
   name: string

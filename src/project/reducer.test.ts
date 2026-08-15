@@ -3,7 +3,16 @@ import { createEmptyProject } from './data-file.ts'
 import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
 import type { Action } from './reducer.ts'
 import { reduce } from './reducer.ts'
-import type { AppState, Dialogue, GameMap, MapId, ProjectFile, Quest, Zone } from './types.ts'
+import type {
+  AppState,
+  Dialogue,
+  DialogueContent,
+  GameMap,
+  MapId,
+  ProjectFile,
+  Quest,
+  Zone,
+} from './types.ts'
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
@@ -105,6 +114,11 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'dialogue/moved', dialogueId: asDialogueId('dialogue-1'), position: { x: 0, y: 0 } },
   { kind: 'dialogue/npc-named', dialogueId: asDialogueId('dialogue-1'), npcName: 'Ferryman' },
   { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' },
+  {
+    kind: 'dialogue/content-set',
+    dialogueId: asDialogueId('dialogue-1'),
+    content: { kind: 'text', text: 'Hello' },
+  },
   {
     kind: 'dialogue/spoken-at-set',
     dialogueId: asDialogueId('dialogue-1'),
@@ -524,6 +538,12 @@ describe('reduce: dialogue actions', () => {
 
 describe('reduce: dialogue field edits', () => {
   const target = asDialogueId('dialogue-harbour')
+  const IMAGE_CONTENT: DialogueContent = {
+    kind: 'image',
+    file: { fileName: `${target}.png`, mimeType: 'image/png', byteSize: 4 },
+    width: 2,
+    height: 2,
+  }
 
   function edited(state: AppState): Dialogue {
     if (state.kind !== 'ready') throw new Error('expected a ready state')
@@ -556,26 +576,37 @@ describe('reduce: dialogue field edits', () => {
   })
 
   it('refuses to give media content a text body', () => {
-    const project = twoMapProject()
-    const withImage: ProjectFile = {
-      ...project,
-      dialogues: project.dialogues.map((it) =>
-        it.id === target
-          ? {
-              ...it,
-              content: {
-                kind: 'image',
-                file: { fileName: 'a.png', mimeType: 'image/png', byteSize: 4 },
-                width: 2,
-                height: 2,
-              },
-            }
-          : it,
-      ),
-    }
-    const state = ready(withImage)
+    const state = ready(projectWithImage())
     expect(reduce(state, { kind: 'dialogue/text-set', dialogueId: target, text: 'x' })).toBe(state)
   })
+
+  it('replaces content wholesale when the kind changes', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/content-set',
+      dialogueId: target,
+      content: IMAGE_CONTENT,
+    })
+    expect(edited(next).content).toEqual(IMAGE_CONTENT)
+  })
+
+  it('lets media content be replaced by an empty text body', () => {
+    const next = reduce(ready(projectWithImage()), {
+      kind: 'dialogue/content-set',
+      dialogueId: target,
+      content: { kind: 'text', text: '' },
+    })
+    expect(edited(next).content).toEqual({ kind: 'text', text: '' })
+  })
+
+  function projectWithImage(): ProjectFile {
+    const project = twoMapProject()
+    return {
+      ...project,
+      dialogues: project.dialogues.map((it) =>
+        it.id === target ? { ...it, content: IMAGE_CONTENT } : it,
+      ),
+    }
+  }
 
   it('replaces the spoken-at instant', () => {
     const next = reduce(ready(twoMapProject()), {
