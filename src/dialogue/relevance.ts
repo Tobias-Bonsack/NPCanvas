@@ -40,20 +40,26 @@ export function relevanceColor(tag: RelevanceTag): string {
 }
 
 /**
- * A pin's accent: every tag it carries, as equal segments of one ring.
+ * A pin's fill: every tag it carries, as equal vertical bands across the whole pin.
  *
- * Untagged is deliberately the chrome's own neutral rather than a first-tag default —
- * "not yet classified" is real information, and a colour would claim otherwise. A single tag
- * skips the gradient because a one-stop conic is a solid fill the browser still rasterises.
+ * The pin body rather than a ring around the glyph, because a ring is a few pixels of arc per
+ * tag — at four tags the segments were too small to name a colour. Bands get the pin's full
+ * width, which is also why `.pin__marker[data-tagged]` carries a min-width.
+ *
+ * Untagged is deliberately the chrome's own surface rather than a first-tag default: "not yet
+ * classified" is real information, and a colour would claim otherwise. A single tag skips the
+ * gradient because a one-stop gradient is a solid fill the browser still rasterises.
  */
-export function relevanceRingBackground(tags: readonly RelevanceTag[]): string {
+export function relevancePinBackground(tags: readonly RelevanceTag[]): string {
   const first = tags[0]
-  if (first === undefined) return 'var(--border-strong)'
+  if (first === undefined) return 'var(--surface-2)'
   if (tags.length === 1) return relevanceColor(first)
 
+  // Hard stops, not a blend: these are categories, and a gradient between two of them would
+  // read as a third colour that means nothing.
   const share = 100 / tags.length
   const stops = tags.map(
     (tag, index) => `${relevanceColor(tag)} ${index * share}% ${(index + 1) * share}%`,
   )
-  return `conic-gradient(${stops.join(', ')})`
+  return `linear-gradient(90deg, ${stops.join(', ')})`
 }

@@ -170,57 +170,56 @@
   white-space: nowrap;
 }
 
+/* The pin body carries the relevance fill, written inline from relevancePinBackground: one
+   vertical band per tag, or the chrome's own surface when untagged. */
 .pin__marker {
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
   color: var(--text);
-  background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-round);
-  padding: 2px var(--space-3) 2px 2px;
+  padding: 3px var(--space-3) 3px 3px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
 }
 
+/* The width the bands need to stay nameable: at four tags this is ~28 px each, where a ring
+   around the glyph gave them a few pixels of arc. Only tagged pins get it — an untagged pin
+   has nothing to show off and should not be padded out to match. */
+.pin__marker[data-tagged='true'] {
+  min-width: 7rem;
+  /* Relevance hues sit at a fixed 60% lightness in both themes, so the ink on top of them has
+     to be fixed too: var(--text) is near-white in the dark theme and would disappear. */
+  color: #10151f;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+/* A filter rather than a background swap, because the background is an inline style now and
+   a rule here could not override it without !important. */
 .pin__marker:hover {
-  background: var(--surface-3);
+  filter: brightness(1.12);
 }
 
+/* Selection is an outline for the same reason: the fill is spoken for. Counter-scaled along
+   with the pin, so it stays 2 screen pixels at any zoom. */
 .pin__marker[data-selected='true'] {
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
-/* The relevance accent. Its background is a conic-gradient of one segment per tag, built in
-   relevance.ts, and the inset face leaves it showing as a ring. An untagged dialogue gets the
-   chrome's neutral there, so "not classified" reads as absence rather than as a colour. */
-.pin__ring {
-  flex: none;
-  width: 1.5rem;
-  height: 1.5rem;
-  padding: 2px;
-  border-radius: var(--radius-round);
-  display: grid;
-  place-items: center;
-}
-
+/* Transparent, so the bands run the full width of the pin behind the glyph. Only the
+   thumbnail inside it is opaque. */
 .pin__face {
-  width: 100%;
-  height: 100%;
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
   border-radius: var(--radius-round);
   overflow: hidden;
-  background: var(--surface-1);
-  color: var(--text);
   display: grid;
   place-items: center;
-}
-
-.pin__marker[data-selected='true'] .pin__face {
-  background: var(--accent-contrast);
 }
 
 /* Roughly 14 device pixels once the face is accounted for, which is the size the filled

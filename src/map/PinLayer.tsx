@@ -2,7 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } f
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
-import { relevanceRingBackground } from '../dialogue/relevance.ts'
+import { relevancePinBackground } from '../dialogue/relevance.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -244,7 +244,11 @@ function Pin({
         type="button"
         className="pin__marker"
         data-selected={selected ? 'true' : undefined}
+        // Drives both the min-width the bands need and the dark ink they need to be read
+        // against — see the rules in MapCanvas.css.
+        data-tagged={dialogue.relevance.length > 0 ? 'true' : undefined}
         aria-current={selected ? 'true' : undefined}
+        style={{ background: relevancePinBackground(dialogue.relevance) }}
         title={name}
         onPointerDown={(event) => onPointerDown(event, dialogue)}
         onPointerMove={onPointerMove}
@@ -257,15 +261,11 @@ function Pin({
           onRequestDelete()
         }}
       >
-        {/* The ring is the relevance accent; the face inside it carries the glyph or a
-            thumbnail. Both are inside the button so the whole pin is one hit target. */}
-        <span
-          className="pin__ring"
-          style={{ background: relevanceRingBackground(dialogue.relevance) }}
-        >
-          <span className="pin__face">
-            <PinFace content={dialogue.content} onScreen={onScreen} />
-          </span>
+        {/* The face is transparent, so the relevance bands behind it run the full width of
+            the pin; only a thumbnail is opaque. Both sit inside the button, so the whole pin
+            stays one hit target. */}
+        <span className="pin__face">
+          <PinFace content={dialogue.content} onScreen={onScreen} />
         </span>
         <span className="pin__name">{name}</span>
       </button>
