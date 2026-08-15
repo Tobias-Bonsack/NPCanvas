@@ -31,8 +31,9 @@
   gap: var(--space-1);
 }
 
-/* The quest-marker colour, the same one the pin's flag uses, so a link here and a flagged pin
-   on the canvas read as the same fact. */
+/* The quest's own colour, written inline as `--quest-hue`, so a link here and that quest's
+   flag on the canvas read as the same thread. A finished quest arrives already green through
+   `questAccentHue` — status is decided in one place, never restated as a rule here. */
 .dialogue-quests__link,
 .dialogue-quests__option {
   flex: 1;
@@ -45,9 +46,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-  background: color-mix(in srgb, var(--quest) 16%, transparent);
+  background: hsl(var(--quest-hue) 70% 55% / 0.16);
   border: 1px solid transparent;
-  border-left: 3px solid var(--quest);
+  border-left: 3px solid hsl(var(--quest-hue) 70% 55%);
   border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
@@ -55,16 +56,7 @@
 
 .dialogue-quests__link:hover,
 .dialogue-quests__option:hover {
-  background: color-mix(in srgb, var(--quest) 28%, transparent);
-}
-
-/* A finished quest is history: still listed, still detachable, but not competing with the
-   threads still being chased. Matches the quest card's own treatment on the board. */
-.dialogue-quests__link[data-status='done'],
-.dialogue-quests__option[data-status='done'] {
-  border-left-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text-muted);
+  background: hsl(var(--quest-hue) 70% 55% / 0.28);
 }
 
 .dialogue-quests__option {

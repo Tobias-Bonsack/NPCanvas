@@ -77,6 +77,7 @@ function quest(id: string, dialogueIds: string[]): Quest {
     status: 'open',
     dialogueIds: dialogueIds.map(asDialogueId),
     note: '',
+    hue: 45,
   }
 }
 
@@ -148,6 +149,7 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'quest/added', quest: quest('quest-1', []) },
   { kind: 'quest/renamed', questId: asQuestId('quest-1'), name: 'The missing ledger' },
   { kind: 'quest/note-set', questId: asQuestId('quest-1'), note: 'Ask the harbourmaster' },
+  { kind: 'quest/hue-set', questId: asQuestId('quest-1'), hue: 265 },
   { kind: 'quest/status-set', questId: asQuestId('quest-1'), status: 'done' },
   {
     kind: 'quest/dialogue-attached',
@@ -812,6 +814,17 @@ describe('reduce: quests', () => {
     expect(edited(noted).name).toBe('The missing ledger')
   })
 
+  // Recolouring never touches the status, and marking a quest done never touches its stored
+  // hue: `questAccentHue` is what draws a done quest green, so reopening restores its colour.
+  it('recolours a quest without disturbing its status', () => {
+    const recoloured = reduce(ready(twoMapProject()), { kind: 'quest/hue-set', questId, hue: 265 })
+    expect(edited(recoloured).hue).toBe(265)
+    expect(edited(recoloured).status).toBe('open')
+
+    const done = reduce(recoloured, { kind: 'quest/status-set', questId, status: 'done' })
+    expect(edited(done).hue).toBe(265)
+  })
+
   it('moves a quest between statuses', () => {
     const done = reduce(ready(twoMapProject()), { kind: 'quest/status-set', questId, status: 'done' })
     expect(edited(done).status).toBe('done')
@@ -873,6 +886,10 @@ describe('reduce: quests', () => {
     const current = readyOf(state).project.quests[0]
     expect(reduce(state, { kind: 'quest/renamed', questId, name: current.name })).toBe(state)
     expect(reduce(state, { kind: 'quest/note-set', questId, note: current.note })).toBe(state)
+    expect(reduce(state, { kind: 'quest/hue-set', questId, hue: current.hue })).toBe(state)
+    expect(reduce(state, { kind: 'quest/hue-set', questId: asQuestId('missing'), hue: 20 })).toBe(
+      state,
+    )
     expect(reduce(state, { kind: 'quest/status-set', questId, status: current.status })).toBe(state)
     expect(
       reduce(state, {

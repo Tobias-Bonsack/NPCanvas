@@ -4,6 +4,7 @@ import { formatRoute, navigate } from '../app/route.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, Quest, QuestId } from '../project/types.ts'
+import { nextQuestHue, questAccentStyle } from './quest-style.ts'
 import './DialogueQuestLinks.css'
 
 /** Whether the "attach to existing" search is open. Component state, never the store. */
@@ -41,6 +42,7 @@ export function DialogueQuestLinks({
       // remember to fill — which is the whole difference between this and the board's button.
       dialogueIds: [dialogueId],
       note: '',
+      hue: nextQuestHue(quests),
     }
     dispatch({ kind: 'quest/added', quest })
     navigate({ kind: 'quests', editQuestId: quest.id })
@@ -58,7 +60,7 @@ export function DialogueQuestLinks({
             <li key={quest.id} className="dialogue-quests__item">
               <a
                 className="dialogue-quests__link"
-                data-status={quest.status}
+                style={questAccentStyle(quest)}
                 href={formatRoute({ kind: 'quests', editQuestId: null })}
               >
                 {questName(quest)}
@@ -165,7 +167,7 @@ function QuestPicker({
               <button
                 type="button"
                 className="dialogue-quests__option"
-                data-status={quest.status}
+                style={questAccentStyle(quest)}
                 onClick={() => onPick(quest.id)}
               >
                 {questName(quest)}

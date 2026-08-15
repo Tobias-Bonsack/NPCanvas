@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { MAP_LAYOUT_GAP } from '../map/canvas-layout.ts'
+import { QUEST_HUES } from '../quest/quest-style.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
 // A document exercising every branch of the reader: all four content kinds, a polygon, a
 // quest, and a media file. Rebuilt per test so a mutation cannot leak into the next case.
 function validDocument(): Record<string, unknown> {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     projectName: 'Fisherman’s Rest',
     savedAt: '2026-08-14T10:00:00.000Z',
     maps: [
@@ -95,6 +96,7 @@ function validDocument(): Record<string, unknown> {
         status: 'open',
         dialogueIds: ['dialogue-1', 'dialogue-4'],
         note: 'Ask at the harbour first.',
+        hue: 45,
       },
     ],
   }
@@ -166,36 +168,52 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 3
-    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1 or 2, but found 3')
+    data.schemaVersion = 4
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2 or 3, but found 4')
   })
 
-  it('rejects a V2 map with no placement', () => {
+  it('rejects a map with no placement', () => {
     const data = validDocument()
     const maps = data.maps as Record<string, unknown>[]
     delete maps[0].origin
     expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
   })
 
-  it('round trips a V2 document with its placements unchanged', () => {
+  it('round trips a V3 document with its placements and quest hues unchanged', () => {
     const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(2)
+    expect(result.file.schemaVersion).toBe(3)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
+    expect(result.file.quests[0].hue).toBe(45)
 
     const rewritten = parseProjectFile(serializeProject(result.file))
     expect(rewritten.ok).toBe(true)
     if (!rewritten.ok) return
     expect(rewritten.file.maps).toEqual(result.file.maps)
+    expect(rewritten.file.quests).toEqual(result.file.quests)
   })
 })
 
+/** A V2 document is a V3 one with the quest hues removed and the version rolled back. */
+function v2Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 2
+  const [quest] = data.quests as Record<string, unknown>[]
+  delete quest.hue
+  data.quests = [
+    quest,
+    { ...quest, id: 'quest-2', name: 'Find the lantern', status: 'done', dialogueIds: [] },
+    { ...quest, id: 'quest-3', name: 'Pay the ferryman', dialogueIds: [] },
+  ]
+  return data
+}
+
 /** A V1 document is a V2 one with the placement fields removed and the version rolled back. */
 function v1Document(): Record<string, unknown> {
-  const data = validDocument()
+  const data = v2Document()
   data.schemaVersion = 1
   const [map] = data.maps as Record<string, unknown>[]
   delete map.origin
@@ -208,16 +226,51 @@ function v1Document(): Record<string, unknown> {
   return data
 }
 
+describe('parseProjectFile: V2 migration', () => {
+  it('colours every quest distinctly, in palette order, and changes nothing else', () => {
+    const before = v2Document()
+    const result = parseProjectFile(JSON.stringify(before))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(3)
+    expect(result.file.quests.map((quest) => quest.hue)).toEqual([
+      QUEST_HUES[0],
+      QUEST_HUES[1],
+      QUEST_HUES[2],
+    ])
+    // Everything but the added hue survives the migration untouched.
+    expect(result.file.quests.map((quest) => ({ ...quest, hue: undefined }))).toEqual(
+      (before.quests as Record<string, unknown>[]).map((quest) => ({ ...quest, hue: undefined })),
+    )
+    expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
+    expect(result.file.dialogues).toHaveLength(4)
+    expect(result.file.zones[0].name).toBe('Harbour')
+  })
+
+  it('rejects a V2 quest whose fields are still wrong', () => {
+    const data = v2Document()
+    const quests = data.quests as Record<string, unknown>[]
+    quests[1].status = 'abandoned'
+    expect(rejectionMessage(data)).toBe('quests[1].status: expected open or done')
+  })
+})
+
 describe('parseProjectFile: V1 migration', () => {
-  it('migrates a V1 document to V2 and leaves everything but the maps alone', () => {
+  it('chains V1 through V2 to V3, placing the maps and colouring the quests', () => {
     const result = parseProjectFile(JSON.stringify(v1Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(2)
+    expect(result.file.schemaVersion).toBe(3)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.zones[0].name).toBe('Harbour')
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
+    expect(result.file.quests.map((quest) => quest.hue)).toEqual([
+      QUEST_HUES[0],
+      QUEST_HUES[1],
+      QUEST_HUES[2],
+    ])
   })
 
   it('lays the V1 maps out left to right at native scale, with nothing overlapping', () => {
@@ -243,7 +296,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 2, maps: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 3, maps: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -303,12 +356,12 @@ describe('parseProjectFile: field validation', () => {
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(2)
+    expect(project.schemaVersion).toBe(3)
 
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(2)
+    expect(reread.file.schemaVersion).toBe(3)
   })
 })
 

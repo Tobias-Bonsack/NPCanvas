@@ -21,6 +21,7 @@ import type {
 } from '../project/types.ts'
 import { QUEST_STATUSES } from '../project/types.ts'
 import { QuestForm } from './QuestForm.tsx'
+import { QUEST_HUES, nextQuestHue, questAccentStyle, questHueStyle } from './quest-style.ts'
 import './QuestBoard.css'
 
 /**
@@ -31,6 +32,7 @@ import './QuestBoard.css'
 type QuestBoardMode =
   | { kind: 'idle' }
   | { kind: 'editing'; id: QuestId }
+  | { kind: 'recolouring'; id: QuestId }
   | { kind: 'attaching'; id: QuestId }
   | { kind: 'confirming-delete'; id: QuestId }
 
@@ -87,6 +89,7 @@ export function QuestBoard({
       status: 'open',
       dialogueIds: [],
       note: '',
+      hue: nextQuestHue(project.quests),
     }
     dispatch({ kind: 'quest/added', quest })
     // Straight into the editor: a nameless quest in a list is nothing to click on.
@@ -200,7 +203,7 @@ function QuestCard({
   const toggle = STATUS_TOGGLE[quest.status]
 
   return (
-    <article className="quest-card" data-status={quest.status}>
+    <article className="quest-card" data-status={quest.status} style={questAccentStyle(quest)}>
       <header className="quest-card__header">
         <h3 className="quest-card__name">{quest.name.trim() === '' ? 'Untitled quest' : quest.name}</h3>
         <span className="quest-card__linked-count">
@@ -219,6 +222,13 @@ function QuestCard({
           onClick={() => onSetMode({ kind: 'editing', id: quest.id })}
         >
           Edit
+        </button>
+        <button
+          type="button"
+          className="quest-board__button"
+          onClick={() => onSetMode({ kind: 'recolouring', id: quest.id })}
+        >
+          Colour
         </button>
         <button
           type="button"
@@ -302,6 +312,35 @@ function QuestCardMode({
 
     case 'editing':
       return <QuestForm quest={quest} onDone={() => onSetMode({ kind: 'idle' })} />
+
+    // The swatches carry the raw hue rather than the accent: a done quest is drawn green, and
+    // a palette showing twelve greens would say nothing about what is being picked.
+    case 'recolouring':
+      return (
+        <div className="quest-card__palette" role="group" aria-label={`Colour of ${quest.name}`}>
+          {QUEST_HUES.map((hue) => (
+            <button
+              key={hue}
+              type="button"
+              className="quest-card__swatch"
+              style={questHueStyle(hue)}
+              aria-label={`Hue ${hue}`}
+              aria-pressed={hue === quest.hue}
+              onClick={() => {
+                dispatch({ kind: 'quest/hue-set', questId: quest.id, hue })
+                onSetMode({ kind: 'idle' })
+              }}
+            />
+          ))}
+          <button
+            type="button"
+            className="quest-board__button"
+            onClick={() => onSetMode({ kind: 'idle' })}
+          >
+            Cancel
+          </button>
+        </div>
+      )
 
     case 'attaching':
       return (

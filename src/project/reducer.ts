@@ -54,6 +54,7 @@ export type Action =
   | { kind: 'quest/added'; quest: Quest }
   | { kind: 'quest/renamed'; questId: QuestId; name: string }
   | { kind: 'quest/note-set'; questId: QuestId; note: string }
+  | { kind: 'quest/hue-set'; questId: QuestId; hue: number }
   | { kind: 'quest/status-set'; questId: QuestId; status: Quest['status'] }
   | { kind: 'quest/dialogue-attached'; questId: QuestId; dialogueId: DialogueId }
   | { kind: 'quest/dialogue-detached'; questId: QuestId; dialogueId: DialogueId }
@@ -352,6 +353,13 @@ export function reduce(state: AppState, action: Action): AppState {
       const target = findQuest(state.project, action.questId)
       if (target === null || target.note === action.note) return state
       return withQuest(state, target, { ...target, note: action.note })
+    }
+
+    case 'quest/hue-set': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || target.hue === action.hue) return state
+      return withQuest(state, target, { ...target, hue: action.hue })
     }
 
     case 'quest/status-set': {

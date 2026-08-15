@@ -10,6 +10,7 @@ function quest(id: string, status: QuestStatus, dialogueIds: string[]): Quest {
     status,
     dialogueIds: dialogueIds.map(asDialogueId),
     note: '',
+    hue: 45,
   }
 }
 

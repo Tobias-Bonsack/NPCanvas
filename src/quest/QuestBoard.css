@@ -109,12 +109,15 @@
 
 /* ---- card ---- */
 
+/* The left edge is the quest's own colour — the same `--quest-hue` its flags fly on the canvas
+   and its links wear in the dialogue panel, so a card and a pin are matched by eye. */
 .quest-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
   border: 1px solid var(--border);
+  border-left: 4px solid hsl(var(--quest-hue) 70% 55%);
   border-radius: var(--radius-3);
   background: var(--surface-1);
 }
@@ -173,6 +176,30 @@
   /* The note is written in a textarea, so its line breaks are the user's own. */
   white-space: pre-wrap;
   color: var(--text-muted);
+}
+
+/* Mirrors the zone palette in the map sidebar: same swatch size, same pressed outline, so
+   recolouring works the same way wherever a colour is stored. */
+.quest-card__palette {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.quest-card__swatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: hsl(var(--quest-hue) 75% 62%);
+  cursor: pointer;
+}
+
+.quest-card__swatch[aria-pressed='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .quest-card__empty {

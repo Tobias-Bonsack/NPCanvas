@@ -97,6 +97,12 @@ export type Quest = {
   status: QuestStatus
   dialogueIds: DialogueId[]
   note: string
+  /**
+   * 0..359, stored rather than hashed from the id: a pin can carry one flag per quest, so the
+   * hues have to be distinguishable *and* correctable by hand. `quest-style.ts` derives every
+   * colour from it, and overrides it for a done quest.
+   */
+  hue: number
 }
 
 // ---- on-disk schema ----
@@ -110,6 +116,15 @@ export type GameMapV1 = {
   height: number
 }
 
+/** A V1/V2 quest: no colour, because every quest was drawn in one shared gold. */
+export type QuestV2 = {
+  id: QuestId
+  name: string
+  status: QuestStatus
+  dialogueIds: DialogueId[]
+  note: string
+}
+
 export type ProjectFileV1 = {
   /** Literal, not `number`: every version discriminates on it in parseProjectFile. */
   schemaVersion: 1
@@ -118,12 +133,23 @@ export type ProjectFileV1 = {
   maps: GameMapV1[]
   zones: Zone[]
   dialogues: Dialogue[]
-  quests: Quest[]
+  quests: QuestV2[]
 }
 
 /** V2 places every map on one shared canvas, so maps carry `origin` and `scale`. */
 export type ProjectFileV2 = {
   schemaVersion: 2
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: QuestV2[]
+}
+
+/** V3 gives every quest its own hue, so a pin can fly one flag per quest it belongs to. */
+export type ProjectFileV3 = {
+  schemaVersion: 3
   projectName: string
   savedAt: string
   maps: GameMap[]
@@ -136,10 +162,10 @@ export type ProjectFileV2 = {
  * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
  * it migrates anything older forward, so nothing downstream branches on a version.
  */
-export type StoredProjectFile = ProjectFileV1 | ProjectFileV2
+export type StoredProjectFile = ProjectFileV1 | ProjectFileV2 | ProjectFileV3
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV2
+export type ProjectFile = ProjectFileV3
 
 // ---- in-memory app state ----
 

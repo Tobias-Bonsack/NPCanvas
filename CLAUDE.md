@@ -99,13 +99,18 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **2**. To
-  evolve: add `ProjectFileV3`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **3**. To
+  evolve: add `ProjectFileV4`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
-  redefine the meaning of an existing field. The V1→V2 migration lays legacy maps out left to right
-  through `nextMapOrigin`, the same function an import uses, so both paths place maps identically.
+  redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
+  `migrateV2(migrateV1(…))` — so a new version adds one function and one case, not one per shape
+  already on disk. The V1→V2 migration lays legacy maps out left to right through `nextMapOrigin`,
+  and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building the array up as it
+  goes so each quest sees those already coloured. Both call the same function the live app calls
+  (an import; a newly created quest), which is what makes a migrated project indistinguishable from
+  one built by hand.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

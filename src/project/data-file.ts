@@ -1,4 +1,5 @@
 import { nextMapOrigin } from '../map/canvas-layout.ts'
+import { nextQuestHue } from '../quest/quest-style.ts'
 import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
 import type {
   Dialogue,
@@ -12,9 +13,11 @@ import type {
   Polygon,
   ProjectFile,
   ProjectFileV1,
+  ProjectFileV2,
   Quest,
   QuestId,
   QuestStatus,
+  QuestV2,
   RelevanceTag,
   Zone,
   ZoneId,
@@ -24,7 +27,7 @@ import { QUEST_STATUSES, RELEVANCE_TAGS } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -251,7 +254,7 @@ function readDialogue(value: unknown, path: string): Dialogue {
   }
 }
 
-function readQuest(value: unknown, path: string): Quest {
+function readQuestV2(value: unknown, path: string): QuestV2 {
   const raw = readObject(value, path)
   return {
     id: readQuestId(raw.id, `${path}.id`),
@@ -261,6 +264,14 @@ function readQuest(value: unknown, path: string): Quest {
       readDialogueId(id, `${path}.dialogueIds[${index}]`),
     ),
     note: readString(raw.note, `${path}.note`),
+  }
+}
+
+function readQuest(value: unknown, path: string): Quest {
+  const raw = readObject(value, path)
+  return {
+    ...readQuestV2(value, path),
+    hue: readNumber(raw.hue, `${path}.hue`),
   }
 }
 
@@ -274,21 +285,30 @@ function isQuestStatus(value: string): value is QuestStatus {
   return (QUEST_STATUSES as readonly string[]).includes(value)
 }
 
+/**
+ * Migrations chain one step at a time rather than jumping straight to the newest shape: a
+ * fourth version then adds one `migrateV3` and one `case`, instead of a new N→newest function
+ * per version already on disk.
+ */
 function readProjectFile(value: unknown): ProjectFile {
   const raw = readObject(value, 'data.json')
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV1(readProjectFileV1(raw))
+      return migrateV2(migrateV1(readProjectFileV1(raw)))
     case 2:
-      return readProjectFileV2(raw)
+      return migrateV2(readProjectFileV2(raw))
+    case 3:
+      return readProjectFileV3(raw)
     default:
-      throw new SchemaError('schemaVersion', `1 or 2, but found ${String(schemaVersion)}`)
+      throw new SchemaError('schemaVersion', `1, 2 or 3, but found ${String(schemaVersion)}`)
   }
 }
 
-/** Only `maps` differs between the versions; everything else is read by the same functions. */
-function readCommonFields(raw: Record<string, unknown>): Omit<ProjectFile, 'schemaVersion' | 'maps'> {
+/** `maps` and `quests` differ per version; everything else is read by the same functions. */
+function readCommonFields(
+  raw: Record<string, unknown>,
+): Omit<ProjectFile, 'schemaVersion' | 'maps' | 'quests'> {
   return {
     projectName: readString(raw.projectName, 'projectName'),
     savedAt: readString(raw.savedAt, 'savedAt'),
@@ -296,10 +316,13 @@ function readCommonFields(raw: Record<string, unknown>): Omit<ProjectFile, 'sche
     dialogues: readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
       readDialogue(dialogue, `dialogues[${index}]`),
     ),
-    quests: readArray(raw.quests, 'quests').map((quest, index) =>
-      readQuest(quest, `quests[${index}]`),
-    ),
   }
+}
+
+function readQuestsV2(raw: Record<string, unknown>): QuestV2[] {
+  return readArray(raw.quests, 'quests').map((quest, index) =>
+    readQuestV2(quest, `quests[${index}]`),
+  )
 }
 
 function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
@@ -307,14 +330,27 @@ function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
     schemaVersion: 1,
     ...readCommonFields(raw),
     maps: readArray(raw.maps, 'maps').map((map, index) => readGameMapV1(map, `maps[${index}]`)),
+    quests: readQuestsV2(raw),
   }
 }
 
-function readProjectFileV2(raw: Record<string, unknown>): ProjectFile {
+function readProjectFileV2(raw: Record<string, unknown>): ProjectFileV2 {
   return {
     schemaVersion: 2,
     ...readCommonFields(raw),
     maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    quests: readQuestsV2(raw),
+  }
+}
+
+function readProjectFileV3(raw: Record<string, unknown>): ProjectFile {
+  return {
+    schemaVersion: 3,
+    ...readCommonFields(raw),
+    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    quests: readArray(raw.quests, 'quests').map((quest, index) =>
+      readQuest(quest, `quests[${index}]`),
+    ),
   }
 }
 
@@ -323,10 +359,23 @@ function readProjectFileV2(raw: Record<string, unknown>): ProjectFile {
  * native scale through the same `nextMapOrigin` an import uses, which is what guarantees a
  * migrated project opens with nothing overlapping.
  */
-function migrateV1(file: ProjectFileV1): ProjectFile {
+function migrateV1(file: ProjectFileV1): ProjectFileV2 {
   const maps: GameMap[] = []
   for (const map of file.maps) {
     maps.push({ ...map, origin: nextMapOrigin(maps), scale: 1 })
   }
   return { ...file, schemaVersion: 2, maps }
+}
+
+/**
+ * V2 drew every quest in one shared gold. Colours are handed out through the same
+ * `nextQuestHue` a newly created quest calls, with the array built up as it goes so each quest
+ * sees the ones already coloured — the migration and the board therefore colour identically.
+ */
+function migrateV2(file: ProjectFileV2): ProjectFile {
+  const quests: Quest[] = []
+  for (const quest of file.quests) {
+    quests.push({ ...quest, hue: nextQuestHue(quests) })
+  }
+  return { ...file, schemaVersion: 3, quests }
 }
