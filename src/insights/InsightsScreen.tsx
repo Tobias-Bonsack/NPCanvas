@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
-import type { ProjectFile } from '../project/types.ts'
+import type { ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import { FilterBar } from './FilterBar.tsx'
 import { RelevanceBreakdown } from './RelevanceBreakdown.tsx'
+import { Timeline } from './Timeline.tsx'
 import type { DialogueFilter } from './filters.ts'
 import { EMPTY_FILTER, applyFilter, isEmptyFilter } from './filters.ts'
 import './InsightsScreen.css'
@@ -28,6 +29,14 @@ export function InsightsScreen({ project }: { project: ProjectFile }): ReactElem
     () => applyFilter(project.dialogues, filter, zoneIndex),
     [project.dialogues, filter, zoneIndex],
   )
+  // The timeline is the control for the date range, so it sees everything *except* that range:
+  // a brush has to stay draggable after it has been drawn, and an axis rescaled to the selection
+  // would leave nothing to drag back out of.
+  const undated = useMemo(
+    () => applyFilter(project.dialogues, { ...filter, from: null, to: null }, zoneIndex),
+    [project.dialogues, filter, zoneIndex],
+  )
+  const zonesById = useMemo(() => byZoneId(project.zones), [project.zones])
 
   return (
     <section className="insights">
@@ -48,14 +57,29 @@ export function InsightsScreen({ project }: { project: ProjectFile }): ReactElem
           relevance, by where it was heard, and by who said it.
         </p>
       ) : (
-        <RelevanceBreakdown
-          dialogues={dialogues}
-          zones={project.zones}
-          zoneIndex={zoneIndex}
-          filter={filter}
-          onChange={setFilter}
-        />
+        <>
+          <Timeline
+            dialogues={undated}
+            zonesById={zonesById}
+            zoneIndex={zoneIndex}
+            filter={filter}
+            onChange={setFilter}
+          />
+          <RelevanceBreakdown
+            dialogues={dialogues}
+            zones={project.zones}
+            zoneIndex={zoneIndex}
+            filter={filter}
+            onChange={setFilter}
+          />
+        </>
       )}
     </section>
   )
+}
+
+function byZoneId(zones: readonly Zone[]): ReadonlyMap<ZoneId, Zone> {
+  const map = new Map<ZoneId, Zone>()
+  for (const zone of zones) map.set(zone.id, zone)
+  return map
 }

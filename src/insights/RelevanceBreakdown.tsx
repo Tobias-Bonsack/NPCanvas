@@ -1,57 +1,18 @@
 import type { ReactElement } from 'react'
 import { useMemo } from 'react'
-import { RELEVANCE_STYLE, relevanceColor } from '../dialogue/relevance.ts'
-import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
-import { RELEVANCE_TAGS } from '../project/types.ts'
+import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
 import type { DialogueFilter, ZoneScope } from './filters.ts'
 import { NO_ZONE, npcKey, npcLabel } from './filters.ts'
-
-/**
- * A stacked segment is one relevance tag, or the absence of all of them. "Untagged" is a real
- * answer — the canvas legend names it too — so it gets a segment rather than shrinking the bar.
- */
-type SegmentKey = RelevanceTag | 'untagged'
-
-const SEGMENT_KEYS: readonly SegmentKey[] = [...RELEVANCE_TAGS, 'untagged']
-
-const SEGMENT_LABEL: Record<SegmentKey, string> = {
-  'out-of-world': RELEVANCE_STYLE['out-of-world'].label,
-  worldbuilding: RELEVANCE_STYLE.worldbuilding.label,
-  peoplebuilding: RELEVANCE_STYLE.peoplebuilding.label,
-  other: RELEVANCE_STYLE.other.label,
-  untagged: 'Untagged',
-}
-
-/**
- * Fixed colours rather than theme tokens: these are the hues the pins already fly, and a
- * segment has to mean the same thing on the canvas and in the chart. All five are mid-lightness,
- * so `--chart-ink` (a near-black) stays legible on every one of them in either colour scheme.
- */
-const SEGMENT_COLOR: Record<SegmentKey, string> = {
-  'out-of-world': relevanceColor('out-of-world'),
-  worldbuilding: relevanceColor('worldbuilding'),
-  peoplebuilding: relevanceColor('peoplebuilding'),
-  other: relevanceColor('other'),
-  untagged: 'hsl(220 8% 62%)',
-}
-
-/**
- * A texture per segment, so the chart survives being read by someone who cannot tell the hues
- * apart — and printed in greyscale. The shapes are deliberately different in *kind* (diagonal,
- * counter-diagonal, dots, grid, verticals), not just in density.
- */
-function SegmentPattern({ id, segment }: { id: string; segment: SegmentKey }): ReactElement {
-  const ink = 'rgba(0, 0, 0, 0.34)'
-  return (
-    <pattern id={id} width="6" height="6" patternUnits="userSpaceOnUse">
-      {segment === 'out-of-world' && <path d="M0 6 6 0" stroke={ink} strokeWidth="1.6" />}
-      {segment === 'worldbuilding' && <path d="M0 0 6 6" stroke={ink} strokeWidth="1.6" />}
-      {segment === 'peoplebuilding' && <circle cx="3" cy="3" r="1.3" fill={ink} />}
-      {segment === 'other' && <path d="M0 3h6M3 0v6" stroke={ink} strokeWidth="1.1" />}
-      {segment === 'untagged' && <path d="M1.5 0v6" stroke={ink} strokeWidth="1.2" />}
-    </pattern>
-  )
-}
+import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
+import type { SegmentKey, Tally } from './relevance-segments.ts'
+import {
+  SEGMENT_COLOR,
+  SEGMENT_KEYS,
+  SEGMENT_LABEL,
+  emptyTally,
+  tally,
+  totalOf,
+} from './relevance-segments.ts'
 
 /** What clicking a row's segment narrows to — the row's own axis, whichever chart it is in. */
 type RowTarget =
@@ -63,7 +24,6 @@ type BreakdownRow = {
   label: string
   /** Distinct dialogues, which is what the row is sorted and labelled by. */
   dialogues: number
-  /** Tag occurrences: a line with two tags lands in both segments, so these sum higher. */
   counts: Record<SegmentKey, number>
   target: RowTarget
 }
@@ -116,41 +76,10 @@ export function RelevanceBreakdown({
       <SegmentLegend />
 
       <div className="insights__charts">
-        <BreakdownChart
-          idPrefix="zone"
-          title="By zone"
-          rows={byZone}
-          emptyMessage="No dialogues to break down."
-          onSelect={select}
-        />
-        <BreakdownChart
-          idPrefix="npc"
-          title="By NPC"
-          rows={byNpc}
-          emptyMessage="No dialogues to break down."
-          onSelect={select}
-        />
+        <BreakdownChart idPrefix="zone" title="By zone" rows={byZone} onSelect={select} />
+        <BreakdownChart idPrefix="npc" title="By NPC" rows={byNpc} onSelect={select} />
       </div>
     </section>
-  )
-}
-
-function SegmentLegend(): ReactElement {
-  return (
-    <ul className="insights__legend">
-      {SEGMENT_KEYS.map((segment) => (
-        <li key={segment} className="insights__legend-item">
-          <svg className="insights__legend-swatch" viewBox="0 0 12 12" aria-hidden="true">
-            <defs>
-              <SegmentPattern id={`legend-${segment}`} segment={segment} />
-            </defs>
-            <rect width="12" height="12" fill={SEGMENT_COLOR[segment]} />
-            <rect width="12" height="12" fill={`url(#legend-${segment})`} />
-          </svg>
-          {SEGMENT_LABEL[segment]}
-        </li>
-      ))}
-    </ul>
   )
 }
 
@@ -171,25 +100,23 @@ function BreakdownChart({
   idPrefix,
   title,
   rows,
-  emptyMessage,
   onSelect,
 }: {
   idPrefix: string
   title: string
   rows: readonly BreakdownRow[]
-  emptyMessage: string
   onSelect: (target: RowTarget, segment: SegmentKey) => void
 }): ReactElement {
   const height = Math.max(rows.length * ROW_PITCH, ROW_PITCH)
   // A single row must still fill the bar rather than being drawn as a sliver of an imagined
   // larger maximum, so the scale is the largest row, never a fixed ceiling.
-  const widest = rows.reduce((max, row) => Math.max(max, total(row.counts)), 0)
+  const widest = rows.reduce((max, row) => Math.max(max, totalOf(row.counts)), 0)
 
   return (
     <figure className="insights__chart">
       <figcaption className="insights__chart-title">{title}</figcaption>
       {rows.length === 0 ? (
-        <p className="insights__empty">{emptyMessage}</p>
+        <p className="insights__empty">No dialogues to break down.</p>
       ) : (
         <svg
           className="insights__svg"
@@ -197,11 +124,7 @@ function BreakdownChart({
           role="img"
           aria-label={title}
         >
-          <defs>
-            {SEGMENT_KEYS.map((segment) => (
-              <SegmentPattern key={segment} id={`${idPrefix}-${segment}`} segment={segment} />
-            ))}
-          </defs>
+          <SegmentDefs idPrefix={idPrefix} />
           {rows.map((row, index) => (
             <BreakdownBar
               key={row.key}
@@ -236,7 +159,6 @@ function BreakdownBar({
 
   return (
     <g>
-      <title>{`${row.label}: ${row.dialogues}`}</title>
       <text className="insights__row-label" x={LABEL_WIDTH} y={middle} textAnchor="end">
         {truncate(row.label, 26)}
       </text>
@@ -386,28 +308,6 @@ function npcRows(dialogues: readonly Dialogue[]): BreakdownRow[] {
 
 function npcKeysOf(target: RowTarget): readonly string[] {
   return target.kind === 'npcs' ? target.npcKeys : []
-}
-
-type Tally = { dialogues: number; counts: Record<SegmentKey, number> }
-
-function emptyTally(): Tally {
-  return {
-    dialogues: 0,
-    counts: { 'out-of-world': 0, worldbuilding: 0, peoplebuilding: 0, other: 0, untagged: 0 },
-  }
-}
-
-function tally(bucket: Tally, dialogue: Dialogue): void {
-  bucket.dialogues += 1
-  if (dialogue.relevance.length === 0) {
-    bucket.counts.untagged += 1
-    return
-  }
-  for (const tag of dialogue.relevance) bucket.counts[tag] += 1
-}
-
-function total(counts: Record<SegmentKey, number>): number {
-  return SEGMENT_KEYS.reduce((sum, segment) => sum + counts[segment], 0)
 }
 
 /** Descending by line count, then by label, so equal bars keep a stable order across renders. */

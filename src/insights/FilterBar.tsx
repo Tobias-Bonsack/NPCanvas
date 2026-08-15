@@ -5,7 +5,14 @@ import { zoneHueStyle } from '../map/zone-style.ts'
 import type { Dialogue, GameMap, ProjectFile, RelevanceTag, Zone } from '../project/types.ts'
 import { DIALOGUE_CONTENT_KINDS, RELEVANCE_TAGS } from '../project/types.ts'
 import type { ContentKind, DialogueFilter, ZoneScope } from './filters.ts'
-import { EMPTY_FILTER, NO_ZONE, isEmptyFilter, npcKey, npcLabel, toggleFilterValue } from './filters.ts'
+import {
+  EMPTY_FILTER,
+  NO_ZONE,
+  isEmptyFilter,
+  npcKey,
+  npcLabel,
+  toggleFilterValue,
+} from './filters.ts'
 
 const CONTENT_KIND_LABEL: Record<ContentKind, string> = {
   text: 'Text',
@@ -62,7 +69,9 @@ export function FilterBar({
           <input
             type="date"
             value={toDateInputValue(filter.from)}
-            onChange={(event) => onChange({ ...filter, from: fromDateInputValue(event.target.value, 'start') })}
+            onChange={(event) =>
+              onChange({ ...filter, from: fromDateInputValue(event.target.value, 'start') })
+            }
           />
         </label>
         <label className="filter-bar__date">
@@ -70,7 +79,9 @@ export function FilterBar({
           <input
             type="date"
             value={toDateInputValue(filter.to)}
-            onChange={(event) => onChange({ ...filter, to: fromDateInputValue(event.target.value, 'end') })}
+            onChange={(event) =>
+              onChange({ ...filter, to: fromDateInputValue(event.target.value, 'end') })
+            }
           />
         </label>
         <button
@@ -93,7 +104,10 @@ export function FilterBar({
               style={relevanceHueStyle(tag)}
               aria-pressed={filter.relevance.includes(tag)}
               onClick={() =>
-                onChange({ ...filter, relevance: toggleFilterValue<RelevanceTag>(filter.relevance, tag) })
+                onChange({
+                  ...filter,
+                  relevance: toggleFilterValue<RelevanceTag>(filter.relevance, tag),
+                })
               }
             >
               {RELEVANCE_STYLE[tag].label}

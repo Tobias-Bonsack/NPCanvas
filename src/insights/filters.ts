@@ -88,7 +88,10 @@ export function applyFilter(
     }
 
     // OR across the selected tags, so an untagged dialogue can never match a tag filter.
-    if (filter.relevance.length > 0 && !filter.relevance.some((tag) => dialogue.relevance.includes(tag))) {
+    if (
+      filter.relevance.length > 0 &&
+      !filter.relevance.some((tag) => dialogue.relevance.includes(tag))
+    ) {
       return false
     }
 

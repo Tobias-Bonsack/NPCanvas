@@ -327,3 +327,149 @@
   dominant-baseline: middle;
   pointer-events: none;
 }
+
+/* ---- timeline ---- */
+
+.timeline__svg {
+  touch-action: none;
+}
+
+.timeline__axis {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.timeline__tick {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--text-muted);
+}
+
+/* The bars take no pointer events: one surface over the plot does hover and brushing, so a
+   one-pixel-wide bucket is exactly as easy to hit as a wide one. */
+.timeline__bucket {
+  pointer-events: none;
+}
+
+.timeline__bucket:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Outside the selected range, still drawn: the point of a brush is to compare what you picked
+   against what you did not. */
+.timeline__bucket[data-outside] {
+  opacity: 0.28;
+}
+
+.timeline__empty-bucket {
+  fill: var(--border);
+}
+
+.timeline__brush {
+  fill: var(--accent);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.timeline__surface {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.timeline__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.timeline__detail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* ---- one dialogue row ---- */
+
+.insights__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  overflow: hidden;
+}
+
+.insights__rows > li + li {
+  border-top: 1px solid var(--border);
+}
+
+/* A grid, not a flex row: the columns have to line up down the whole list, and the snippet is
+   the only one allowed to give up width. Mirrors the quest board's linked rows. */
+.dialogue-row {
+  display: grid;
+  grid-template-columns: auto minmax(6rem, max-content) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--surface-0);
+  padding: var(--space-2) var(--space-3);
+}
+
+.dialogue-row:hover {
+  background: var(--surface-2);
+}
+
+.dialogue-row__npc {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-row__snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.dialogue-row__where {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+.dialogue-row__zone {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-round);
+  border: 1px solid hsl(var(--zone-hue) 75% 62%);
+  background: hsl(var(--zone-hue) 70% 55% / 0.18);
+}
+
+/* Zones come back most specific first, so everything after the first is broader context. */
+.dialogue-row__zone:not(:first-child) {
+  opacity: 0.7;
+}
+
+.dialogue-row__nowhere,
+.dialogue-row__when {
+  color: var(--text-muted);
+}
+
+.dialogue-row__when {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
