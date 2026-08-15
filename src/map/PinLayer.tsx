@@ -13,7 +13,9 @@ import type {
   GameMap,
   MapId,
   Point,
+  Quest,
 } from '../project/types.ts'
+import { questAccentStyle } from '../quest/quest-style.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
 import { canvasRectToMapLocal } from './canvas-layout.ts'
 import type { Rect } from './geometry.ts'
@@ -53,7 +55,7 @@ export const PinLayer = memo(function PinLayer({
   dialogues,
   selectedId,
   highlighted,
-  inOpenQuest,
+  questsByDialogue,
   visibleRect,
 }: {
   maps: readonly GameMap[]
@@ -67,10 +69,12 @@ export const PinLayer = memo(function PinLayer({
    */
   highlighted: ReadonlySet<DialogueId> | null
   /**
-   * The dialogues at least one **open** quest names — see `quest-index.ts`. A separate mark
-   * from the relevance fill, because the two answer different questions about the same pin.
+   * The quests naming each dialogue, in document order — see `quest-index.ts`. One flag per
+   * entry, so a pin in three threads looks like a pin in three threads. A dialogue in no quest
+   * is simply absent from the map. A separate mark from the relevance fill, because the two
+   * answer different questions about the same pin.
    */
-  inOpenQuest: ReadonlySet<DialogueId>
+  questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
   /**
    * Canvas space. Pins outside it keep their glyph instead of reading a thumbnail off disk.
    * `null` until the container has been measured, which simply means no thumbnails yet.
@@ -185,7 +189,7 @@ export const PinLayer = memo(function PinLayer({
                 }
                 onScreen={visible !== null && rectContains(visible, dialogue.position)}
                 dimmed={highlighted !== null && !highlighted.has(dialogue.id)}
-                inOpenQuest={inOpenQuest.has(dialogue.id)}
+                quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
                 selected={dialogue.id === selectedId}
                 confirmingDelete={pendingDelete === dialogue.id}
                 onPointerDown={onPointerDown}
@@ -202,6 +206,9 @@ export const PinLayer = memo(function PinLayer({
     </div>
   )
 })
+
+/** One shared empty array, so a pin in no quest is handed the same reference every render. */
+const NO_QUESTS: readonly Quest[] = []
 
 /**
  * Dialogues bucketed by map, in one pass. A dialogue naming a map that is not in `maps`
@@ -223,7 +230,7 @@ function Pin({
   position,
   onScreen,
   dimmed,
-  inOpenQuest,
+  quests,
   selected,
   confirmingDelete,
   onPointerDown,
@@ -240,8 +247,8 @@ function Pin({
   /** Filtered out by the zone selection or the quest highlight. Still selectable — dimmed is
    * context, not disabled. */
   dimmed: boolean
-  /** Named by at least one open quest, which the flag in the corner marks. */
-  inOpenQuest: boolean
+  /** Every quest naming this dialogue, in document order — one flag each, uncapped. */
+  quests: readonly Quest[]
   selected: boolean
   confirmingDelete: boolean
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
@@ -272,7 +279,7 @@ function Pin({
         data-tagged={dialogue.relevance.length > 0 ? 'true' : undefined}
         aria-current={selected ? 'true' : undefined}
         style={{ background: relevancePinBackground(dialogue.relevance) }}
-        title={inOpenQuest ? `${name} — in an open quest` : name}
+        title={pinTitle(name, quests)}
         onPointerDown={(event) => onPointerDown(event, dialogue)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -293,8 +300,16 @@ function Pin({
         <span className="pin__name">{name}</span>
         {/* A separate mark in a separate place, not another colour in the fill: the fill is
             spoken for by relevance, and a fifth band would read as a fifth tag. Decorative —
-            the button's title carries the same fact for anyone who cannot see the flag. */}
-        {inOpenQuest && <QuestFlag />}
+            the button's title names the quests for anyone who cannot see the flags. */}
+        {quests.length > 0 && (
+          <span className="pin__quests" aria-hidden="true">
+            {quests.map((quest, index) => (
+              // Keyed by position as well as id, because a hand-edited data.json may name the
+              // same quest twice and the pin renders exactly what the document says.
+              <QuestFlag key={`${quest.id}-${index}`} quest={quest} />
+            ))}
+          </span>
+        )}
       </button>
 
       {confirmingDelete && (
@@ -321,15 +336,38 @@ function Pin({
 
 /**
  * A pennant on a pole, filled for the same reason `ContentGlyph` is: at this size a stroke
- * lands near a single physical pixel and reads as a smudge. A distinct *shape* in a distinct
- * corner, so quest membership cannot be mistaken for a relevance band or a selection outline.
+ * lands near a single physical pixel and reads as a smudge. A distinct *shape* above the pin,
+ * so quest membership cannot be mistaken for a relevance band or a selection outline.
+ *
+ * The colour comes from the quest through `questAccentStyle`, which is also what turns a
+ * finished quest's flag green — status is decided there and nowhere else.
  */
-function QuestFlag(): ReactElement {
+function QuestFlag({ quest }: { quest: Quest }): ReactElement {
   return (
-    <svg className="pin__quest" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+    <svg
+      className="pin__quest"
+      style={questAccentStyle(quest)}
+      viewBox="0 0 16 16"
+      fill="currentColor"
+    >
       <path d="M3 1h1.8v14H3z M4.8 1.6h8.4l-2.2 3.2 2.2 3.2H4.8z" />
     </svg>
   )
+}
+
+/**
+ * The pin's accessible name, plus the quests it belongs to. `title` rather than a visible
+ * label because the flags are decorative — this is the only place the fact is stated in words.
+ */
+function pinTitle(name: string, quests: readonly Quest[]): string {
+  if (quests.length === 0) return name
+  return `${name} — ${quests.map(questTitle).join(', ')}`
+}
+
+function questTitle(quest: Quest): string {
+  const trimmed = quest.name.trim()
+  const named = trimmed === '' ? 'Untitled quest' : trimmed
+  return quest.status === 'done' ? `${named} (done)` : named
 }
 
 /**

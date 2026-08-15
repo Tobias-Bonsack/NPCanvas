@@ -267,21 +267,30 @@
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
-  /* The positioning context for the quest flag, which hangs off the pin's corner. */
+  /* The positioning context for the quest flags, which fly above the pin's top edge. */
   position: relative;
 }
 
-/* Quest membership rides in the corner rather than in the fill: the fill is relevance, and
-   another colour in it would read as a fifth tag. The dark drop-shadow is the flag's own
-   contrast — it sits over the pin, over map imagery, or over a thumbnail, none of which it
-   can make assumptions about. */
-.pin__quest {
+/* Anchored to the pin's right edge and growing leftward, so a pin in one quest and a pin in
+   five stay aligned with each other and neither pushes into the pin's own label. Sitting
+   above the top edge rather than in a corner is what leaves room for an unbounded row. */
+.pin__quests {
   position: absolute;
-  top: -6px;
+  bottom: calc(100% - 6px);
   right: -4px;
-  width: 0.875rem;
-  height: 0.875rem;
-  color: var(--quest);
+  display: flex;
+  align-items: flex-end;
+}
+
+/* Quest membership rides above the pin rather than in the fill: the fill is relevance, and
+   another colour in it would read as a fifth tag. The hue is written inline per flag, so two
+   quests on one pin are told apart by colour. The dark drop-shadow is the flag's own contrast
+   — it sits over the pin, over map imagery, or over a thumbnail, none of which it can make
+   assumptions about. */
+.pin__quest {
+  width: 1.125rem;
+  height: 1.125rem;
+  color: hsl(var(--quest-hue) 75% 58%);
   filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9));
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { asDialogueId, asQuestId } from '../project/ids.ts'
 import type { Quest, QuestStatus } from '../project/types.ts'
-import { dialoguesInAnyQuest, dialoguesInOpenQuests, indexQuestsByDialogue } from './quest-index.ts'
+import { dialoguesInAnyQuest, indexQuestsByDialogue } from './quest-index.ts'
 
 function quest(id: string, status: QuestStatus, dialogueIds: string[]): Quest {
   return {
@@ -42,21 +42,9 @@ describe('indexQuestsByDialogue', () => {
 
   it('does not duplicate a dialogue a single quest lists twice', () => {
     // The reducer refuses a duplicate attach, but a hand-edited data.json can still hold one,
-    // and it must not double a pin's marker or its quest count.
+    // and the pin is honest about it: one flag per entry, as the document states it.
     const index = indexQuestsByDialogue([quest('quest-1', 'open', ['ledger', 'ledger'])])
     expect(index.get(asDialogueId('ledger'))?.length).toBe(2)
-  })
-})
-
-describe('dialoguesInOpenQuests', () => {
-  it('keeps only dialogues an open quest names', () => {
-    const marked = dialoguesInOpenQuests(indexQuestsByDialogue(QUESTS))
-    expect([...marked].sort()).toEqual(['ledger', 'lantern'].sort())
-  })
-
-  it('drops a dialogue whose only quest is done', () => {
-    const marked = dialoguesInOpenQuests(indexQuestsByDialogue(QUESTS))
-    expect(marked.has(asDialogueId('rumour'))).toBe(false)
   })
 })
 

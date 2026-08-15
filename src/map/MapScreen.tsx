@@ -5,11 +5,7 @@ import { navigate } from '../app/route.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
-import {
-  dialoguesInAnyQuest,
-  dialoguesInOpenQuests,
-  indexQuestsByDialogue,
-} from '../quest/quest-index.ts'
+import { dialoguesInAnyQuest, indexQuestsByDialogue } from '../quest/quest-index.ts'
 import type {
   CanvasTool,
   DialogueId,
@@ -107,10 +103,10 @@ export function MapScreen({
     [zoneIndex, selectedZoneId],
   )
 
-  // Inverted once per document change, so the marker below is an O(1) lookup per pin rather
-  // than a scan of every quest's dialogueIds per pin.
+  // Inverted once per document change, so a pin's flags are an O(1) lookup rather than a scan
+  // of every quest's dialogueIds per pin. Memoized on `project.quests` alone, which is what
+  // keeps it stable across pan frames and `PinLayer`'s memo intact.
   const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
-  const inOpenQuest = useMemo(() => dialoguesInOpenQuests(questIndex), [questIndex])
   const questLinked = useMemo(() => dialoguesInAnyQuest(questIndex), [questIndex])
 
   // The filters intersect rather than override: a selected zone and the quest highlight are
@@ -207,7 +203,7 @@ export function MapScreen({
               dialogues={project.dialogues}
               selectedId={selection.kind === 'dialogue' ? selection.id : null}
               highlighted={highlighted}
-              inOpenQuest={inOpenQuest}
+              questsByDialogue={questIndex}
               visibleRect={visibleRect}
             />
           </MapCanvas>
