@@ -25,8 +25,8 @@
 
 .canvas-legend__glyph {
   display: inline-flex;
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 0.8125rem;
+  height: 0.8125rem;
   color: var(--text);
 }
 

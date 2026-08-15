@@ -119,6 +119,9 @@ export function MapCanvas({
   const containerRef = useRef<HTMLDivElement>(null)
   const [container, setContainer] = useState<Size>({ width: 0, height: 0 })
   const [viewport, setViewport] = useState<Viewport>(EMPTY_VIEWPORT)
+  // Drives `will-change` on the world element for the duration of a pan only — see the
+  // comment on `.map-canvas[data-panning]`. Two renders per gesture, not one per frame.
+  const [panning, setPanning] = useState(false)
   const selectedMap = maps.find((map) => map.id === selectedMapId) ?? null
 
   useEffect(() => {
@@ -234,7 +237,12 @@ export function MapCanvas({
     // Below the threshold the press is still a candidate click, and panning by a pixel of
     // hand-shake would otherwise swallow it.
     if (!drag.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
-    drag.moved = true
+    // Guarded on the transition: setting it every move would re-render on every frame, which
+    // is exactly what the layer promotion exists to avoid.
+    if (!drag.moved) {
+      drag.moved = true
+      setPanning(true)
+    }
     setViewport({
       ...drag.from,
       x: drag.from.x - dx / drag.from.scale,
@@ -246,6 +254,7 @@ export function MapCanvas({
     const drag = pan.current
     if (drag === null || drag.pointerId !== event.pointerId) return
     pan.current = null
+    setPanning(false)
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -364,6 +373,7 @@ export function MapCanvas({
     <div
       className="map-canvas"
       data-tool={tool.kind}
+      data-panning={panning ? 'true' : undefined}
       ref={containerRef}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

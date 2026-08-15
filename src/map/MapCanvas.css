@@ -23,6 +23,23 @@
   cursor: move;
 }
 
+/* Promotes the world to its own composited layer, so a pan is a compositor translate rather
+   than a re-raster of everything in it. Measured with 500 pins on one map, half of them
+   showing thumbnails: ~27 ms per frame without it, a locked 16.7 ms with. The pins are the
+   cost — React does not re-render them while panning (PinLayer is memo'd and
+   viewport-independent), but re-rasterising 500 rounded, bordered boxes each frame is real
+   work.
+
+   Only *during* the pan, which is the whole subtlety. Left on permanently, Chromium treats
+   the transform as animating and keeps the raster scale it first chose, so at 450% zoom the
+   counter-scaled pins are rastered small and then blown up as a texture — the labels turn to
+   mush. Promoting at pointerdown captures the scale that is already on screen, the scale does
+   not change during a pan, and dropping it at pointerup re-rasters sharp. Zoom deliberately
+   does not get this: the scale is what changes there, so a re-raster is the correct work. */
+.map-canvas[data-panning='true'] .map-canvas__world {
+  will-change: transform;
+}
+
 .map-canvas__world {
   position: absolute;
   top: 0;
@@ -30,13 +47,6 @@
   /* Every transform in viewport.ts is expressed from the top-left; a centred origin would
      silently offset every world-to-screen conversion by half the element. */
   transform-origin: 0 0;
-  /* Promotes the world to its own composited layer, so a pan is a compositor translate
-     instead of a re-raster of everything in it. Measured with 500 pins on one map, half of
-     them showing thumbnails: ~27 ms per frame without it, a locked 16.7 ms with. The pins
-     are the cost — React does not re-render them while panning (PinLayer is memo'd and
-     viewport-independent), but re-rasterising 500 rounded, bordered boxes each frame is
-     real work. */
-  will-change: transform;
   /* Set by MapCanvas as one property write per frame; pins counter-scale against it. */
   --map-zoom: 1;
   /* The default for anything in the world element that is not inside a map group. Without
@@ -190,8 +200,8 @@
    chrome's neutral there, so "not classified" reads as absence rather than as a colour. */
 .pin__ring {
   flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 2px;
   border-radius: var(--radius-round);
   display: grid;
@@ -213,11 +223,11 @@
   background: var(--accent-contrast);
 }
 
-/* Inside a 1rem face, so drawn at roughly 10 device pixels: the strokes in ContentGlyph are
-   sized for exactly this. */
+/* Roughly 14 device pixels once the face is accounted for, which is the size the filled
+   silhouettes in ContentGlyph are drawn for. */
 .content-glyph {
-  width: 0.75rem;
-  height: 0.75rem;
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 .pin__thumb {
