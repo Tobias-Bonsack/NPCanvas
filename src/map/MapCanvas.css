@@ -267,6 +267,22 @@
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
+  /* The positioning context for the quest flag, which hangs off the pin's corner. */
+  position: relative;
+}
+
+/* Quest membership rides in the corner rather than in the fill: the fill is relevance, and
+   another colour in it would read as a fifth tag. The dark drop-shadow is the flag's own
+   contrast — it sits over the pin, over map imagery, or over a thumbnail, none of which it
+   can make assumptions about. */
+.pin__quest {
+  position: absolute;
+  top: -5px;
+  right: -3px;
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--quest);
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9));
 }
 
 /* The width the bands need to stay nameable: at four tags this is ~28 px each, where a ring

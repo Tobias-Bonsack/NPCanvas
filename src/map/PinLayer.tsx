@@ -52,18 +52,25 @@ export const PinLayer = memo(function PinLayer({
   maps,
   dialogues,
   selectedId,
-  insideSelectedZone,
+  highlighted,
+  inOpenQuest,
   visibleRect,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
   selectedId: DialogueId | null
   /**
-   * The dialogues the selected zone contains, derived — see `zone-index.ts`. Everything else
-   * is dimmed, which is what makes a zone's membership visible on the map itself. `null` when
-   * no zone is selected, so "nothing to dim" cannot be confused with "this zone is empty".
+   * The dialogues every active canvas filter agrees on — a selected zone's contents, the quest
+   * highlight, or the intersection of both. Everything else is dimmed. `MapScreen` combines
+   * the filters so this layer never learns *why* a pin is dimmed; `null` means no filter is
+   * active at all, which must not be confused with a filter that matched nothing.
    */
-  insideSelectedZone: ReadonlySet<DialogueId> | null
+  highlighted: ReadonlySet<DialogueId> | null
+  /**
+   * The dialogues at least one **open** quest names — see `quest-index.ts`. A separate mark
+   * from the relevance fill, because the two answer different questions about the same pin.
+   */
+  inOpenQuest: ReadonlySet<DialogueId>
   /**
    * Canvas space. Pins outside it keep their glyph instead of reading a thumbnail off disk.
    * `null` until the container has been measured, which simply means no thumbnails yet.
@@ -177,7 +184,8 @@ export const PinLayer = memo(function PinLayer({
                     : dialogue.position
                 }
                 onScreen={visible !== null && rectContains(visible, dialogue.position)}
-                dimmed={insideSelectedZone !== null && !insideSelectedZone.has(dialogue.id)}
+                dimmed={highlighted !== null && !highlighted.has(dialogue.id)}
+                inOpenQuest={inOpenQuest.has(dialogue.id)}
                 selected={dialogue.id === selectedId}
                 confirmingDelete={pendingDelete === dialogue.id}
                 onPointerDown={onPointerDown}
@@ -215,6 +223,7 @@ function Pin({
   position,
   onScreen,
   dimmed,
+  inOpenQuest,
   selected,
   confirmingDelete,
   onPointerDown,
@@ -228,8 +237,11 @@ function Pin({
   position: Point
   /** Inside the visible world rect, and therefore allowed to read a thumbnail off disk. */
   onScreen: boolean
-  /** Outside the selected zone. Still selectable — dimmed is context, not disabled. */
+  /** Filtered out by the zone selection or the quest highlight. Still selectable — dimmed is
+   * context, not disabled. */
   dimmed: boolean
+  /** Named by at least one open quest, which the flag in the corner marks. */
+  inOpenQuest: boolean
   selected: boolean
   confirmingDelete: boolean
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
@@ -260,7 +272,7 @@ function Pin({
         data-tagged={dialogue.relevance.length > 0 ? 'true' : undefined}
         aria-current={selected ? 'true' : undefined}
         style={{ background: relevancePinBackground(dialogue.relevance) }}
-        title={name}
+        title={inOpenQuest ? `${name} — in an open quest` : name}
         onPointerDown={(event) => onPointerDown(event, dialogue)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -279,6 +291,10 @@ function Pin({
           <PinFace content={dialogue.content} onScreen={onScreen} />
         </span>
         <span className="pin__name">{name}</span>
+        {/* A separate mark in a separate place, not another colour in the fill: the fill is
+            spoken for by relevance, and a fifth band would read as a fifth tag. Decorative —
+            the button's title carries the same fact for anyone who cannot see the flag. */}
+        {inOpenQuest && <QuestFlag />}
       </button>
 
       {confirmingDelete && (
@@ -300,6 +316,19 @@ function Pin({
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * A pennant on a pole, filled for the same reason `ContentGlyph` is: at this size a stroke
+ * lands near a single physical pixel and reads as a smudge. A distinct *shape* in a distinct
+ * corner, so quest membership cannot be mistaken for a relevance band or a selection outline.
+ */
+function QuestFlag(): ReactElement {
+  return (
+    <svg className="pin__quest" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+      <path d="M3 1h1.8v14H3z M4.8 1.6h8.4l-2.2 3.2 2.2 3.2H4.8z" />
+    </svg>
   )
 }
 

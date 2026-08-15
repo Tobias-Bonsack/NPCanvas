@@ -5,7 +5,19 @@ import { navigate } from '../app/route.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
-import type { CanvasTool, GameMap, ProjectFile, Selection, Zone } from '../project/types.ts'
+import {
+  dialoguesInAnyQuest,
+  dialoguesInOpenQuests,
+  indexQuestsByDialogue,
+} from '../quest/quest-index.ts'
+import type {
+  CanvasTool,
+  DialogueId,
+  GameMap,
+  ProjectFile,
+  Selection,
+  Zone,
+} from '../project/types.ts'
 import type { Rect } from './geometry.ts'
 import type { MapDragPreview, ZoneDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
@@ -42,6 +54,9 @@ export function MapScreen({
   // both are children of this screen, and it changes only when the view settles — `setState`
   // is passed straight down, so the callback identity is stable for MapCanvas's effect.
   const [visibleRect, setVisibleRect] = useState<Rect | null>(null)
+  // Whether the canvas is filtered down to quest-linked pins. A view filter, not a document
+  // property, so it lives here with the tool and the drag previews.
+  const [questFilter, setQuestFilter] = useState(false)
 
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
@@ -92,6 +107,20 @@ export function MapScreen({
     [zoneIndex, selectedZoneId],
   )
 
+  // Inverted once per document change, so the marker below is an O(1) lookup per pin rather
+  // than a scan of every quest's dialogueIds per pin.
+  const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
+  const inOpenQuest = useMemo(() => dialoguesInOpenQuests(questIndex), [questIndex])
+  const questLinked = useMemo(() => dialoguesInAnyQuest(questIndex), [questIndex])
+
+  // The filters intersect rather than override: a selected zone and the quest highlight are
+  // two independent questions, and answering only the most recent one would silently discard
+  // half of what the user asked for. `null` when neither is active, so nothing dims at all.
+  const highlighted = useMemo(
+    () => intersect(insideSelectedZone, questFilter ? questLinked : null),
+    [insideSelectedZone, questFilter, questLinked],
+  )
+
   const selectedDialogue =
     selection.kind === 'dialogue'
       ? (dialogues.find((dialogue) => dialogue.id === selection.id) ?? null)
@@ -131,6 +160,20 @@ export function MapScreen({
     <section className="map-screen">
       <header className="map-screen__bar">
         <ToolPicker tool={tool} onChange={setTool} />
+        <button
+          type="button"
+          className="quest-filter"
+          aria-pressed={questFilter}
+          disabled={questLinked.size === 0}
+          title={
+            questLinked.size === 0
+              ? 'No dialogue is attached to a quest yet'
+              : 'Dim every pin no quest names'
+          }
+          onClick={() => setQuestFilter((on) => !on)}
+        >
+          Quest pins only
+        </button>
         <CanvasLegend />
       </header>
       <div className="map-screen__body">
@@ -159,7 +202,8 @@ export function MapScreen({
               maps={placedMaps}
               dialogues={project.dialogues}
               selectedId={selection.kind === 'dialogue' ? selection.id : null}
-              insideSelectedZone={insideSelectedZone}
+              highlighted={highlighted}
+              inOpenQuest={inOpenQuest}
               visibleRect={visibleRect}
             />
           </MapCanvas>
@@ -185,6 +229,24 @@ export function MapScreen({
 function withDragPreview(maps: GameMap[], drag: MapDragPreview | null): readonly GameMap[] {
   if (drag === null) return maps
   return maps.map((map) => (map.id === drag.id ? { ...map, origin: drag.origin } : map))
+}
+
+/**
+ * Both filters, or whichever one is active, or `null` when neither is — the single set the pin
+ * layer dims against. Returns an operand by reference when it is the only one, so a canvas
+ * with one filter running allocates nothing per render.
+ */
+function intersect(
+  a: ReadonlySet<DialogueId> | null,
+  b: ReadonlySet<DialogueId> | null,
+): ReadonlySet<DialogueId> | null {
+  if (a === null) return b
+  if (b === null) return a
+  const both = new Set<DialogueId>()
+  for (const id of a) {
+    if (b.has(id)) both.add(id)
+  }
+  return both
 }
 
 /** The zones as they should be drawn right now, mirroring `withDragPreview` exactly. */

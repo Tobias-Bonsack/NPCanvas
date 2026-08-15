@@ -1,0 +1,103 @@
+/* A section of the dialogue panel, so it borrows the panel's own button and legend classes
+   rather than restating them — only what is specific to quests lives here. */
+.dialogue-quests {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.dialogue-quests__empty {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.dialogue-quests__list {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dialogue-quests__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The quest-marker colour, the same one the pin's flag uses, so a link here and a flagged pin
+   on the canvas read as the same fact. */
+.dialogue-quests__link,
+.dialogue-quests__option {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  background: color-mix(in srgb, var(--quest) 16%, transparent);
+  border: 1px solid transparent;
+  border-left: 3px solid var(--quest);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.dialogue-quests__link:hover,
+.dialogue-quests__option:hover {
+  background: color-mix(in srgb, var(--quest) 28%, transparent);
+}
+
+/* A finished quest is history: still listed, still detachable, but not competing with the
+   threads still being chased. Matches the quest card's own treatment on the board. */
+.dialogue-quests__link[data-status='done'],
+.dialogue-quests__option[data-status='done'] {
+  border-left-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.dialogue-quests__option {
+  width: 100%;
+}
+
+.dialogue-quests__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dialogue-quests__picker {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dialogue-quests__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dialogue-quests__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+}

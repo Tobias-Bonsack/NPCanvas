@@ -19,6 +19,11 @@
   --accent: #6ea8fe;
   --accent-contrast: #0b1220;
 
+  /* Quest membership, wherever it is shown: the pin flag, the panel's quest links, the board.
+     Deliberately outside the relevance hues (220 / 150 / 35 / 290 at 70% 60%) and away from
+     --accent, so "in a quest" can never be mistaken for a tag or for a selection. */
+  --quest: #f2c14e;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -55,6 +60,9 @@
 
     --accent: #1f5fd0;
     --accent-contrast: #ffffff;
+
+    /* Darkened for contrast: the dark theme's gold is illegible as ink on white. */
+    --quest: #a9741a;
   }
 }
 

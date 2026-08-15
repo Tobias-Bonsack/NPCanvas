@@ -288,6 +288,36 @@
   border-color: var(--accent);
 }
 
+/* ---- quest filter ---- */
+
+/* Pressed, it takes the quest colour rather than --accent: the pins it keeps are flagged in
+   that colour, so the toggle and its effect on the canvas are visibly the same subject. */
+.quest-filter {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.quest-filter:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.quest-filter[aria-pressed='true'] {
+  color: #10151f;
+  background: var(--quest);
+  border-color: var(--quest);
+}
+
+.quest-filter:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ---- import ---- */
 
 .map-import {

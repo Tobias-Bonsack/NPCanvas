@@ -10,7 +10,7 @@ import './Nav.css'
 // bookmarking, and the back button all work without any handler of ours.
 const NAV_ITEMS: readonly { label: string; route: Route }[] = [
   { label: 'Canvas', route: { kind: 'canvas', dialogueId: null, focusMapId: null } },
-  { label: 'Quests', route: { kind: 'quests' } },
+  { label: 'Quests', route: { kind: 'quests', editQuestId: null } },
   { label: 'Insights', route: { kind: 'insights' } },
 ]
 

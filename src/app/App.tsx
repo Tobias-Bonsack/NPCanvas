@@ -44,7 +44,7 @@ function ReadyView({ state, route }: { state: ReadyState; route: Route }): React
       return <MapScreen project={state.project} selection={state.selection} route={route} />
 
     case 'quests':
-      return <QuestBoard project={state.project} />
+      return <QuestBoard project={state.project} route={route} />
 
     case 'insights':
       return (

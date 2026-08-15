@@ -4,6 +4,7 @@ import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-medi
 import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
+import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
 import type { Dialogue, DialogueContent, ProjectFile, Zone } from '../project/types.ts'
 import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
 import { DialogueForm } from './DialogueForm.tsx'
@@ -201,6 +202,8 @@ export function DialoguePanel({
           </p>
         )}
       </section>
+
+      <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
     </aside>
   )
 }

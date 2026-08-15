@@ -44,9 +44,14 @@
   cursor: pointer;
 }
 
-.dialogue-panel__button:hover {
+.dialogue-panel__button:hover:not(:disabled) {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.dialogue-panel__button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .dialogue-panel__map {

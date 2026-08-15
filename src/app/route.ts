@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import { asDialogueId, asMapId } from '../project/ids.ts'
-import type { DialogueId, MapId } from '../project/types.ts'
+import { asDialogueId, asMapId, asQuestId } from '../project/ids.ts'
+import type { DialogueId, MapId, QuestId } from '../project/types.ts'
 
 // Hash routing, not history routing: Pages serves static files, so history routing would
 // need a `404.html` copy of `index.html`. The URL carries view state only, never data.
@@ -16,7 +16,16 @@ export type Route =
        */
       focusMapId: MapId | null
     }
-  | { kind: 'quests' }
+  | {
+      kind: 'quests'
+      /**
+       * A one-shot intent, exactly like `focusMapId`: the board opens this quest's editor once
+       * and then clears the parameter with a replacing navigation. It exists so the dialogue
+       * panel can create a quest and land the caret in its name field, which lives on the
+       * board — the hash carries *which card is open*, never any quest data.
+       */
+      editQuestId: QuestId | null
+    }
   | { kind: 'insights' }
 
 /** Shared reference, so an unparseable hash keeps returning the identical object. */
@@ -28,8 +37,10 @@ export function parseRoute(hash: string): Route {
   const segments = path.split('/').filter((segment) => segment.length > 0)
 
   switch (segments[0]) {
-    case 'quests':
-      return { kind: 'quests' }
+    case 'quests': {
+      const editParam = new URLSearchParams(query).get('edit')
+      return { kind: 'quests', editQuestId: editParam ? asQuestId(editParam) : null }
+    }
     case 'insights':
       return { kind: 'insights' }
     // `map` is the pre-M3.5 path, when the canvas showed one map at a time and named it in
@@ -54,7 +65,7 @@ export function parseRoute(hash: string): Route {
 export function formatRoute(route: Route): string {
   switch (route.kind) {
     case 'quests':
-      return '#/quests'
+      return route.editQuestId === null ? '#/quests' : `#/quests?edit=${route.editQuestId}`
     case 'insights':
       return '#/insights'
     case 'canvas': {

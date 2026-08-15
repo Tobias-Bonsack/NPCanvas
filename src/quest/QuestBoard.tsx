@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import { useMemo, useState } from 'react'
-import { formatRoute } from '../app/route.ts'
+import { useEffect, useMemo, useState } from 'react'
+import type { Route } from '../app/route.ts'
+import { formatRoute, navigate } from '../app/route.ts'
 import { assertNever } from '../assert-never.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
@@ -46,8 +47,28 @@ const STATUS_TOGGLE: Record<QuestStatus, { to: QuestStatus; label: string }> = {
  * the thread the user actually wants to follow and tick off, so quests are made by hand and
  * only ever reference dialogues — deleting one takes nothing with it.
  */
-export function QuestBoard({ project }: { project: ProjectFile }): ReactElement {
+export function QuestBoard({
+  project,
+  route,
+}: {
+  project: ProjectFile
+  route: Extract<Route, { kind: 'quests' }>
+}): ReactElement {
   const [mode, setMode] = useState<QuestBoardMode>({ kind: 'idle' })
+
+  // `?edit=<id>` is how the dialogue panel creates a quest and lands the caret in its name
+  // field, which lives here. A one-shot intent, so it is cleared with a replacing navigation
+  // before the editor opens — left in the hash it would reopen on every render and fight a
+  // user who closed it. An id naming a quest that no longer exists is simply dropped.
+  const editQuestId = route.editQuestId
+  const quests = project.quests
+  useEffect(() => {
+    if (editQuestId === null) return
+    navigate({ kind: 'quests', editQuestId: null }, { replace: true })
+    if (quests.some((quest) => quest.id === editQuestId)) {
+      setMode({ kind: 'editing', id: editQuestId })
+    }
+  }, [editQuestId, quests])
 
   // Resolved once per document change rather than once per linked row: a quest holds ids, and
   // a card with twenty of them would otherwise scan the dialogue array twenty times.
