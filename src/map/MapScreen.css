@@ -45,6 +45,56 @@
   background: var(--surface-0);
 }
 
+/* A sibling of the canvas, not an overlay on it: the map has to stay visible and pannable
+   while a line is being written. Fixed width for the same reason the map sidebar has one —
+   the canvas is what should absorb a window resize. */
+.dialogue-panel {
+  width: 22rem;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.dialogue-panel__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dialogue-panel__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.dialogue-panel__close {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.dialogue-panel__close:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.dialogue-panel__map {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 .map-screen--empty {
   align-items: center;
   justify-content: center;

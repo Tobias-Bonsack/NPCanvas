@@ -9,10 +9,12 @@ import type {
   Point,
   ProjectFile,
   Quest,
+  RelevanceTag,
   SaveState,
   Selection,
   ZoneId,
 } from './types.ts'
+import { RELEVANCE_TAGS } from './types.ts'
 
 export type Action =
   | { kind: 'project/unsupported' }
@@ -33,6 +35,10 @@ export type Action =
   | { kind: 'map/deleted'; mapId: MapId }
   | { kind: 'dialogue/added'; dialogue: Dialogue }
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
+  | { kind: 'dialogue/npc-named'; dialogueId: DialogueId; npcName: string }
+  | { kind: 'dialogue/text-set'; dialogueId: DialogueId; text: string }
+  | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
+  | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTag[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
 
 /**
@@ -180,15 +186,47 @@ export function reduce(state: AppState, action: Action): AppState {
       if (target.position.x === action.position.x && target.position.y === action.position.y) {
         return state
       }
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          dialogues: state.project.dialogues.map((dialogue) =>
-            dialogue === target ? { ...dialogue, position: action.position } : dialogue,
-          ),
-        },
-      }
+      return withDialogue(state, target, { ...target, position: action.position })
+    }
+
+    // The four field edits below each fire per keystroke or per click. They are separate
+    // actions rather than one patch so every one of them can compare its own field and
+    // return the identical state for a no-op — which is what keeps autosave from waking on
+    // a re-render that changed nothing.
+    case 'dialogue/npc-named': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null || target.npcName === action.npcName) return state
+      return withDialogue(state, target, { ...target, npcName: action.npcName })
+    }
+
+    // Only meaningful for a text dialogue: media content has no text body, and inventing one
+    // would discard the file reference.
+    case 'dialogue/text-set': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null || target.content.kind !== 'text') return state
+      if (target.content.text === action.text) return state
+      return withDialogue(state, target, {
+        ...target,
+        content: { kind: 'text', text: action.text },
+      })
+    }
+
+    case 'dialogue/spoken-at-set': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null || target.spokenAt === action.spokenAt) return state
+      return withDialogue(state, target, { ...target, spokenAt: action.spokenAt })
+    }
+
+    case 'dialogue/relevance-set': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null) return state
+      const relevance = normalizeRelevance(action.relevance)
+      if (isSameRelevance(target.relevance, relevance)) return state
+      return withDialogue(state, target, { ...target, relevance })
     }
 
     case 'dialogue/deleted': {
@@ -231,6 +269,38 @@ function withMap(state: ReadyState, target: GameMap, replacement: GameMap): AppS
       maps: state.project.maps.map((map) => (map === target ? replacement : map)),
     },
   }
+}
+
+/** Replaces one dialogue by reference identity, mirroring `withMap`. */
+function withDialogue(state: ReadyState, target: Dialogue, replacement: Dialogue): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      dialogues: state.project.dialogues.map((dialogue) =>
+        dialogue === target ? replacement : dialogue,
+      ),
+    },
+  }
+}
+
+function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {
+  return project.dialogues.find((dialogue) => dialogue.id === id) ?? null
+}
+
+/**
+ * Deduplicated and in `RELEVANCE_TAGS` order, whatever order the checkboxes were clicked in.
+ * The declaration order is the canonical one, so `data.json` stays stable and diffable —
+ * toggling a tag off and on again must not reshuffle the array and produce a spurious write.
+ */
+function normalizeRelevance(tags: readonly RelevanceTag[]): RelevanceTag[] {
+  const chosen = new Set(tags)
+  return RELEVANCE_TAGS.filter((tag) => chosen.has(tag))
+}
+
+/** Both sides are already normalized, so element-wise equality is enough. */
+function isSameRelevance(a: readonly RelevanceTag[], b: readonly RelevanceTag[]): boolean {
+  return a.length === b.length && a.every((tag, index) => tag === b[index])
 }
 
 /**

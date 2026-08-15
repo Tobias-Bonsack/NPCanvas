@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
+import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
+import { dispatch } from '../project/store.ts'
 import type { CanvasTool, GameMap, ProjectFile, Selection } from '../project/types.ts'
 import type { MapDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
@@ -38,6 +40,35 @@ export function MapScreen({
   const onFocusApplied = useCallback(() => {
     navigate({ kind: 'canvas', dialogueId, focusMapId: null }, { replace: true })
   }, [dialogueId])
+
+  // A cold load of #/canvas?dialogue=<id> arrives with the hash naming a dialogue and the
+  // store's selection empty — `project/loaded` always starts at none. The hash is the intent,
+  // so it is reconciled into the selection here. `selection/set` returns the identical state
+  // when it changes nothing, which is what stops this from looping.
+  //
+  // An id naming a dialogue that no longer exists is dropped from the hash rather than left
+  // pointing at nothing, the same correction `focus` gets in MapCanvas.
+  const dialogues = project.dialogues
+  useEffect(() => {
+    if (dialogueId === null) return
+    if (dialogues.some((dialogue) => dialogue.id === dialogueId)) {
+      dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogueId } })
+      return
+    }
+    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
+  }, [dialogueId, dialogues])
+
+  const selectedDialogue =
+    selection.kind === 'dialogue'
+      ? (dialogues.find((dialogue) => dialogue.id === selection.id) ?? null)
+      : null
+
+  // Closing is a deselection *and* a navigation: the hash carries the open panel, so leaving
+  // the parameter behind would reopen it on the next render pass through the effect above.
+  const onCloseDialogue = useCallback(() => {
+    dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
+    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
+  }, [])
 
   if (project.maps.length === 0) {
     return (
@@ -82,6 +113,13 @@ export function MapScreen({
             />
           </MapCanvas>
         </div>
+        {selectedDialogue !== null && (
+          <DialoguePanel
+            project={project}
+            dialogue={selectedDialogue}
+            onClose={onCloseDialogue}
+          />
+        )}
       </div>
     </section>
   )

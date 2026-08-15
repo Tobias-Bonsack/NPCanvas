@@ -1,0 +1,97 @@
+.dialogue-form {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dialogue-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* The text body takes whatever height is left, so the panel scrolls only when it must. */
+.dialogue-form__field--grow {
+  flex: 1;
+  min-height: 6rem;
+}
+
+.dialogue-form__label,
+.dialogue-form__legend {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.dialogue-form__legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+
+.dialogue-form__fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.dialogue-form__input,
+.dialogue-form__textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2);
+  /* Without it a long value or a wide datetime control pushes the whole sidebar wider. */
+  min-width: 0;
+}
+
+.dialogue-form__textarea {
+  flex: 1;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.dialogue-form__input:focus-visible,
+.dialogue-form__textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---- relevance ---- */
+
+.relevance-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Colour comes from --relevance-hue, published per tag by relevanceHueStyle, so the hue
+   lives in one place (relevance.ts) rather than being duplicated into this stylesheet. */
+.relevance-picker__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-round);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.relevance-picker__tag[data-checked='true'] {
+  border-color: hsl(var(--relevance-hue) 70% 60%);
+  background: hsl(var(--relevance-hue) 70% 60% / 0.18);
+  color: var(--text);
+}
+
+.relevance-picker__input {
+  /* The tag itself carries the state visually; the box stays for hit area and semantics. */
+  accent-color: hsl(var(--relevance-hue) 70% 60%);
+  margin: 0;
+}

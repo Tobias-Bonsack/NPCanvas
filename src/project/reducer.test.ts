@@ -103,6 +103,14 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'map/deleted', mapId: asMapId('harbour') },
   { kind: 'dialogue/added', dialogue: dialogue('dialogue-1', asMapId('harbour')) },
   { kind: 'dialogue/moved', dialogueId: asDialogueId('dialogue-1'), position: { x: 0, y: 0 } },
+  { kind: 'dialogue/npc-named', dialogueId: asDialogueId('dialogue-1'), npcName: 'Ferryman' },
+  { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' },
+  {
+    kind: 'dialogue/spoken-at-set',
+    dialogueId: asDialogueId('dialogue-1'),
+    spokenAt: '2026-08-14T10:00:00.000Z',
+  },
+  { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('dialogue-1'), relevance: ['other'] },
   { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-1') },
 ]
 
@@ -511,6 +519,110 @@ describe('reduce: dialogue actions', () => {
   it('ignores a delete of a dialogue that does not exist', () => {
     const state = ready(twoMapProject())
     expect(reduce(state, { kind: 'dialogue/deleted', dialogueId: asDialogueId('nope') })).toBe(state)
+  })
+})
+
+describe('reduce: dialogue field edits', () => {
+  const target = asDialogueId('dialogue-harbour')
+
+  function edited(state: AppState): Dialogue {
+    if (state.kind !== 'ready') throw new Error('expected a ready state')
+    const found = state.project.dialogues.find((it) => it.id === target)
+    if (found === undefined) throw new Error('expected the edited dialogue to survive')
+    return found
+  }
+
+  it('renames the NPC without touching the other dialogues', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), {
+      kind: 'dialogue/npc-named',
+      dialogueId: target,
+      npcName: 'Ferryman',
+    })
+    expect(edited(next).npcName).toBe('Ferryman')
+    expect(next.kind === 'ready' && next.project.dialogues[1]).toBe(before.dialogues[1])
+  })
+
+  it('edits the text body of a text dialogue', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/text-set',
+      dialogueId: target,
+      text: 'The tide takes what it likes.',
+    })
+    expect(edited(next).content).toEqual({
+      kind: 'text',
+      text: 'The tide takes what it likes.',
+    })
+  })
+
+  it('refuses to give media content a text body', () => {
+    const project = twoMapProject()
+    const withImage: ProjectFile = {
+      ...project,
+      dialogues: project.dialogues.map((it) =>
+        it.id === target
+          ? {
+              ...it,
+              content: {
+                kind: 'image',
+                file: { fileName: 'a.png', mimeType: 'image/png', byteSize: 4 },
+                width: 2,
+                height: 2,
+              },
+            }
+          : it,
+      ),
+    }
+    const state = ready(withImage)
+    expect(reduce(state, { kind: 'dialogue/text-set', dialogueId: target, text: 'x' })).toBe(state)
+  })
+
+  it('replaces the spoken-at instant', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/spoken-at-set',
+      dialogueId: target,
+      spokenAt: '2026-08-15T09:30:00.000Z',
+    })
+    expect(edited(next).spokenAt).toBe('2026-08-15T09:30:00.000Z')
+  })
+
+  it('stores relevance deduplicated and in RELEVANCE_TAGS order, whatever the click order', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/relevance-set',
+      dialogueId: target,
+      relevance: ['other', 'worldbuilding', 'other', 'out-of-world'],
+    })
+    expect(edited(next).relevance).toEqual(['out-of-world', 'worldbuilding', 'other'])
+  })
+
+  it('treats a reshuffled set of the same tags as no change at all', () => {
+    const tagged = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/relevance-set',
+      dialogueId: target,
+      relevance: ['worldbuilding', 'other'],
+    })
+    expect(
+      reduce(tagged, {
+        kind: 'dialogue/relevance-set',
+        dialogueId: target,
+        relevance: ['other', 'worldbuilding', 'worldbuilding'],
+      }),
+    ).toBe(tagged)
+  })
+
+  it('ignores an edit that restates the value, and one naming no dialogue', () => {
+    const state = ready(twoMapProject())
+    const edits: readonly Action[] = [
+      { kind: 'dialogue/npc-named', dialogueId: target, npcName: 'dialogue-harbour' },
+      { kind: 'dialogue/text-set', dialogueId: target, text: '' },
+      { kind: 'dialogue/spoken-at-set', dialogueId: target, spokenAt: '2026-08-14T10:00:00.000Z' },
+      { kind: 'dialogue/relevance-set', dialogueId: target, relevance: [] },
+      { kind: 'dialogue/npc-named', dialogueId: asDialogueId('nope'), npcName: 'Ferryman' },
+      { kind: 'dialogue/text-set', dialogueId: asDialogueId('nope'), text: 'x' },
+      { kind: 'dialogue/spoken-at-set', dialogueId: asDialogueId('nope'), spokenAt: 'x' },
+      { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('nope'), relevance: ['other'] },
+    ]
+    for (const action of edits) expect(reduce(state, action)).toBe(state)
   })
 })
 
