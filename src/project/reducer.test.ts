@@ -145,6 +145,21 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     ],
   },
   { kind: 'zone/deleted', zoneId: asZoneId('zone-1') },
+  { kind: 'quest/added', quest: quest('quest-1', []) },
+  { kind: 'quest/renamed', questId: asQuestId('quest-1'), name: 'The missing ledger' },
+  { kind: 'quest/note-set', questId: asQuestId('quest-1'), note: 'Ask the harbourmaster' },
+  { kind: 'quest/status-set', questId: asQuestId('quest-1'), status: 'done' },
+  {
+    kind: 'quest/dialogue-attached',
+    questId: asQuestId('quest-1'),
+    dialogueId: asDialogueId('dialogue-1'),
+  },
+  {
+    kind: 'quest/dialogue-detached',
+    questId: asQuestId('quest-1'),
+    dialogueId: asDialogueId('dialogue-1'),
+  },
+  { kind: 'quest/deleted', questId: asQuestId('quest-1') },
 ]
 
 describe('reduce: connection actions', () => {
@@ -760,5 +775,112 @@ describe('reduce: zone actions', () => {
       state,
     )
     expect(reduce(state, { kind: 'zone/deleted', zoneId: asZoneId('missing') })).toBe(state)
+  })
+})
+
+describe('reduce: quests', () => {
+  const questId = asQuestId('quest-1')
+
+  function edited(state: AppState): Quest {
+    const found = readyOf(state).project.quests.find((it) => it.id === questId)
+    if (found === undefined) throw new Error('expected the edited quest to survive')
+    return found
+  }
+
+  it('adds a quest without touching anything else', () => {
+    const before = twoMapProject()
+    const added = quest('quest-2', [])
+    const next = reduce(ready(before), { kind: 'quest/added', quest: added })
+    expect(readyOf(next).project.quests.map((it) => it.id)).toEqual(['quest-1', 'quest-2'])
+    expect(readyOf(next).project.dialogues).toBe(before.dialogues)
+  })
+
+  it('renames a quest and edits its note', () => {
+    const renamed = reduce(ready(twoMapProject()), {
+      kind: 'quest/renamed',
+      questId,
+      name: 'The missing ledger',
+    })
+    expect(edited(renamed).name).toBe('The missing ledger')
+
+    const noted = reduce(renamed, {
+      kind: 'quest/note-set',
+      questId,
+      note: 'Ask the harbourmaster',
+    })
+    expect(edited(noted).note).toBe('Ask the harbourmaster')
+    expect(edited(noted).name).toBe('The missing ledger')
+  })
+
+  it('moves a quest between statuses', () => {
+    const done = reduce(ready(twoMapProject()), { kind: 'quest/status-set', questId, status: 'done' })
+    expect(edited(done).status).toBe('done')
+    const reopened = reduce(done, { kind: 'quest/status-set', questId, status: 'open' })
+    expect(edited(reopened).status).toBe('open')
+  })
+
+  it('attaches a dialogue once, appending it', () => {
+    const stripped = reduce(ready(twoMapProject()), {
+      kind: 'quest/dialogue-detached',
+      questId,
+      dialogueId: asDialogueId('dialogue-forest'),
+    })
+    const attached = reduce(stripped, {
+      kind: 'quest/dialogue-attached',
+      questId,
+      dialogueId: asDialogueId('dialogue-forest'),
+    })
+    expect(edited(attached).dialogueIds).toEqual(['dialogue-harbour', 'dialogue-forest'])
+    // Attaching what is already attached must not duplicate the id, nor wake autosave.
+    expect(
+      reduce(attached, {
+        kind: 'quest/dialogue-attached',
+        questId,
+        dialogueId: asDialogueId('dialogue-forest'),
+      }),
+    ).toBe(attached)
+  })
+
+  // The other half of the no-dangling-ids invariant; `dialogue/deleted` and `map/deleted` own
+  // the removal half, and together they are what let a reader resolve every id it finds.
+  it('refuses to attach a dialogue that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, { kind: 'quest/dialogue-attached', questId, dialogueId: asDialogueId('nope') }),
+    ).toBe(state)
+  })
+
+  it('detaches a dialogue without deleting it', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), {
+      kind: 'quest/dialogue-detached',
+      questId,
+      dialogueId: asDialogueId('dialogue-harbour'),
+    })
+    expect(edited(next).dialogueIds).toEqual(['dialogue-forest'])
+    expect(readyOf(next).project.dialogues).toBe(before.dialogues)
+  })
+
+  it('deletes a quest and leaves every dialogue in place', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), { kind: 'quest/deleted', questId })
+    expect(readyOf(next).project.quests).toEqual([])
+    expect(readyOf(next).project.dialogues).toBe(before.dialogues)
+  })
+
+  it('returns the identical state for an edit that changes nothing', () => {
+    const state = ready(twoMapProject())
+    const current = readyOf(state).project.quests[0]
+    expect(reduce(state, { kind: 'quest/renamed', questId, name: current.name })).toBe(state)
+    expect(reduce(state, { kind: 'quest/note-set', questId, note: current.note })).toBe(state)
+    expect(reduce(state, { kind: 'quest/status-set', questId, status: current.status })).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'quest/dialogue-detached',
+        questId,
+        dialogueId: asDialogueId('never-attached'),
+      }),
+    ).toBe(state)
+    expect(reduce(state, { kind: 'quest/deleted', questId: asQuestId('missing') })).toBe(state)
   })
 })

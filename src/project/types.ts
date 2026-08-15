@@ -83,11 +83,18 @@ export type Dialogue = {
   relevance: RelevanceTag[]
 }
 
+/**
+ * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
+ * list is what the quest board iterates to build its groups, so a third status would appear
+ * there without the board learning a new name.
+ */
+export const QUEST_STATUSES = ['open', 'done'] as const
+export type QuestStatus = (typeof QUEST_STATUSES)[number]
+
 export type Quest = {
   id: QuestId
   name: string
-  /** A union, not a boolean: leaves room for 'abandoned' without a schema break. */
-  status: 'open' | 'done'
+  status: QuestStatus
   dialogueIds: DialogueId[]
   note: string
 }

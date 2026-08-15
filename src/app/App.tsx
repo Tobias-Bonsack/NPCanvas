@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import { MapScreen } from '../map/MapScreen.tsx'
+import { QuestBoard } from '../quest/QuestBoard.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
 import type { AppState } from '../project/types.ts'
 import { useAppState } from '../project/store.ts'
@@ -43,11 +44,8 @@ function ReadyView({ state, route }: { state: ReadyState; route: Route }): React
       return <MapScreen project={state.project} selection={state.selection} route={route} />
 
     case 'quests':
-      return (
-        <Screen title="Quest board">
-          <p className="app__lead">{state.project.quests.length} quests.</p>
-        </Screen>
-      )
+      return <QuestBoard project={state.project} />
+
     case 'insights':
       return (
         <Screen title="Insights">

@@ -12,6 +12,7 @@ import type {
   Polygon,
   ProjectFile,
   Quest,
+  QuestId,
   RelevanceTag,
   SaveState,
   Selection,
@@ -50,6 +51,13 @@ export type Action =
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
   | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTag[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
+  | { kind: 'quest/added'; quest: Quest }
+  | { kind: 'quest/renamed'; questId: QuestId; name: string }
+  | { kind: 'quest/note-set'; questId: QuestId; note: string }
+  | { kind: 'quest/status-set'; questId: QuestId; status: Quest['status'] }
+  | { kind: 'quest/dialogue-attached'; questId: QuestId; dialogueId: DialogueId }
+  | { kind: 'quest/dialogue-detached'; questId: QuestId; dialogueId: DialogueId }
+  | { kind: 'quest/deleted'; questId: QuestId }
 
 /**
  * Pure. Returns the *same* reference for a no-op, which is how `dispatch` skips notifying
@@ -324,6 +332,74 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    case 'quest/added': {
+      if (state.kind !== 'ready') return state
+      return {
+        ...state,
+        project: { ...state.project, quests: [...state.project.quests, action.quest] },
+      }
+    }
+
+    case 'quest/renamed': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || target.name === action.name) return state
+      return withQuest(state, target, { ...target, name: action.name })
+    }
+
+    case 'quest/note-set': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || target.note === action.note) return state
+      return withQuest(state, target, { ...target, note: action.note })
+    }
+
+    case 'quest/status-set': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || target.status === action.status) return state
+      return withQuest(state, target, { ...target, status: action.status })
+    }
+
+    // The dialogue must exist. `pruneQuestDialogues` guarantees no dangling id survives a
+    // deletion, and this is the only other way one could enter the document — so the two
+    // together are what let every reader treat a `dialogueIds` entry as resolvable.
+    case 'quest/dialogue-attached': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || target.dialogueIds.includes(action.dialogueId)) return state
+      if (findDialogue(state.project, action.dialogueId) === null) return state
+      return withQuest(state, target, {
+        ...target,
+        dialogueIds: [...target.dialogueIds, action.dialogueId],
+      })
+    }
+
+    case 'quest/dialogue-detached': {
+      if (state.kind !== 'ready') return state
+      const target = findQuest(state.project, action.questId)
+      if (target === null || !target.dialogueIds.includes(action.dialogueId)) return state
+      return withQuest(state, target, {
+        ...target,
+        dialogueIds: target.dialogueIds.filter((id) => id !== action.dialogueId),
+      })
+    }
+
+    // No cascade, and deliberately none: a quest *references* dialogues, it does not own them.
+    // Deleting the thread the user was following must never delete the lines it collected.
+    case 'quest/deleted': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (!project.quests.some((quest) => quest.id === action.questId)) return state
+      return {
+        ...state,
+        project: {
+          ...project,
+          quests: project.quests.filter((quest) => quest.id !== action.questId),
+        },
+      }
+    }
+
     default:
       return assertNever(action)
   }
@@ -370,12 +446,27 @@ function withZone(state: ReadyState, target: Zone, replacement: Zone): AppState 
   }
 }
 
+/** Replaces one quest by reference identity, mirroring `withMap`. */
+function withQuest(state: ReadyState, target: Quest, replacement: Quest): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      quests: state.project.quests.map((quest) => (quest === target ? replacement : quest)),
+    },
+  }
+}
+
 function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {
   return project.dialogues.find((dialogue) => dialogue.id === id) ?? null
 }
 
 function findZone(project: ProjectFile, id: ZoneId): Zone | null {
   return project.zones.find((zone) => zone.id === id) ?? null
+}
+
+function findQuest(project: ProjectFile, id: QuestId): Quest | null {
+  return project.quests.find((quest) => quest.id === id) ?? null
 }
 
 /**

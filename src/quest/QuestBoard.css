@@ -1,0 +1,373 @@
+/* A reading column, not a full-bleed canvas: a quest is a thread of prose, and a line of it
+   stops being readable well before a wide monitor runs out. The board scrolls as a whole. */
+.quest-board {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 62rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.quest-board__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.quest-board__title {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.quest-board__new {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.quest-board__empty {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--text-muted);
+}
+
+.quest-board__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.quest-board__group-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* The count is the group's whole point — how much is left, how much is done — so it is a
+   pill rather than a parenthesis and stays legible against the muted heading. */
+.quest-board__count {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: var(--radius-round);
+  padding: 0 var(--space-2);
+}
+
+.quest-board__group-empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.quest-board__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.quest-board__button {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.quest-board__button:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.quest-board__button--danger {
+  border-color: var(--border-strong);
+  color: #ff8f8f;
+}
+
+/* ---- card ---- */
+
+.quest-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-1);
+}
+
+/* Done is context, not clutter: faded enough to read as finished, still fully interactive so
+   a quest can be reopened without hunting for it. */
+.quest-card[data-status='done'] {
+  opacity: 0.62;
+}
+
+.quest-card[data-status='done']:hover,
+.quest-card[data-status='done']:focus-within {
+  opacity: 1;
+}
+
+.quest-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Takes the leftover width so the verbs stay narrow and right-aligned. */
+.quest-card__name {
+  flex: 1;
+  min-width: 8rem;
+  margin: 0;
+  font-size: 1.0625rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quest-card[data-status='done'] .quest-card__name {
+  text-decoration: line-through;
+}
+
+.quest-card__linked-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.quest-card__idle,
+.quest-card__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+}
+
+.quest-card__note {
+  flex: 1;
+  min-width: 12rem;
+  margin: 0;
+  /* The note is written in a textarea, so its line breaks are the user's own. */
+  white-space: pre-wrap;
+  color: var(--text-muted);
+}
+
+.quest-card__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.quest-card__dialogues {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  overflow: hidden;
+}
+
+.quest-card__dialogue {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-2);
+  background: var(--surface-0);
+}
+
+.quest-card__dialogue + .quest-card__dialogue {
+  border-top: 1px solid var(--border);
+}
+
+/* ---- one dialogue row ---- */
+
+/* A grid, not a flex row: the four columns have to line up down the whole list, and the
+   snippet is the only one allowed to give up width. */
+.quest-card__link,
+.quest-picker__option {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(6rem, max-content) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  text-decoration: none;
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.quest-card__link:hover,
+.quest-picker__option:hover {
+  background: var(--surface-2);
+}
+
+.quest-card__npc {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The column that absorbs a narrow window — everything else here is identity or time. */
+.quest-card__snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.quest-card__where {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  white-space: nowrap;
+}
+
+/* The same chip the dialogue panel uses, so the board and the canvas name a region with the
+   same colour rather than making the reader compare two words. */
+.quest-card__zone {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-round);
+  border: 1px solid hsl(var(--zone-hue) 75% 62%);
+  background: hsl(var(--zone-hue) 70% 55% / 0.18);
+}
+
+/* Zones come back most specific first, so everything after the first is broader context. */
+.quest-card__zone:not(:first-child) {
+  opacity: 0.7;
+}
+
+.quest-card__nowhere,
+.quest-card__when {
+  color: var(--text-muted);
+}
+
+.quest-card__when {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ---- form ---- */
+
+.quest-form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.quest-form__field {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.quest-form__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.quest-form__input,
+.quest-form__textarea {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2);
+}
+
+.quest-form__textarea {
+  resize: vertical;
+}
+
+/* ---- attach picker ---- */
+
+.quest-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+}
+
+.quest-picker__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.quest-picker__input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2);
+}
+
+.quest-picker__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Capped rather than paged: the list is a search result, and scrolling it must not scroll
+     the card it belongs to out from under the search field. */
+  max-height: 18rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-0);
+}
+
+.quest-picker__option {
+  width: 100%;
+}
+
+.quest-picker__empty,
+.quest-picker__more {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}

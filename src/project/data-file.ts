@@ -14,11 +14,12 @@ import type {
   ProjectFileV1,
   Quest,
   QuestId,
+  QuestStatus,
   RelevanceTag,
   Zone,
   ZoneId,
 } from './types.ts'
-import { RELEVANCE_TAGS } from './types.ts'
+import { QUEST_STATUSES, RELEVANCE_TAGS } from './types.ts'
 
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
@@ -263,10 +264,14 @@ function readQuest(value: unknown, path: string): Quest {
   }
 }
 
-function readQuestStatus(value: unknown, path: string): Quest['status'] {
+function readQuestStatus(value: unknown, path: string): QuestStatus {
   const status = readString(value, path)
-  if (status !== 'open' && status !== 'done') throw new SchemaError(path, 'open or done')
+  if (!isQuestStatus(status)) throw new SchemaError(path, QUEST_STATUSES.join(' or '))
   return status
+}
+
+function isQuestStatus(value: string): value is QuestStatus {
+  return (QUEST_STATUSES as readonly string[]).includes(value)
 }
 
 function readProjectFile(value: unknown): ProjectFile {
