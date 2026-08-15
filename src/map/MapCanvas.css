@@ -30,6 +30,13 @@
   /* Every transform in viewport.ts is expressed from the top-left; a centred origin would
      silently offset every world-to-screen conversion by half the element. */
   transform-origin: 0 0;
+  /* Promotes the world to its own composited layer, so a pan is a compositor translate
+     instead of a re-raster of everything in it. Measured with 500 pins on one map, half of
+     them showing thumbnails: ~27 ms per frame without it, a locked 16.7 ms with. The pins
+     are the cost — React does not re-render them while panning (PinLayer is memo'd and
+     viewport-independent), but re-rasterising 500 rounded, bordered boxes each frame is
+     real work. */
+  will-change: transform;
   /* Set by MapCanvas as one property write per frame; pins counter-scale against it. */
   --map-zoom: 1;
   /* The default for anything in the world element that is not inside a map group. Without
@@ -161,19 +168,11 @@
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-round);
-  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  padding: 2px var(--space-3) 2px 2px;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   cursor: pointer;
-}
-
-.pin__marker::before {
-  content: '';
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--radius-round);
-  background: var(--accent);
 }
 
 .pin__marker:hover {
@@ -186,8 +185,52 @@
   border-color: var(--accent);
 }
 
-.pin__marker[data-selected='true']::before {
+/* The relevance accent. Its background is a conic-gradient of one segment per tag, built in
+   relevance.ts, and the inset face leaves it showing as a ring. An untagged dialogue gets the
+   chrome's neutral there, so "not classified" reads as absence rather than as a colour. */
+.pin__ring {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 2px;
+  border-radius: var(--radius-round);
+  display: grid;
+  place-items: center;
+}
+
+.pin__face {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-round);
+  overflow: hidden;
+  background: var(--surface-1);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+}
+
+.pin__marker[data-selected='true'] .pin__face {
   background: var(--accent-contrast);
+}
+
+/* Inside a 1rem face, so drawn at roughly 10 device pixels: the strokes in ContentGlyph are
+   sized for exactly this. */
+.content-glyph {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.pin__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pin__name {
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pin__confirm {

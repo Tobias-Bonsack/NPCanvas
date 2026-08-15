@@ -5,8 +5,32 @@ import {
   polygonArea,
   polygonBounds,
   polygonCentroid,
+  rectContains,
   rectToPolygon,
 } from './geometry.ts'
+
+describe('rectContains', () => {
+  const rect = { x: 10, y: 20, width: 30, height: 40 }
+
+  it('accepts interior points and the boundary', () => {
+    expect(rectContains(rect, { x: 25, y: 40 })).toBe(true)
+    expect(rectContains(rect, { x: 10, y: 20 })).toBe(true)
+    expect(rectContains(rect, { x: 40, y: 60 })).toBe(true)
+  })
+
+  it('rejects a point outside on any single axis', () => {
+    expect(rectContains(rect, { x: 9.9, y: 40 })).toBe(false)
+    expect(rectContains(rect, { x: 40.1, y: 40 })).toBe(false)
+    expect(rectContains(rect, { x: 25, y: 19.9 })).toBe(false)
+    expect(rectContains(rect, { x: 25, y: 60.1 })).toBe(false)
+  })
+
+  it('handles a rectangle at negative coordinates, which the shared canvas produces', () => {
+    const shifted = { x: -50, y: -50, width: 20, height: 20 }
+    expect(rectContains(shifted, { x: -40, y: -40 })).toBe(true)
+    expect(rectContains(shifted, { x: 0, y: 0 })).toBe(false)
+  })
+})
 
 const SQUARE: Polygon = [
   { x: 0, y: 0 },

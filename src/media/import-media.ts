@@ -189,6 +189,17 @@ function largeFileWarning(file: File): string | null {
 }
 
 /**
+ * How long to wait for `loadedmetadata` before giving up on a clip.
+ *
+ * Not paranoia: a container Chromium half-recognises — a webm whose header carries no
+ * duration, say — leaves the element in `HAVE_NOTHING` with neither `loadedmetadata` nor
+ * `error` ever firing. Without a deadline the import promise never settles and the panel sits
+ * on "Importing…" forever, with nothing to click and nothing in the console. Metadata for a
+ * local file arrives in tens of milliseconds, so this only ever fires on that stuck case.
+ */
+const VIDEO_PROBE_TIMEOUT_MS = 10_000
+
+/**
  * Video metadata off-DOM: an element that is never attached, given an object URL only long
  * enough for `loadedmetadata` to populate the intrinsic size and duration.
  */
@@ -196,20 +207,20 @@ async function probeVideoSize(
   file: File,
 ): Promise<{ width: number; height: number; durationMs: number }> {
   const url = URL.createObjectURL(file)
+  const video = document.createElement('video')
   try {
-    const video = document.createElement('video')
     // Metadata is all this needs; `auto` would pull the whole clip through memory for a
     // measurement that is available in the first few kilobytes.
     video.preload = 'metadata'
     video.src = url
 
     await new Promise<void>((resolve, reject) => {
+      const fail = (): void => {
+        reject(new Error(`${file.name} could not be decoded as a video.`))
+      }
       video.addEventListener('loadedmetadata', () => resolve(), { once: true })
-      video.addEventListener(
-        'error',
-        () => reject(new Error(`${file.name} could not be decoded as a video.`)),
-        { once: true },
-      )
+      video.addEventListener('error', fail, { once: true })
+      setTimeout(fail, VIDEO_PROBE_TIMEOUT_MS)
     })
 
     return {
@@ -220,6 +231,10 @@ async function probeVideoSize(
       durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0,
     }
   } finally {
+    // Aborts any load still in flight, so revoking the URL below cannot race it and the
+    // element is collectable immediately rather than after the fetch gives up.
+    video.removeAttribute('src')
+    video.load()
     URL.revokeObjectURL(url)
   }
 }

@@ -36,6 +36,16 @@ export function pointInPolygon(point: Point, polygon: Polygon): boolean {
   return inside
 }
 
+/** Boundary included, matching `pointInPolygon`. Hit-testing and visibility culling alike. */
+export function rectContains(rect: Rect, point: Point): boolean {
+  return (
+    point.x >= rect.x &&
+    point.x <= rect.x + rect.width &&
+    point.y >= rect.y &&
+    point.y <= rect.y + rect.height
+  )
+}
+
 /** Axis-aligned bounding box. Cheap reject before `pointInPolygon`, and zone hit-testing. */
 export function polygonBounds(polygon: Polygon): Rect {
   let minX = Infinity

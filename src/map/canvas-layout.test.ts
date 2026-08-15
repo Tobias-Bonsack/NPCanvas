@@ -3,6 +3,7 @@ import { asMapId } from '../project/ids.ts'
 import type { GameMap, Point } from '../project/types.ts'
 import {
   MAP_LAYOUT_GAP,
+  canvasRectToMapLocal,
   canvasToMapLocal,
   clampMapScale,
   mapAtCanvasPoint,
@@ -161,6 +162,26 @@ describe('originForScale', () => {
   it('is a no-op at the scale the map already has', () => {
     const map = gameMap('a', { origin: { x: 12, y: -8 }, scale: 1.75 })
     expectClose(originForScale(map, map.scale), map.origin)
+  })
+})
+
+describe('canvasRectToMapLocal', () => {
+  it('agrees with canvasToMapLocal on both corners', () => {
+    const map = gameMap('a', { origin: { x: 40, y: -10 }, scale: 2 })
+    const rect = { x: 60, y: 30, width: 80, height: 50 }
+    const local = canvasRectToMapLocal(map, rect)
+
+    expectClose({ x: local.x, y: local.y }, canvasToMapLocal(map, { x: rect.x, y: rect.y }))
+    expectClose(
+      { x: local.x + local.width, y: local.y + local.height },
+      canvasToMapLocal(map, { x: rect.x + rect.width, y: rect.y + rect.height }),
+    )
+  })
+
+  it('is the identity for a map at the origin at native size', () => {
+    const map = gameMap('a', { origin: { x: 0, y: 0 }, scale: 1 })
+    const rect = { x: 5, y: 6, width: 7, height: 8 }
+    expect(canvasRectToMapLocal(map, rect)).toEqual(rect)
   })
 })
 

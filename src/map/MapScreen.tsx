@@ -2,9 +2,11 @@ import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
+import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
 import type { CanvasTool, GameMap, ProjectFile, Selection } from '../project/types.ts'
+import type { Rect } from './geometry.ts'
 import type { MapDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton } from './MapImportButton.tsx'
@@ -29,6 +31,10 @@ export function MapScreen({
   // and its pins have to move together in the same frame — and it stays out of the store,
   // which would push a document-shaped update through autosave on every pointermove.
   const [mapDrag, setMapDrag] = useState<MapDragPreview | null>(null)
+  // The culling input for the pin layer. It lives here rather than in `MapCanvas` because
+  // both are children of this screen, and it changes only when the view settles — `setState`
+  // is passed straight down, so the callback identity is stable for MapCanvas's effect.
+  const [visibleRect, setVisibleRect] = useState<Rect | null>(null)
 
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
@@ -90,6 +96,7 @@ export function MapScreen({
     <section className="map-screen">
       <header className="map-screen__bar">
         <ToolPicker tool={tool} onChange={setTool} />
+        <CanvasLegend />
       </header>
       <div className="map-screen__body">
         {/* A sidebar rather than a row in the bar: the list grows with the project, and it
@@ -105,11 +112,13 @@ export function MapScreen({
             focusMapId={route.focusMapId}
             onFocusApplied={onFocusApplied}
             onMapDrag={setMapDrag}
+            onVisibleRectChange={setVisibleRect}
           >
             <PinLayer
               maps={placedMaps}
               dialogues={project.dialogues}
               selectedId={selection.kind === 'dialogue' ? selection.id : null}
+              visibleRect={visibleRect}
             />
           </MapCanvas>
         </div>

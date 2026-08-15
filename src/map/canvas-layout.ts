@@ -1,5 +1,6 @@
 import type { GameMap, Point } from '../project/types.ts'
 import type { Rect } from './geometry.ts'
+import { rectContains } from './geometry.ts'
 
 // Canvas space is the shared coordinate system every map is placed into; one canvas unit is
 // one map pixel at `scale: 1`. Map-local space is pixels within a single map image, which is
@@ -54,6 +55,22 @@ export function canvasToMapLocal(map: GameMap, point: Point): Point {
 }
 
 /**
+ * A canvas-space rectangle in one map's own coordinates — the culling test for that map's
+ * contents. Converted once per map rather than per pin, because `Dialogue.position` and
+ * `Zone.polygon` are already map-local and converting them all would be the expensive
+ * direction.
+ */
+export function canvasRectToMapLocal(map: GameMap, rect: Rect): Rect {
+  const topLeft = canvasToMapLocal(map, { x: rect.x, y: rect.y })
+  return {
+    x: topLeft.x,
+    y: topLeft.y,
+    width: rect.width / map.scale,
+    height: rect.height / map.scale,
+  }
+}
+
+/**
  * The origin a map needs so that rescaling it keeps its **centre** fixed rather than its
  * top-left. Nudging a scale then reads as adjustment instead of the map drifting away from
  * wherever the user put it.
@@ -95,15 +112,7 @@ export function mapsBounds(maps: readonly GameMap[]): Rect | null {
 export function mapAtCanvasPoint(maps: readonly GameMap[], point: Point): GameMap | null {
   for (let index = maps.length - 1; index >= 0; index--) {
     const map = maps[index]
-    const rect = mapCanvasRect(map)
-    if (
-      point.x >= rect.x &&
-      point.x <= rect.x + rect.width &&
-      point.y >= rect.y &&
-      point.y <= rect.y + rect.height
-    ) {
-      return map
-    }
+    if (rectContains(mapCanvasRect(map), point)) return map
   }
   return null
 }

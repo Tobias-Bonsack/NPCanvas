@@ -29,6 +29,14 @@ export type RelevanceTag = (typeof RELEVANCE_TAGS)[number]
 /** A file that physically lives in <project>/media/. Never a URL, never a path. */
 export type MediaFile = { fileName: string; mimeType: string; byteSize: number }
 
+/**
+ * The content kinds, as a runtime list, for anything that has to iterate them — the canvas
+ * legend, chiefly. Kept beside the union: a fifth variant has to be added to both, and the
+ * `Record<DialogueContent['kind'], …>` glyph and label maps make forgetting one a compile
+ * error at the point where it would otherwise render as nothing.
+ */
+export const DIALOGUE_CONTENT_KINDS = ['text', 'image', 'gif', 'video'] as const
+
 export type DialogueContent =
   | { kind: 'text'; text: string }
   | { kind: 'image'; file: MediaFile; width: number; height: number }

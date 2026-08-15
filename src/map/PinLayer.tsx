@@ -1,9 +1,23 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
+import { relevanceRingBackground } from '../dialogue/relevance.ts'
+import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, DialogueId, GameMap, MapId, Point } from '../project/types.ts'
+import type {
+  Dialogue,
+  DialogueContent,
+  DialogueId,
+  DialogueMediaContent,
+  GameMap,
+  MapId,
+  Point,
+} from '../project/types.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
+import { canvasRectToMapLocal } from './canvas-layout.ts'
+import type { Rect } from './geometry.ts'
+import { rectContains } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 
 /** Screen pixels of travel before a press stops being a click and becomes a drag. */
@@ -31,15 +45,23 @@ type DragState = {
  *
  * `memo` is load-bearing: `MapCanvas` re-renders on every pointermove while panning, and
  * every prop here is deliberately independent of the viewport so this subtree does not.
+ * `visibleRect` is the one prop the viewport reaches, and only because `MapCanvas` waits for
+ * the gesture to settle before republishing it — see `SETTLE_MS` there.
  */
 export const PinLayer = memo(function PinLayer({
   maps,
   dialogues,
   selectedId,
+  visibleRect,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
   selectedId: DialogueId | null
+  /**
+   * Canvas space. Pins outside it keep their glyph instead of reading a thumbnail off disk.
+   * `null` until the container has been measured, which simply means no thumbnails yet.
+   */
+  visibleRect: Rect | null
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
@@ -133,27 +155,34 @@ export const PinLayer = memo(function PinLayer({
 
   return (
     <div className="pin-layer">
-      {maps.map((map) => (
-        <div key={map.id} className="pin-layer__map" style={mapGroupStyle(map)}>
-          {(byMap.get(map.id) ?? []).map((dialogue) => (
-            <Pin
-              key={dialogue.id}
-              dialogue={dialogue}
-              position={
-                dragged !== null && dragged.id === dialogue.id ? dragged.position : dialogue.position
-              }
-              selected={dialogue.id === selectedId}
-              confirmingDelete={pendingDelete === dialogue.id}
-              onPointerDown={onPointerDown}
-              onPointerMove={onPointerMove}
-              onPointerUp={onPointerUp}
-              onRequestDelete={() => setPendingDelete(dialogue.id)}
-              onCancelDelete={() => setPendingDelete(null)}
-              onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
-            />
-          ))}
-        </div>
-      ))}
+      {maps.map((map) => {
+        // Converted once per map, not once per pin: the pins are already in this space.
+        const visible = visibleRect === null ? null : canvasRectToMapLocal(map, visibleRect)
+        return (
+          <div key={map.id} className="pin-layer__map" style={mapGroupStyle(map)}>
+            {(byMap.get(map.id) ?? []).map((dialogue) => (
+              <Pin
+                key={dialogue.id}
+                dialogue={dialogue}
+                position={
+                  dragged !== null && dragged.id === dialogue.id
+                    ? dragged.position
+                    : dialogue.position
+                }
+                onScreen={visible !== null && rectContains(visible, dialogue.position)}
+                selected={dialogue.id === selectedId}
+                confirmingDelete={pendingDelete === dialogue.id}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                onRequestDelete={() => setPendingDelete(dialogue.id)}
+                onCancelDelete={() => setPendingDelete(null)}
+                onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
+              />
+            ))}
+          </div>
+        )
+      })}
     </div>
   )
 })
@@ -176,6 +205,7 @@ function groupByMap(
 function Pin({
   dialogue,
   position,
+  onScreen,
   selected,
   confirmingDelete,
   onPointerDown,
@@ -187,6 +217,8 @@ function Pin({
 }: {
   dialogue: Dialogue
   position: Point
+  /** Inside the visible world rect, and therefore allowed to read a thumbnail off disk. */
+  onScreen: boolean
   selected: boolean
   confirmingDelete: boolean
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
@@ -225,7 +257,17 @@ function Pin({
           onRequestDelete()
         }}
       >
-        {name}
+        {/* The ring is the relevance accent; the face inside it carries the glyph or a
+            thumbnail. Both are inside the button so the whole pin is one hit target. */}
+        <span
+          className="pin__ring"
+          style={{ background: relevanceRingBackground(dialogue.relevance) }}
+        >
+          <span className="pin__face">
+            <PinFace content={dialogue.content} onScreen={onScreen} />
+          </span>
+        </span>
+        <span className="pin__name">{name}</span>
       </button>
 
       {confirmingDelete && (
@@ -248,6 +290,39 @@ function Pin({
       )}
     </div>
   )
+}
+
+/**
+ * What a pin shows at a glance: a thumbnail for a still that is on screen, the content
+ * kind's glyph otherwise.
+ *
+ * Video is deliberately never thumbnailed here. A poster frame costs a decode of the clip's
+ * first packets per pin, and the panel is where a clip is meant to be watched.
+ */
+function PinFace({
+  content,
+  onScreen,
+}: {
+  content: DialogueContent
+  onScreen: boolean
+}): ReactElement {
+  if (onScreen && (content.kind === 'image' || content.kind === 'gif')) {
+    return <PinThumbnail content={content} />
+  }
+  return <ContentGlyph kind={content.kind} />
+}
+
+/**
+ * Mounting is what acquires the file and unmounting what releases it, so culling a pin off
+ * screen drops its reference — and the cache's 30 s deferred revoke is what keeps a pan back
+ * and forth from re-reading the same bytes.
+ */
+function PinThumbnail({ content }: { content: DialogueMediaContent }): ReactElement {
+  const media = useMediaUrl(content.file)
+  // Loading, missing and failed all fall back to the glyph: a pin is too small to explain
+  // itself, and the panel says what went wrong when the dialogue is opened.
+  if (media.kind !== 'ready') return <ContentGlyph kind={content.kind} />
+  return <img className="pin__thumb" src={media.url} alt="" draggable={false} />
 }
 
 /** A pin with no NPC yet still needs an accessible name — it is a real button. */

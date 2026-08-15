@@ -21,14 +21,30 @@ import {
   mapCanvasRect,
   mapsBounds,
 } from './canvas-layout.ts'
-import type { Size } from './geometry.ts'
+import type { Rect, Size } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
-import { fitRectToContainer, screenToWorld, zoomAt } from './viewport.ts'
+import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
 import './MapCanvas.css'
 
 /** Screen pixels of travel before a press stops being a click and becomes a pan. */
 const CLICK_THRESHOLD = 4
+
+/**
+ * How long the view must be still before the visible rect is republished.
+ *
+ * World-space layers must stay viewport-independent — see CLAUDE.md — so this value cannot
+ * be a per-frame prop without re-rendering every pin on every pointermove. Waiting for the
+ * gesture to settle keeps panning free and still loads thumbnails the moment it stops.
+ */
+const SETTLE_MS = 150
+
+/**
+ * Fraction of the viewport the published rect is grown by, on each side. A pin's marker
+ * extends well past its point, so an exact rect would leave a half-visible pin at the edge
+ * showing a glyph while its neighbour a pixel inside shows a thumbnail.
+ */
+const CULL_MARGIN = 0.15
 
 /** Where the viewport lands when a project has no maps to fit to. */
 const EMPTY_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 }
@@ -77,6 +93,7 @@ export function MapCanvas({
   focusMapId,
   onFocusApplied,
   onMapDrag,
+  onVisibleRectChange,
   children,
 }: {
   /** Already carrying any in-progress drag preview — see `MapScreen`. */
@@ -91,6 +108,11 @@ export function MapCanvas({
    * must move with the image in the same frame. `null` ends the drag.
    */
   onMapDrag: (preview: MapDragPreview | null) => void
+  /**
+   * The canvas-space rectangle on screen, republished once the view settles rather than per
+   * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
+   */
+  onVisibleRectChange: (rect: Rect) => void
   /** Rendered inside the world element, so children position in canvas coordinates. */
   children?: ReactNode
 }): ReactElement {
@@ -145,6 +167,17 @@ export function MapCanvas({
     }
     onFocusApplied()
   }, [focusMapId, maps, container, onFocusApplied])
+
+  // Every viewport change restarts the timer, so a pan or a zoom publishes exactly once, when
+  // it stops. `setTimeout` rather than `requestIdleCallback`: the delay is the point, and idle
+  // time during a gesture arrives every frame.
+  useEffect(() => {
+    if (container.width === 0 || container.height === 0) return
+    const timer = setTimeout(() => {
+      onVisibleRectChange(inflate(visibleWorldRect(viewport, container), CULL_MARGIN))
+    }, SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [viewport, container, onVisibleRectChange])
 
   // Bound by hand with { passive: false }: React's onWheel is passive, so preventDefault()
   // there silently does nothing and the page scrolls instead of the map zooming.
@@ -364,6 +397,18 @@ export function MapCanvas({
       </div>
     </div>
   )
+}
+
+/** Grows a rectangle by `margin` of its own size on every side. */
+function inflate(rect: Rect, margin: number): Rect {
+  const dx = rect.width * margin
+  const dy = rect.height * margin
+  return {
+    x: rect.x - dx,
+    y: rect.y - dy,
+    width: rect.width + dx * 2,
+    height: rect.height + dy * 2,
+  }
 }
 
 /**
