@@ -16,7 +16,8 @@ import './DialoguePanel.css'
  */
 type ImportState =
   | { kind: 'idle' }
-  | { kind: 'importing' }
+  /** `done` files of `total` are already in the document — a batch reports where it is. */
+  | { kind: 'importing'; done: number; total: number }
   /** The import succeeded; the message is advice, not an error. */
   | { kind: 'warned'; message: string }
   | { kind: 'failed'; message: string }
@@ -69,15 +70,29 @@ export function DialoguePanel({
   const npcNames = useMemo(() => npcNamesIn(project.dialogues), [project.dialogues])
   const map = project.maps.find((candidate) => candidate.id === dialogue.mapId) ?? null
 
-  async function importFile(file: File): Promise<void> {
-    setImportState({ kind: 'importing' })
-    try {
-      const { media, warning } = await importDialogueMedia(dialogue.id, file)
-      dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
-      setImportState(warning === null ? { kind: 'idle' } : { kind: 'warned', message: warning })
-    } catch (error) {
-      setImportState({ kind: 'failed', message: describeError(error) })
+  /**
+   * One file after the next rather than in parallel: the list order *is* the drop order, and
+   * concurrent probes would append in whatever order the decoder finished in. A file that fails
+   * is named and skipped — abandoning the rest of a five-frame drop because frame three was a
+   * PDF would lose four good pictures.
+   */
+  async function importFiles(files: readonly File[]): Promise<void> {
+    if (files.length === 0) return
+    const failures: string[] = []
+    const warnings: string[] = []
+
+    for (const [index, file] of files.entries()) {
+      setImportState({ kind: 'importing', done: index, total: files.length })
+      try {
+        const { media, warning } = await importDialogueMedia(dialogue.id, file)
+        dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
+        if (warning !== null) warnings.push(`${file.name}: ${warning}`)
+      } catch (error) {
+        failures.push(`${file.name}: ${describeError(error)}`)
+      }
     }
+
+    setImportState(batchOutcome(files.length, failures, warnings))
   }
 
   async function removeMedium(medium: DialogueMedia): Promise<void> {
@@ -93,11 +108,19 @@ export function DialoguePanel({
     }
   }
 
+  function moveMedium(medium: DialogueMedia, toIndex: number): void {
+    dispatch({
+      kind: 'dialogue/media-reordered',
+      dialogueId: dialogue.id,
+      mediaId: medium.id,
+      toIndex,
+    })
+  }
+
   function onDrop(event: ReactDragEvent<HTMLElement>): void {
     event.preventDefault()
     setDropTarget(false)
-    const file = event.dataTransfer.files.item(0)
-    if (file !== null) void importFile(file)
+    void importFiles([...event.dataTransfer.files])
   }
 
   return (
@@ -149,20 +172,46 @@ export function DialoguePanel({
       <section className="dialogue-media">
         <h3 className="dialogue-form__legend">Media</h3>
 
-        {/* The list in the panel's existing single-slot layout, one medium under the next —
-            the gallery, multi-file import and reordering are #50's business. */}
-        {dialogue.media.map((medium) => (
-          <div key={medium.id} className="dialogue-media__item">
-            <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
-            <button
-              type="button"
-              className="dialogue-panel__button"
-              onClick={() => void removeMedium(medium)}
-            >
-              Remove media
-            </button>
-          </div>
-        ))}
+        {/* An ordered list because the order is the content: the first entry is what the pin
+            wears. Position is moved one step at a time rather than dragged — a drag inside a
+            panel that is itself a drop target for files would have to fight it for the gesture. */}
+        {dialogue.media.length > 0 && (
+          <ol className="dialogue-media__list">
+            {dialogue.media.map((medium, index) => (
+              <li key={medium.id} className="dialogue-media__item">
+                <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
+                <p className="dialogue-media__position">
+                  {index === 0 ? 'First — the pin shows this one' : `Picture ${index + 1}`}
+                </p>
+                <div className="dialogue-media__controls">
+                  <button
+                    type="button"
+                    className="dialogue-panel__button"
+                    disabled={index === 0}
+                    onClick={() => moveMedium(medium, index - 1)}
+                  >
+                    Move up
+                  </button>
+                  <button
+                    type="button"
+                    className="dialogue-panel__button"
+                    disabled={index === dialogue.media.length - 1}
+                    onClick={() => moveMedium(medium, index + 1)}
+                  >
+                    Move down
+                  </button>
+                  <button
+                    type="button"
+                    className="dialogue-panel__button"
+                    onClick={() => void removeMedium(medium)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
 
         {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
             cannot be restyled, and a button would need a ref plus a synthetic click. */}
@@ -171,24 +220,29 @@ export function DialoguePanel({
           htmlFor={pickerId}
           aria-disabled={importState.kind === 'importing'}
         >
-          {importState.kind === 'importing' ? 'Importing…' : 'Add image, gif or clip'}
+          {importState.kind === 'importing'
+            ? importingLabel(importState.done, importState.total)
+            : 'Add images, gifs or clips'}
         </label>
         <input
           id={pickerId}
           className="dialogue-media__input"
           type="file"
+          multiple
           accept={DIALOGUE_MEDIA_ACCEPT}
           disabled={importState.kind === 'importing'}
           onChange={(event) => {
             const input = event.target
-            const file = input.files?.[0]
+            const files = [...(input.files ?? [])]
             // Clearing is what lets the same file be picked twice in a row — otherwise the
             // second pick is not a change and fires no event at all.
             input.value = ''
-            if (file !== undefined) void importFile(file)
+            void importFiles(files)
           }}
         />
-        <p className="dialogue-media__hint">…or drop a file anywhere on this panel.</p>
+        <p className="dialogue-media__hint">
+          …or drop files anywhere on this panel. They are added in the order they are dropped.
+        </p>
 
         {importState.kind === 'warned' && (
           <p className="dialogue-media__warning" role="status">
@@ -205,6 +259,31 @@ export function DialoguePanel({
       <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
     </aside>
   )
+}
+
+/** Silent about the count for a single file, so the common case reads as it always did. */
+function importingLabel(done: number, total: number): string {
+  return total === 1 ? 'Importing…' : `Importing ${done + 1} of ${total}…`
+}
+
+/**
+ * What a finished batch leaves on screen. A failure outranks a size warning: the warning is
+ * advice about a file that *did* import, and the panel has one message to give.
+ */
+function batchOutcome(
+  total: number,
+  failures: readonly string[],
+  warnings: readonly string[],
+): ImportState {
+  if (failures.length > 0) {
+    const imported = total - failures.length
+    // Named counts, because "one of these five was rejected" is invisible in a list that
+    // simply came out shorter than the drop.
+    const prefix = imported === 0 ? '' : `${imported} of ${total} imported. `
+    return { kind: 'failed', message: `${prefix}${failures.join(' ')}` }
+  }
+  if (warnings.length > 0) return { kind: 'warned', message: warnings.join(' ') }
+  return { kind: 'idle' }
 }
 
 /** Every NPC name in the project, deduplicated, blanks dropped, in locale order. */
