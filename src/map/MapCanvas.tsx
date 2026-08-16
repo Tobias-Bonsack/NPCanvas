@@ -31,6 +31,8 @@ import {
   mapsBounds,
   zoneAtCanvasPoint,
 } from './canvas-layout.ts'
+import type { DragGesture } from './drag-gesture.ts'
+import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Rect, Size } from './geometry.ts'
 import { rectToPolygon, translatePolygon } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
@@ -38,9 +40,6 @@ import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
 import { nextZoneHue } from './zone-style.ts'
 import './MapCanvas.css'
-
-/** Screen pixels of travel before a press stops being a click and becomes a pan. */
-const CLICK_THRESHOLD = 4
 
 /**
  * How long the view must be still before the visible rect is republished.
@@ -76,6 +75,33 @@ export type MapDragPreview = { id: MapId; origin: Point }
  * `MapDragPreview` is: `zone/moved` lands once, on pointerup.
  */
 export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }
+
+/**
+ * What the zone tool snapshots at pointerdown. `latest` mirrors what is on screen so the
+ * commit does not depend on a state closure; the pointer bookkeeping around it belongs to
+ * `DragGesture`.
+ */
+type ZoneGesture =
+  | { kind: 'draw'; map: GameMap; from: Point; view: Viewport; latest: Rect | null }
+  | {
+      kind: 'move'
+      target: Zone
+      /** Screen pixels per map-local pixel, so a drag delta lands in the polygon's space. */
+      scale: number
+      latest: Polygon | null
+    }
+
+/** What a map drag snapshots. Same contract as `ZoneGesture`: a preview plus its commit value. */
+type MapDragGesture = {
+  id: MapId
+  from: Point
+  /**
+   * Only the *viewport* scale converts screen pixels to canvas units — the map's own scale
+   * sizes its contents, not its position, so folding it in would make the map lag the cursor.
+   */
+  viewportScale: number
+  latest: Point | null
+}
 
 /**
  * Map-local pixels a zone drag must cover on both axes before it commits. Below this the
@@ -240,31 +266,21 @@ export function MapCanvas({
     return () => element.removeEventListener('wheel', onWheel)
   }, [])
 
-  // The viewport at pointerdown is captured here rather than read from state during the
-  // drag, so the delta is always measured against the same origin and no stale closure can
-  // make the map jitter.
-  const pan = useRef<{
-    pointerId: number
-    origin: Point
-    from: Viewport
-    moved: boolean
-  } | null>(null)
+  // The viewport at pointerdown is the gesture's snapshot rather than something read from
+  // state during the drag, so the delta is always measured against the same origin and no
+  // stale closure can make the map jitter.
+  const pan = useRef<DragGesture<Viewport> | null>(null)
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
     if (event.button !== 0) return
     if (isCanvasChrome(event.target)) return
-    // Capture keeps pointermove flowing after the cursor leaves the element, so a fast drag
-    // does not strand the map mid-pan.
-    event.currentTarget.setPointerCapture(event.pointerId)
+    // A press arriving while the canvas already owns a pointer is ignored rather than
+    // replacing the gesture in flight; `beginDrag` guards each ref, this guards the pair.
+    if (pan.current !== null || zone.current !== null) return
     // The zone tool claims a press that landed on a map; one on bare canvas falls through to
     // a pan, so the canvas is still navigable without switching tools.
     if (tool.kind === 'draw-zone' && beginZoneGesture(event)) return
-    pan.current = {
-      pointerId: event.pointerId,
-      origin: { x: event.clientX, y: event.clientY },
-      from: viewport,
-      moved: false,
-    }
+    beginDrag(pan, event, viewport)
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -272,42 +288,51 @@ export function MapCanvas({
       onZonePointerMove(event)
       return
     }
-    const drag = pan.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
-    const dx = event.clientX - drag.origin.x
-    const dy = event.clientY - drag.origin.y
-    // Below the threshold the press is still a candidate click, and panning by a pixel of
-    // hand-shake would otherwise swallow it.
-    if (!drag.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
+    const move = moveDrag(pan, event)
+    if (move === null) return
     // Guarded on the transition: setting it every move would re-render on every frame, which
     // is exactly what the layer promotion exists to avoid.
-    if (!drag.moved) {
-      drag.moved = true
-      setPanning(true)
-    }
+    if (move.started) setPanning(true)
     setViewport({
-      ...drag.from,
-      x: drag.from.x - dx / drag.from.scale,
-      y: drag.from.y - dy / drag.from.scale,
+      ...move.data,
+      x: move.data.x - move.dx / move.data.scale,
+      y: move.data.y - move.dy / move.data.scale,
     })
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    // `pointerup` carries the button that was *released*. Without this gate, releasing the
+    // right button during a held left-press would run the click path — a mouse reports one
+    // pointerId for every button, so the id guard cannot tell them apart.
+    if (event.button !== 0) return
     if (zone.current !== null) {
       onZonePointerUp(event)
       return
     }
-    const drag = pan.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
-    pan.current = null
-    setPanning(false)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
-    if (drag.moved) return
+    const end = commitDrag(pan, event)
+    // Runs on every exit path from here, this pointer's or another's, and states exactly what
+    // it means: a pan is in flight. `data-panning` — and the `will-change` it drives — can
+    // therefore neither be left stuck on nor be dropped out from under a live pan.
+    setPanning(pan.current !== null)
+    if (end === null || end.moved) return
 
     const bounds = event.currentTarget.getBoundingClientRect()
-    onCanvasClick({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, drag.from)
+    onCanvasClick({ x: event.clientX - bounds.left, y: event.clientY - bounds.top }, end.data)
+  }
+
+  /**
+   * A cancel is the platform saying the gesture did not happen — an OS takeover, a touch
+   * promoted to a browser gesture, a pen leaving range. Separate from `onPointerUp` because it
+   * must dispatch **nothing**: every preview is dropped and the document stays as it was.
+   */
+  function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
+    // Guarded on the return value, because a cancel for a pointer that never owned a gesture
+    // must leave the one in flight — and its preview — exactly as it is.
+    if (cancelDrag(pan, event)) setPanning(false)
+    if (cancelDrag(zone, event)) {
+      setDraft(null)
+      onZoneDrag(null)
+    }
   }
 
   /**
@@ -316,20 +341,7 @@ export function MapCanvas({
    * viewport is captured at pointerdown for the same reason the pan captures it — the delta
    * must be measured against one origin however the view changes mid-drag.
    */
-  const zone = useRef<
-    | { kind: 'draw'; pointerId: number; map: GameMap; from: Point; view: Viewport; latest: Rect | null }
-    | {
-        kind: 'move'
-        pointerId: number
-        target: Zone
-        /** Screen pixels per map-local pixel, so a drag delta lands in the polygon's space. */
-        scale: number
-        origin: Point
-        latest: Polygon | null
-        moved: boolean
-      }
-    | null
-  >(null)
+  const zone = useRef<DragGesture<ZoneGesture> | null>(null)
   // The rectangle being dragged out, redrawn every frame. It is `MapCanvas`'s own state, not
   // a prop to the memo'd `ZoneLayer`, which must stay free of anything that changes per frame.
   const [draft, setDraft] = useState<{ mapId: MapId; rect: Rect } | null>(null)
@@ -342,32 +354,29 @@ export function MapCanvas({
 
     const target = zoneAtCanvasPoint(maps, zones, canvasPoint)
     if (target !== null) {
-      zone.current = {
+      return beginDrag(zone, event, {
         kind: 'move',
-        pointerId: event.pointerId,
         target,
         scale: viewport.scale * map.scale,
-        origin: { x: event.clientX, y: event.clientY },
         latest: null,
-        moved: false,
-      }
-      return true
+      })
     }
 
-    zone.current = {
+    return beginDrag(zone, event, {
       kind: 'draw',
-      pointerId: event.pointerId,
       map,
       from: canvasToMapLocal(map, canvasPoint),
       view: viewport,
       latest: null,
-    }
-    return true
+    })
   }
 
   function onZonePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
-    const gesture = zone.current
-    if (gesture === null || gesture.pointerId !== event.pointerId) return
+    // Drawing goes through the same threshold as every other gesture, so the draft rectangle
+    // appears once the press is a drag rather than flashing under a click that wobbled.
+    const move = moveDrag(zone, event)
+    if (move === null) return
+    const gesture = move.data
 
     if (gesture.kind === 'draw') {
       const to = canvasToMapLocal(gesture.map, screenToWorld(gesture.view, anchorOf(event)))
@@ -377,31 +386,23 @@ export function MapCanvas({
       return
     }
 
-    const dx = event.clientX - gesture.origin.x
-    const dy = event.clientY - gesture.origin.y
-    if (!gesture.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
-    gesture.moved = true
-
     const polygon = translatePolygon(gesture.target.polygon, {
-      x: dx / gesture.scale,
-      y: dy / gesture.scale,
+      x: move.dx / gesture.scale,
+      y: move.dy / gesture.scale,
     })
     gesture.latest = polygon
     onZoneDrag({ id: gesture.target.id, polygon })
   }
 
   function onZonePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
-    const gesture = zone.current
-    if (gesture === null || gesture.pointerId !== event.pointerId) return
-    zone.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
+    const end = commitDrag(zone, event)
+    if (end === null) return
+    const gesture = end.data
 
     if (gesture.kind === 'move') {
       const final = gesture.latest
       onZoneDrag(null)
-      if (!gesture.moved || final === null) {
+      if (!end.moved || final === null) {
         // A press that never moved is how a zone is picked up *and* how it is selected.
         dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: gesture.target.id } })
         return
@@ -427,68 +428,52 @@ export function MapCanvas({
   }
 
   // The map drag mirrors the pan above: the bookkeeping lives in a ref so a sub-threshold
-  // wobble costs no render, and the viewport scale is captured at pointerdown so zooming
-  // mid-gesture cannot shift the delta. Only the *viewport* scale converts screen pixels to
-  // canvas units — the map's own scale sizes its contents, not its position, so folding it
-  // in would make the map lag or outrun the cursor.
-  const mapDrag = useRef<{
-    pointerId: number
-    id: MapId
-    origin: Point
-    from: Point
-    viewportScale: number
-    latest: Point | null
-    moved: boolean
-  } | null>(null)
+  // wobble costs no render, and the viewport scale is snapshotted at pointerdown so zooming
+  // mid-gesture cannot shift the delta.
+  const mapDrag = useRef<DragGesture<MapDragGesture> | null>(null)
 
   function onMapPointerDown(event: ReactPointerEvent<HTMLDivElement>, map: GameMap): void {
     if (event.button !== 0 || tool.kind !== 'move-map') return
     // Without this the canvas underneath would start panning at the same time.
     event.stopPropagation()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
-    mapDrag.current = {
-      pointerId: event.pointerId,
+    const began = beginDrag(mapDrag, event, {
       id: map.id,
-      origin: { x: event.clientX, y: event.clientY },
       from: map.origin,
       viewportScale: viewport.scale,
       latest: null,
-      moved: false,
-    }
+    })
+    if (!began) return
+    dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
   }
 
   function onMapPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
-    const drag = mapDrag.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
-
-    const dx = event.clientX - drag.origin.x
-    const dy = event.clientY - drag.origin.y
-    if (!drag.moved && Math.hypot(dx, dy) < CLICK_THRESHOLD) return
-    drag.moved = true
+    const move = moveDrag(mapDrag, event)
+    if (move === null) return
 
     const origin: Point = {
-      x: drag.from.x + dx / drag.viewportScale,
-      y: drag.from.y + dy / drag.viewportScale,
+      x: move.data.from.x + move.dx / move.data.viewportScale,
+      y: move.data.from.y + move.dy / move.data.viewportScale,
     }
-    drag.latest = origin
-    onMapDrag({ id: drag.id, origin })
+    move.data.latest = origin
+    onMapDrag({ id: move.data.id, origin })
   }
 
   function onMapPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
-    const drag = mapDrag.current
-    if (drag === null || drag.pointerId !== event.pointerId) return
+    if (event.button !== 0) return
+    const end = commitDrag(mapDrag, event)
+    if (end === null) return
     event.stopPropagation()
-    mapDrag.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
 
-    const final = drag.latest
+    const final = end.data.latest
     onMapDrag(null)
-    if (drag.moved && final !== null) {
-      dispatch({ kind: 'map/moved', mapId: drag.id, origin: final })
+    if (end.moved && final !== null) {
+      dispatch({ kind: 'map/moved', mapId: end.data.id, origin: final })
     }
+  }
+
+  /** Drops the preview and dispatches nothing — see `onPointerCancel`. */
+  function onMapPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (cancelDrag(mapDrag, event)) onMapDrag(null)
   }
 
   /** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures above. */
@@ -552,7 +537,10 @@ export function MapCanvas({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      // The canvas has no context menu of its own, and one opening mid-gesture leaves the
+      // press hanging: the menu takes the pointer and no pointerup ever reaches the canvas.
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div className="map-canvas__world" style={worldStyle(viewport)}>
         {maps.map((map) => (
@@ -565,6 +553,7 @@ export function MapCanvas({
             onPointerDown={tool.kind === 'move-map' ? onMapPointerDown : null}
             onPointerMove={onMapPointerMove}
             onPointerUp={onMapPointerUp}
+            onPointerCancel={onMapPointerCancel}
           />
         ))}
         {children}
@@ -669,6 +658,7 @@ function MapImage({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
 }: {
   map: GameMap
   selected: boolean
@@ -676,6 +666,7 @@ function MapImage({
   onPointerDown: ((event: ReactPointerEvent<HTMLDivElement>, map: GameMap) => void) | null
   onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void
+  onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void
 }): ReactElement {
   const media = useMediaUrl(map.file)
 
@@ -688,7 +679,7 @@ function MapImage({
       onPointerDown={onPointerDown === null ? undefined : (event) => onPointerDown(event, map)}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
     >
       {media.kind === 'ready' ? (
         <img

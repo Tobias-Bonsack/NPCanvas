@@ -18,17 +18,15 @@ import { dialogueContentKind } from '../project/types.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
 import { canvasRectToMapLocal } from './canvas-layout.ts'
+import type { DragGesture } from './drag-gesture.ts'
+import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Rect } from './geometry.ts'
 import { rectContains } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 
-/** Screen pixels of travel before a press stops being a click and becomes a drag. */
-const DRAG_THRESHOLD = 4
-
-type DragState = {
-  pointerId: number
+/** What a pin drag snapshots at pointerdown; `DragGesture` owns the pointer bookkeeping. */
+type PinDragGesture = {
   id: DialogueId
-  origin: Point
   from: Point
   /**
    * Screen pixels per map-local pixel, read once at pointerdown: the drag must not shift if
@@ -37,7 +35,6 @@ type DragState = {
   scale: number
   /** Mirrors the rendered drag position, so pointerup does not depend on a state closure. */
   latest: Point | null
-  moved: boolean
 }
 
 /**
@@ -83,7 +80,7 @@ export const PinLayer = memo(function PinLayer({
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
-  const drag = useRef<DragState | null>(null)
+  const drag = useRef<DragGesture<PinDragGesture> | null>(null)
   const [dragged, setDragged] = useState<{ id: DialogueId; position: Point } | null>(null)
   const [pendingDelete, setPendingDelete] = useState<DialogueId | null>(null)
 
@@ -104,56 +101,53 @@ export const PinLayer = memo(function PinLayer({
     if (event.button !== 0) return
     // Without this the canvas underneath would start panning at the same time.
     event.stopPropagation()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = {
-      pointerId: event.pointerId,
+    beginDrag(drag, event, {
       id: dialogue.id,
-      origin: { x: event.clientX, y: event.clientY },
       from: dialogue.position,
       scale: readScreenScale(event.currentTarget),
       latest: null,
-      moved: false,
-    }
+    })
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
-    const current = drag.current
-    if (current === null || current.pointerId !== event.pointerId) return
-
-    const dx = event.clientX - current.origin.x
-    const dy = event.clientY - current.origin.y
-    if (!current.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
-    current.moved = true
+    const move = moveDrag(drag, event)
+    if (move === null) return
 
     const position: Point = {
-      x: current.from.x + dx / current.scale,
-      y: current.from.y + dy / current.scale,
+      x: move.data.from.x + move.dx / move.data.scale,
+      y: move.data.from.y + move.dy / move.data.scale,
     }
-    current.latest = position
-    setDragged({ id: current.id, position })
+    move.data.latest = position
+    setDragged({ id: move.data.id, position })
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
-    const current = drag.current
-    if (current === null || current.pointerId !== event.pointerId) return
+    // The released button, not the held one: a right-button release during a held left-press
+    // must not select the pin or commit its position.
+    if (event.button !== 0) return
+    const end = commitDrag(drag, event)
+    if (end === null) return
     event.stopPropagation()
-    drag.current = null
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    }
+    setDragged(null)
 
     // A slightly shaky click still selects — that is the whole point of the threshold.
-    if (!current.moved) {
-      setDragged(null)
-      select(current.id)
+    if (!end.moved) {
+      select(end.data.id)
       return
     }
 
-    const final = current.latest
-    setDragged(null)
+    const final = end.data.latest
     if (final !== null) {
-      dispatch({ kind: 'dialogue/moved', dialogueId: current.id, position: final })
+      dispatch({ kind: 'dialogue/moved', dialogueId: end.data.id, position: final })
     }
+  }
+
+  /**
+   * The platform withdrew the gesture, so the pin snaps back to where the document says it is
+   * and nothing is dispatched — a cancel is not a shorter pointerup.
+   */
+  function onPointerCancel(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (cancelDrag(drag, event)) setDragged(null)
   }
 
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
@@ -196,6 +190,7 @@ export const PinLayer = memo(function PinLayer({
                 onPointerDown={onPointerDown}
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
+                onPointerCancel={onPointerCancel}
                 onRequestDelete={() => setPendingDelete(dialogue.id)}
                 onCancelDelete={() => setPendingDelete(null)}
                 onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
@@ -237,6 +232,7 @@ function Pin({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
   onRequestDelete,
   onCancelDelete,
   onConfirmDelete,
@@ -255,6 +251,7 @@ function Pin({
   onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
   onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onRequestDelete: () => void
   onCancelDelete: () => void
   onConfirmDelete: () => void
@@ -284,7 +281,7 @@ function Pin({
         onPointerDown={(event) => onPointerDown(event, dialogue)}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
         onKeyDown={(event) => {
           if (event.key !== 'Delete' && event.key !== 'Backspace') return
           // Backspace is "go back" in a browser until something claims it.
