@@ -1,10 +1,11 @@
 import { assertNever } from '../assert-never.ts'
-import { newMapId } from '../project/ids.ts'
+import { newMapId, newMediaId } from '../project/ids.ts'
 import type {
   DialogueId,
-  DialogueMediaContent,
+  DialogueMedia,
   GameMap,
   MediaFile,
+  MediaId,
   Point,
 } from '../project/types.ts'
 import { writeMediaFile } from '../storage/project-directory.ts'
@@ -102,7 +103,7 @@ const LARGE_FILE_BYTES = 20 * 1024 * 1024
  * the type, which is more useful than a file that silently fails to decode later.
  */
 const DIALOGUE_MEDIA_TYPES: Readonly<
-  Record<string, { kind: DialogueMediaContent['kind']; extension: string } | undefined>
+  Record<string, { kind: DialogueMedia['kind']; extension: string } | undefined>
 > = {
   'image/png': { kind: 'image', extension: 'png' },
   'image/jpeg': { kind: 'image', extension: 'jpg' },
@@ -121,16 +122,17 @@ const DIALOGUE_MEDIA_TYPES: Readonly<
 export const DIALOGUE_MEDIA_ACCEPT = Object.keys(DIALOGUE_MEDIA_TYPES).join(',')
 
 export type DialogueMediaImport = {
-  content: DialogueMediaContent
+  media: DialogueMedia
   /** Non-null when the import succeeded but the file is big enough to be worth saying so. */
   warning: string | null
 }
 
 /**
- * Copies a picked file into `media/<dialogueId>.<ext>`, probes its intrinsic size, and returns
- * the content for the caller to dispatch. Naming the file from the dialogue's id makes
- * collisions impossible by construction — and means a re-import overwrites in place, which is
- * why the URL cache is invalidated here rather than left to each caller to remember.
+ * Copies a picked file into `media/<dialogueId>-<mediaId>.<ext>`, probes its intrinsic size, and
+ * returns the medium for the caller to dispatch. Both ids are in the name, so a dialogue can own
+ * several files and a collision remains impossible by construction. The URL cache is invalidated
+ * here rather than left to each caller, because a fresh id could still land on a name a previous
+ * session wrote and then deleted.
  */
 export async function importDialogueMedia(
   dialogueId: DialogueId,
@@ -140,40 +142,42 @@ export async function importDialogueMedia(
   if (type === undefined) {
     const supplied = file.type === '' ? 'an unrecognised file type' : file.type
     throw new Error(
-      `${supplied} cannot be used as dialogue content. ` +
+      `${supplied} cannot be used as dialogue media. ` +
         `Supported: ${Object.keys(DIALOGUE_MEDIA_TYPES).join(', ')}.`,
     )
   }
 
+  const id = newMediaId()
   // Probed before the write, so a corrupt file is rejected without leaving bytes in media/
   // that no dialogue references.
-  const content = await probeContent(type.kind, file, {
-    fileName: `${dialogueId}.${type.extension}`,
+  const media = await probeMedia(id, type.kind, file, {
+    fileName: `${dialogueId}-${id}.${type.extension}`,
     mimeType: file.type,
     byteSize: file.size,
   })
 
-  await writeMediaFile(content.file.fileName, file)
-  invalidateMediaFile(content.file.fileName)
+  await writeMediaFile(media.file.fileName, file)
+  invalidateMediaFile(media.file.fileName)
 
-  return { content, warning: largeFileWarning(file) }
+  return { media, warning: largeFileWarning(file) }
 }
 
 /** Exhaustive over the media kinds, which is what keeps a new one from defaulting to a still. */
-async function probeContent(
-  kind: DialogueMediaContent['kind'],
+async function probeMedia(
+  id: MediaId,
+  kind: DialogueMedia['kind'],
   file: File,
   mediaFile: MediaFile,
-): Promise<DialogueMediaContent> {
+): Promise<DialogueMedia> {
   switch (kind) {
     case 'image':
     case 'gif': {
       const { width, height } = await probeImageSize(file)
-      return { kind, file: mediaFile, width, height }
+      return { id, kind, file: mediaFile, width, height }
     }
     case 'video': {
       const { width, height, durationMs } = await probeVideoSize(file)
-      return { kind, file: mediaFile, width, height, durationMs }
+      return { id, kind, file: mediaFile, width, height, durationMs }
     }
     default:
       return assertNever(kind)

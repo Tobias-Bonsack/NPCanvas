@@ -5,7 +5,7 @@ import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
-import type { Dialogue, DialogueContent, ProjectFile, Zone } from '../project/types.ts'
+import type { Dialogue, DialogueMedia, ProjectFile, Zone } from '../project/types.ts'
 import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import './DialoguePanel.css'
@@ -70,26 +70,27 @@ export function DialoguePanel({
   const map = project.maps.find((candidate) => candidate.id === dialogue.mapId) ?? null
 
   async function importFile(file: File): Promise<void> {
-    // Captured before the dispatch: afterwards nothing in the document names the old file,
-    // and it would sit in media/ forever, invisible from inside the app.
-    const replaced = dialogue.content
     setImportState({ kind: 'importing' })
     try {
-      const { content, warning } = await importDialogueMedia(dialogue.id, file)
-      dispatch({ kind: 'dialogue/content-set', dialogueId: dialogue.id, content })
+      const { media, warning } = await importDialogueMedia(dialogue.id, file)
+      dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
       setImportState(warning === null ? { kind: 'idle' } : { kind: 'warned', message: warning })
-      await deleteOrphan(replaced, content)
     } catch (error) {
       setImportState({ kind: 'failed', message: describeError(error) })
     }
   }
 
-  async function clearMedia(): Promise<void> {
-    const replaced = dialogue.content
-    const content: DialogueContent = { kind: 'text', text: '' }
-    dispatch({ kind: 'dialogue/content-set', dialogueId: dialogue.id, content })
+  async function removeMedium(medium: DialogueMedia): Promise<void> {
+    dispatch({ kind: 'dialogue/media-removed', dialogueId: dialogue.id, mediaId: medium.id })
     setImportState({ kind: 'idle' })
-    await deleteOrphan(replaced, content)
+    // After the dispatch nothing in the document names the file, so it would sit in media/
+    // forever, invisible from inside the app. A file that resists deletion is dead weight
+    // there, not a broken project — reported, never surfaced as app state.
+    try {
+      await deleteMediaFile(medium.file.fileName)
+    } catch (error) {
+      console.error('Could not delete media file', error)
+    }
   }
 
   function onDrop(event: ReactDragEvent<HTMLElement>): void {
@@ -148,18 +149,20 @@ export function DialoguePanel({
       <section className="dialogue-media">
         <h3 className="dialogue-form__legend">Media</h3>
 
-        {dialogue.content.kind !== 'text' && (
-          <>
-            <MediaView content={dialogue.content} label={dialogue.npcName || 'Dialogue media'} />
+        {/* The list in the panel's existing single-slot layout, one medium under the next —
+            the gallery, multi-file import and reordering are #50's business. */}
+        {dialogue.media.map((medium) => (
+          <div key={medium.id} className="dialogue-media__item">
+            <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
             <button
               type="button"
               className="dialogue-panel__button"
-              onClick={() => void clearMedia()}
+              onClick={() => void removeMedium(medium)}
             >
               Remove media
             </button>
-          </>
-        )}
+          </div>
+        ))}
 
         {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
             cannot be restyled, and a button would need a ref plus a synthetic click. */}
@@ -168,11 +171,7 @@ export function DialoguePanel({
           htmlFor={pickerId}
           aria-disabled={importState.kind === 'importing'}
         >
-          {importState.kind === 'importing'
-            ? 'Importing…'
-            : dialogue.content.kind === 'text'
-              ? 'Add image, gif or clip'
-              : 'Replace media'}
+          {importState.kind === 'importing' ? 'Importing…' : 'Add image, gif or clip'}
         </label>
         <input
           id={pickerId}
@@ -206,24 +205,6 @@ export function DialoguePanel({
       <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
     </aside>
   )
-}
-
-/**
- * Removes the file the replaced content owned, once nothing references it.
- *
- * Not unconditional: re-importing the same *kind* writes the same `<dialogueId>.<ext>` in
- * place, and deleting it afterwards would take the new file with it. The document is already
- * correct either way, so a file that resists deletion is dead weight in `media/`, not a
- * broken project — reported, never surfaced as app state.
- */
-async function deleteOrphan(replaced: DialogueContent, next: DialogueContent): Promise<void> {
-  if (replaced.kind === 'text') return
-  if (next.kind !== 'text' && next.file.fileName === replaced.file.fileName) return
-  try {
-    await deleteMediaFile(replaced.file.fileName)
-  } catch (error) {
-    console.error('Could not delete media file', error)
-  }
 }
 
 /** Every NPC name in the project, deduplicated, blanks dropped, in locale order. */

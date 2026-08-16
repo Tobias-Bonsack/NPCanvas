@@ -7,14 +7,14 @@ import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
 import type {
   Dialogue,
-  DialogueContent,
   DialogueId,
-  DialogueMediaContent,
+  DialogueMedia,
   GameMap,
   MapId,
   Point,
   Quest,
 } from '../project/types.ts'
+import { dialogueContentKind } from '../project/types.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
 import { canvasRectToMapLocal } from './canvas-layout.ts'
@@ -161,13 +161,14 @@ export const PinLayer = memo(function PinLayer({
     dispatch({ kind: 'dialogue/deleted', dialogueId: dialogue.id })
     navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
 
-    // Text dialogues own no file, but #12 makes this branch live and an orphan in media/
-    // would be invisible from inside the app.
-    if (dialogue.content.kind === 'text') return
-    try {
-      await deleteMediaFile(dialogue.content.file.fileName)
-    } catch (error) {
-      console.error('Could not delete media file', error)
+    // Every file the dialogue owned, not just the first: nothing names them once the dialogue
+    // is gone, and an orphan in media/ is invisible from inside the app.
+    for (const medium of dialogue.media) {
+      try {
+        await deleteMediaFile(medium.file.fileName)
+      } catch (error) {
+        console.error('Could not delete media file', error)
+      }
     }
   }
 
@@ -295,7 +296,7 @@ function Pin({
             the pin; only a thumbnail is opaque. Both sit inside the button, so the whole pin
             stays one hit target. */}
         <span className="pin__face">
-          <PinFace content={dialogue.content} onScreen={onScreen} />
+          <PinFace dialogue={dialogue} onScreen={onScreen} />
         </span>
         <span className="pin__name">{name}</span>
         {/* A separate mark in a separate place, not another colour in the fill: the fill is
@@ -372,22 +373,24 @@ function questTitle(quest: Quest): string {
 
 /**
  * What a pin shows at a glance: a thumbnail for a still that is on screen, the content
- * kind's glyph otherwise.
+ * kind's glyph otherwise. Only the **first** medium — a pin is a few screen pixels, and a
+ * dialogue that carries five frames of one line still marks one place on the map.
  *
  * Video is deliberately never thumbnailed here. A poster frame costs a decode of the clip's
  * first packets per pin, and the panel is where a clip is meant to be watched.
  */
 function PinFace({
-  content,
+  dialogue,
   onScreen,
 }: {
-  content: DialogueContent
+  dialogue: Dialogue
   onScreen: boolean
 }): ReactElement {
-  if (onScreen && (content.kind === 'image' || content.kind === 'gif')) {
-    return <PinThumbnail content={content} />
+  const kind = dialogueContentKind(dialogue)
+  if (onScreen && (kind === 'image' || kind === 'gif')) {
+    return <PinThumbnail media={dialogue.media[0]} />
   }
-  return <ContentGlyph kind={content.kind} />
+  return <ContentGlyph kind={kind} />
 }
 
 /**
@@ -395,12 +398,12 @@ function PinFace({
  * screen drops its reference — and the cache's 30 s deferred revoke is what keeps a pan back
  * and forth from re-reading the same bytes.
  */
-function PinThumbnail({ content }: { content: DialogueMediaContent }): ReactElement {
-  const media = useMediaUrl(content.file)
+function PinThumbnail({ media }: { media: DialogueMedia }): ReactElement {
+  const url = useMediaUrl(media.file)
   // Loading, missing and failed all fall back to the glyph: a pin is too small to explain
   // itself, and the panel says what went wrong when the dialogue is opened.
-  if (media.kind !== 'ready') return <ContentGlyph kind={content.kind} />
-  return <img className="pin__thumb" src={media.url} alt="" draggable={false} />
+  if (url.kind !== 'ready') return <ContentGlyph kind={media.kind} />
+  return <img className="pin__thumb" src={url.url} alt="" draggable={false} />
 }
 
 /** A pin with no NPC yet still needs an accessible name — it is a real button. */

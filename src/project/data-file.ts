@@ -1,19 +1,34 @@
 import { nextMapOrigin } from '../map/canvas-layout.ts'
 import { nextQuestHue } from '../quest/quest-style.ts'
-import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
+import {
+  asCaptureProfileId,
+  asDialogueId,
+  asMapId,
+  asMediaId,
+  asQuestId,
+  asZoneId,
+  newMediaId,
+} from './ids.ts'
 import type {
+  CaptureProfile,
+  CaptureProfileId,
   Dialogue,
-  DialogueContent,
   DialogueId,
+  DialogueMedia,
+  DialogueV3,
   GameMap,
   GameMapV1,
+  Glyph,
   MapId,
   MediaFile,
+  MediaId,
+  PixelRect,
   Point,
   Polygon,
   ProjectFile,
   ProjectFileV1,
   ProjectFileV2,
+  ProjectFileV3,
   Quest,
   QuestId,
   QuestStatus,
@@ -27,13 +42,14 @@ import { QUEST_STATUSES, RELEVANCE_TAGS } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
     zones: [],
     dialogues: [],
     quests: [],
+    captureProfiles: [],
   }
 }
 
@@ -133,6 +149,14 @@ function readQuestId(value: unknown, path: string): QuestId {
   return asQuestId(readString(value, path))
 }
 
+function readMediaId(value: unknown, path: string): MediaId {
+  return asMediaId(readString(value, path))
+}
+
+function readCaptureProfileId(value: unknown, path: string): CaptureProfileId {
+  return asCaptureProfileId(readString(value, path))
+}
+
 // ---- domain ----
 
 function readPoint(value: unknown, path: string): Point {
@@ -180,7 +204,7 @@ function isRelevanceTag(value: string): value is RelevanceTag {
   return (RELEVANCE_TAGS as readonly string[]).includes(value)
 }
 
-function readDialogueContent(value: unknown, path: string): DialogueContent {
+function readDialogueContentV3(value: unknown, path: string): DialogueV3['content'] {
   const raw = readObject(value, path)
   const kind = readString(raw.kind, `${path}.kind`)
   switch (kind) {
@@ -206,7 +230,72 @@ function readDialogueContent(value: unknown, path: string): DialogueContent {
       }
 
     default:
-      throw new SchemaError(`${path}.kind`, "one of text, image, gif, video")
+      throw new SchemaError(`${path}.kind`, 'one of text, image, gif, video')
+  }
+}
+
+function readDialogueMedia(value: unknown, path: string): DialogueMedia {
+  const raw = readObject(value, path)
+  const id = readMediaId(raw.id, `${path}.id`)
+  const kind = readString(raw.kind, `${path}.kind`)
+  switch (kind) {
+    case 'image':
+    case 'gif':
+      return {
+        id,
+        kind,
+        file: readMediaFile(raw.file, `${path}.file`),
+        width: readNumber(raw.width, `${path}.width`),
+        height: readNumber(raw.height, `${path}.height`),
+      }
+
+    case 'video':
+      return {
+        id,
+        kind: 'video',
+        file: readMediaFile(raw.file, `${path}.file`),
+        width: readNumber(raw.width, `${path}.width`),
+        height: readNumber(raw.height, `${path}.height`),
+        durationMs: readNumber(raw.durationMs, `${path}.durationMs`),
+      }
+
+    default:
+      throw new SchemaError(`${path}.kind`, 'one of image, gif, video')
+  }
+}
+
+function readPixelRect(value: unknown, path: string): PixelRect {
+  const raw = readObject(value, path)
+  return {
+    x: readNumber(raw.x, `${path}.x`),
+    y: readNumber(raw.y, `${path}.y`),
+    width: readNumber(raw.width, `${path}.width`),
+    height: readNumber(raw.height, `${path}.height`),
+  }
+}
+
+function readGlyph(value: unknown, path: string): Glyph {
+  const raw = readObject(value, path)
+  return {
+    char: readString(raw.char, `${path}.char`),
+    bits: readString(raw.bits, `${path}.bits`),
+  }
+}
+
+function readCaptureProfile(value: unknown, path: string): CaptureProfile {
+  const raw = readObject(value, path)
+  return {
+    id: readCaptureProfileId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    frameWidth: readNumber(raw.frameWidth, `${path}.frameWidth`),
+    frameHeight: readNumber(raw.frameHeight, `${path}.frameHeight`),
+    screenRect: readPixelRect(raw.screenRect, `${path}.screenRect`),
+    nativeWidth: readNumber(raw.nativeWidth, `${path}.nativeWidth`),
+    nativeHeight: readNumber(raw.nativeHeight, `${path}.nativeHeight`),
+    textRect: readPixelRect(raw.textRect, `${path}.textRect`),
+    glyphs: readArray(raw.glyphs, `${path}.glyphs`).map((glyph, index) =>
+      readGlyph(glyph, `${path}.glyphs[${index}]`),
+    ),
   }
 }
 
@@ -241,16 +330,37 @@ function readZone(value: unknown, path: string): Zone {
   }
 }
 
-function readDialogue(value: unknown, path: string): Dialogue {
-  const raw = readObject(value, path)
+/** The fields every dialogue version shares; only the content differs between V3 and V4. */
+function readDialogueCommon(
+  raw: Record<string, unknown>,
+  path: string,
+): Omit<Dialogue, 'text' | 'media'> {
   return {
     id: readDialogueId(raw.id, `${path}.id`),
     mapId: readMapId(raw.mapId, `${path}.mapId`),
     npcName: readString(raw.npcName, `${path}.npcName`),
     position: readPoint(raw.position, `${path}.position`),
-    content: readDialogueContent(raw.content, `${path}.content`),
     spokenAt: readString(raw.spokenAt, `${path}.spokenAt`),
     relevance: readRelevance(raw.relevance, `${path}.relevance`),
+  }
+}
+
+function readDialogue(value: unknown, path: string): Dialogue {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path),
+    text: readString(raw.text, `${path}.text`),
+    media: readArray(raw.media, `${path}.media`).map((medium, index) =>
+      readDialogueMedia(medium, `${path}.media[${index}]`),
+    ),
+  }
+}
+
+function readDialogueV3(value: unknown, path: string): DialogueV3 {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path),
+    content: readDialogueContentV3(raw.content, `${path}.content`),
   }
 }
 
@@ -295,28 +405,33 @@ function readProjectFile(value: unknown): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV2(migrateV1(readProjectFileV1(raw)))
+      return migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))
     case 2:
-      return migrateV2(readProjectFileV2(raw))
+      return migrateV3(migrateV2(readProjectFileV2(raw)))
     case 3:
-      return readProjectFileV3(raw)
+      return migrateV3(readProjectFileV3(raw))
+    case 4:
+      return readProjectFileV4(raw)
     default:
-      throw new SchemaError('schemaVersion', `1, 2 or 3, but found ${String(schemaVersion)}`)
+      throw new SchemaError('schemaVersion', `1, 2, 3 or 4, but found ${String(schemaVersion)}`)
   }
 }
 
-/** `maps` and `quests` differ per version; everything else is read by the same functions. */
+/** `maps`, `dialogues` and `quests` differ per version; the rest is read by the same functions. */
 function readCommonFields(
   raw: Record<string, unknown>,
-): Omit<ProjectFile, 'schemaVersion' | 'maps' | 'quests'> {
+): { projectName: string; savedAt: string; zones: Zone[] } {
   return {
     projectName: readString(raw.projectName, 'projectName'),
     savedAt: readString(raw.savedAt, 'savedAt'),
     zones: readArray(raw.zones, 'zones').map((zone, index) => readZone(zone, `zones[${index}]`)),
-    dialogues: readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
-      readDialogue(dialogue, `dialogues[${index}]`),
-    ),
   }
+}
+
+function readDialoguesV3(raw: Record<string, unknown>): DialogueV3[] {
+  return readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
+    readDialogueV3(dialogue, `dialogues[${index}]`),
+  )
 }
 
 function readQuestsV2(raw: Record<string, unknown>): QuestV2[] {
@@ -330,6 +445,7 @@ function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
     schemaVersion: 1,
     ...readCommonFields(raw),
     maps: readArray(raw.maps, 'maps').map((map, index) => readGameMapV1(map, `maps[${index}]`)),
+    dialogues: readDialoguesV3(raw),
     quests: readQuestsV2(raw),
   }
 }
@@ -339,19 +455,38 @@ function readProjectFileV2(raw: Record<string, unknown>): ProjectFileV2 {
     schemaVersion: 2,
     ...readCommonFields(raw),
     maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    dialogues: readDialoguesV3(raw),
     quests: readQuestsV2(raw),
   }
 }
 
-function readProjectFileV3(raw: Record<string, unknown>): ProjectFile {
+function readProjectFileV3(raw: Record<string, unknown>): ProjectFileV3 {
   return {
     schemaVersion: 3,
     ...readCommonFields(raw),
     maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
-    quests: readArray(raw.quests, 'quests').map((quest, index) =>
-      readQuest(quest, `quests[${index}]`),
+    dialogues: readDialoguesV3(raw),
+    quests: readQuestsV3(raw),
+  }
+}
+
+function readProjectFileV4(raw: Record<string, unknown>): ProjectFile {
+  return {
+    schemaVersion: 4,
+    ...readCommonFields(raw),
+    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    dialogues: readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
+      readDialogue(dialogue, `dialogues[${index}]`),
+    ),
+    quests: readQuestsV3(raw),
+    captureProfiles: readArray(raw.captureProfiles, 'captureProfiles').map((profile, index) =>
+      readCaptureProfile(profile, `captureProfiles[${index}]`),
     ),
   }
+}
+
+function readQuestsV3(raw: Record<string, unknown>): Quest[] {
+  return readArray(raw.quests, 'quests').map((quest, index) => readQuest(quest, `quests[${index}]`))
 }
 
 /**
@@ -372,10 +507,31 @@ function migrateV1(file: ProjectFileV1): ProjectFileV2 {
  * `nextQuestHue` a newly created quest calls, with the array built up as it goes so each quest
  * sees the ones already coloured — the migration and the board therefore colour identically.
  */
-function migrateV2(file: ProjectFileV2): ProjectFile {
+function migrateV2(file: ProjectFileV2): ProjectFileV3 {
   const quests: Quest[] = []
   for (const quest of file.quests) {
     quests.push({ ...quest, hue: nextQuestHue(quests) })
   }
   return { ...file, schemaVersion: 3, quests }
+}
+
+/**
+ * V3 held either text or exactly one file per dialogue. The text case becomes a line with no
+ * pictures, and each media case a picture with no line — which is what those documents already
+ * meant. `fileName` is carried over verbatim rather than renamed to the V4 scheme: a migration
+ * is pure and cannot touch `media/`, and the name has always been stored rather than derived.
+ */
+function migrateV3(file: ProjectFileV3): ProjectFile {
+  return {
+    ...file,
+    schemaVersion: 4,
+    dialogues: file.dialogues.map(migrateDialogueV3),
+    captureProfiles: [],
+  }
+}
+
+function migrateDialogueV3(dialogue: DialogueV3): Dialogue {
+  const { content, ...rest } = dialogue
+  if (content.kind === 'text') return { ...rest, text: content.text, media: [] }
+  return { ...rest, text: '', media: [{ ...content, id: newMediaId() }] }
 }

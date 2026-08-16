@@ -202,7 +202,7 @@ function mediaFileNamesOf(project: ProjectFile, mapId: MapId): string[] {
   const names = map === undefined ? [] : [map.file.fileName]
   for (const dialogue of project.dialogues) {
     if (dialogue.mapId !== mapId) continue
-    if (dialogue.content.kind !== 'text') names.push(dialogue.content.file.fileName)
+    for (const medium of dialogue.media) names.push(medium.file.fileName)
   }
   return names
 }

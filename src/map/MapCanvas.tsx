@@ -524,7 +524,8 @@ export function MapCanvas({
           mapId: map.id,
           npcName: '',
           position: canvasToMapLocal(map, canvasPoint),
-          content: { kind: 'text', text: '' },
+          text: '',
+          media: [],
           spokenAt: new Date().toISOString(),
           relevance: [],
         }

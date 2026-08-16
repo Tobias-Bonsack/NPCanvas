@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyProject } from './data-file.ts'
-import { asDialogueId, asMapId, asQuestId, asZoneId } from './ids.ts'
+import { asDialogueId, asMapId, asMediaId, asQuestId, asZoneId } from './ids.ts'
 import type { Action } from './reducer.ts'
 import { reduce } from './reducer.ts'
 import type {
   AppState,
   Dialogue,
-  DialogueContent,
+  DialogueMedia,
   GameMap,
   MapId,
   ProjectFile,
@@ -50,9 +50,20 @@ function dialogue(id: string, mapId: MapId): Dialogue {
     mapId,
     npcName: id,
     position: { x: 1, y: 2 },
-    content: { kind: 'text', text: '' },
+    text: '',
+    media: [],
     spokenAt: '2026-08-14T10:00:00.000Z',
     relevance: [],
+  }
+}
+
+function medium(id: string): DialogueMedia {
+  return {
+    id: asMediaId(id),
+    kind: 'image',
+    file: { fileName: `${id}.png`, mimeType: 'image/png', byteSize: 4 },
+    width: 2,
+    height: 2,
   }
 }
 
@@ -123,9 +134,20 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'npc/renamed', from: 'Mara', to: 'Ferryman' },
   { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' },
   {
-    kind: 'dialogue/content-set',
+    kind: 'dialogue/media-added',
     dialogueId: asDialogueId('dialogue-1'),
-    content: { kind: 'text', text: 'Hello' },
+    media: medium('media-1'),
+  },
+  {
+    kind: 'dialogue/media-removed',
+    dialogueId: asDialogueId('dialogue-1'),
+    mediaId: asMediaId('media-1'),
+  },
+  {
+    kind: 'dialogue/media-reordered',
+    dialogueId: asDialogueId('dialogue-1'),
+    mediaId: asMediaId('media-1'),
+    toIndex: 0,
   },
   {
     kind: 'dialogue/spoken-at-set',
@@ -575,12 +597,6 @@ describe('reduce: dialogue actions', () => {
 
 describe('reduce: dialogue field edits', () => {
   const target = asDialogueId('dialogue-harbour')
-  const IMAGE_CONTENT: DialogueContent = {
-    kind: 'image',
-    file: { fileName: `${target}.png`, mimeType: 'image/png', byteSize: 4 },
-    width: 2,
-    height: 2,
-  }
 
   function edited(state: AppState): Dialogue {
     if (state.kind !== 'ready') throw new Error('expected a ready state')
@@ -600,47 +616,87 @@ describe('reduce: dialogue field edits', () => {
     expect(next.kind === 'ready' && next.project.dialogues[1]).toBe(before.dialogues[1])
   })
 
-  it('edits the text body of a text dialogue', () => {
+  it('edits the line', () => {
     const next = reduce(ready(twoMapProject()), {
       kind: 'dialogue/text-set',
       dialogueId: target,
       text: 'The tide takes what it likes.',
     })
-    expect(edited(next).content).toEqual({
-      kind: 'text',
-      text: 'The tide takes what it likes.',
-    })
+    expect(edited(next).text).toBe('The tide takes what it likes.')
   })
 
-  it('refuses to give media content a text body', () => {
-    const state = ready(projectWithImage())
-    expect(reduce(state, { kind: 'dialogue/text-set', dialogueId: target, text: 'x' })).toBe(state)
-  })
-
-  it('replaces content wholesale when the kind changes', () => {
-    const next = reduce(ready(twoMapProject()), {
-      kind: 'dialogue/content-set',
+  it('edits the line of a dialogue that already carries pictures', () => {
+    const next = reduce(ready(projectWithMedia(['a'])), {
+      kind: 'dialogue/text-set',
       dialogueId: target,
-      content: IMAGE_CONTENT,
+      text: 'Transcribed from the capture.',
     })
-    expect(edited(next).content).toEqual(IMAGE_CONTENT)
+    expect(edited(next).text).toBe('Transcribed from the capture.')
+    expect(edited(next).media.map((it) => it.id)).toEqual(['a'])
   })
 
-  it('lets media content be replaced by an empty text body', () => {
-    const next = reduce(ready(projectWithImage()), {
-      kind: 'dialogue/content-set',
+  it('appends a medium rather than replacing the list', () => {
+    const next = reduce(ready(projectWithMedia(['a'])), {
+      kind: 'dialogue/media-added',
       dialogueId: target,
-      content: { kind: 'text', text: '' },
+      media: medium('b'),
     })
-    expect(edited(next).content).toEqual({ kind: 'text', text: '' })
+    expect(edited(next).media.map((it) => it.id)).toEqual(['a', 'b'])
   })
 
-  function projectWithImage(): ProjectFile {
+  it('removes the middle of three media and leaves the others in order', () => {
+    const next = reduce(ready(projectWithMedia(['a', 'b', 'c'])), {
+      kind: 'dialogue/media-removed',
+      dialogueId: target,
+      mediaId: asMediaId('b'),
+    })
+    expect(edited(next).media.map((it) => it.id)).toEqual(['a', 'c'])
+  })
+
+  it('ignores the removal of a medium the dialogue does not own', () => {
+    const state = ready(projectWithMedia(['a']))
+    expect(
+      reduce(state, { kind: 'dialogue/media-removed', dialogueId: target, mediaId: asMediaId('b') }),
+    ).toBe(state)
+  })
+
+  it('reorders without losing an id, clamping an index past the end', () => {
+    const state = ready(projectWithMedia(['a', 'b', 'c']))
+    const moved = reduce(state, {
+      kind: 'dialogue/media-reordered',
+      dialogueId: target,
+      mediaId: asMediaId('a'),
+      toIndex: 9,
+    })
+    expect(edited(moved).media.map((it) => it.id)).toEqual(['b', 'c', 'a'])
+
+    const back = reduce(moved, {
+      kind: 'dialogue/media-reordered',
+      dialogueId: target,
+      mediaId: asMediaId('c'),
+      toIndex: 0,
+    })
+    expect(edited(back).media.map((it) => it.id)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('treats a move onto a medium’s own position as no change at all', () => {
+    const state = ready(projectWithMedia(['a', 'b']))
+    expect(
+      reduce(state, {
+        kind: 'dialogue/media-reordered',
+        dialogueId: target,
+        mediaId: asMediaId('b'),
+        toIndex: 1,
+      }),
+    ).toBe(state)
+  })
+
+  function projectWithMedia(mediaIds: string[]): ProjectFile {
     const project = twoMapProject()
     return {
       ...project,
       dialogues: project.dialogues.map((it) =>
-        it.id === target ? { ...it, content: IMAGE_CONTENT } : it,
+        it.id === target ? { ...it, media: mediaIds.map(medium) } : it,
       ),
     }
   }

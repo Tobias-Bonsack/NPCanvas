@@ -62,24 +62,23 @@ export function DialogueForm({
         onChange={(relevance) => dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance })}
       />
 
-      {/* Bound only for text content; the media variants are #12's business. */}
-      {dialogue.content.kind === 'text' && (
-        <div className="dialogue-form__field dialogue-form__field--grow">
-          <label className="dialogue-form__label" htmlFor={`${fieldId}-text`}>
-            What was said
-          </label>
-          <textarea
-            id={`${fieldId}-text`}
-            className="dialogue-form__textarea"
-            value={dialogue.content.text}
-            rows={8}
-            placeholder="The line, as you heard it"
-            onChange={(event) =>
-              dispatch({ kind: 'dialogue/text-set', dialogueId, text: event.target.value })
-            }
-          />
-        </div>
-      )}
+      {/* Always shown, including for a dialogue that carries pictures: the line and the frames
+          proving it are separate fields, and a captured screenshot is transcribed into this one. */}
+      <div className="dialogue-form__field dialogue-form__field--grow">
+        <label className="dialogue-form__label" htmlFor={`${fieldId}-text`}>
+          What was said
+        </label>
+        <textarea
+          id={`${fieldId}-text`}
+          className="dialogue-form__textarea"
+          value={dialogue.text}
+          rows={8}
+          placeholder="The line, as you heard it"
+          onChange={(event) =>
+            dispatch({ kind: 'dialogue/text-set', dialogueId, text: event.target.value })
+          }
+        />
+      </div>
     </div>
   )
 }

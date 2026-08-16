@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import type { DialogueContent } from '../project/types.ts'
+import type { DialogueContentKind } from '../project/types.ts'
 import { DIALOGUE_CONTENT_KINDS, RELEVANCE_TAGS } from '../project/types.ts'
 import { ContentGlyph } from './ContentGlyph.tsx'
 import { RELEVANCE_STYLE, relevanceColor } from './relevance.ts'
@@ -10,7 +10,7 @@ import './CanvasLegend.css'
  * a content kind is ever spelled out — and a `Record`, so a fifth kind is a compile error
  * rather than a legend that quietly stops explaining one of them.
  */
-const CONTENT_KIND_LABEL: Record<DialogueContent['kind'], string> = {
+const CONTENT_KIND_LABEL: Record<DialogueContentKind, string> = {
   text: 'Text',
   image: 'Image',
   gif: 'Animated gif',

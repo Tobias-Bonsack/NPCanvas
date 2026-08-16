@@ -1,4 +1,4 @@
-import type { DialogueContent, DialogueId, Zone, ZoneId } from '../project/types.ts'
+import type { Dialogue, DialogueId, DialogueMedia, Zone, ZoneId } from '../project/types.ts'
 
 /** The zones a dialogue sits in, most specific first — the order `zone-index.ts` returns. */
 export function resolveZones(
@@ -20,21 +20,25 @@ export function zoneLabel(zone: Zone): string {
  * A `Record`, not a lookup function, so a fifth media kind is a compile error here rather than
  * a row that silently says nothing about its content.
  */
-const MEDIA_SNIPPET: Record<Exclude<DialogueContent['kind'], 'text'>, string> = {
+const MEDIA_SNIPPET: Record<DialogueMedia['kind'], string> = {
   image: 'Image',
   gif: 'GIF',
   video: 'Video clip',
 }
 
 /**
+ * The line if there is one, and what the pictures are otherwise — a dialogue can carry both, and
+ * the words are what identifies it in a list.
+ *
  * Whitespace is collapsed rather than truncated at a character count: the row is one line with
  * a CSS ellipsis, so the browser cuts it exactly where the column runs out — but a newline would
  * otherwise render as a space of unpredictable width in the middle of it.
  */
-export function dialogueSnippet(content: DialogueContent): string {
-  if (content.kind !== 'text') return MEDIA_SNIPPET[content.kind]
-  const collapsed = content.text.replace(/\s+/g, ' ').trim()
-  return collapsed === '' ? 'No text yet' : collapsed
+export function dialogueSnippet(dialogue: Dialogue): string {
+  const collapsed = dialogue.text.replace(/\s+/g, ' ').trim()
+  if (collapsed !== '') return collapsed
+  if (dialogue.media.length === 0) return 'No text yet'
+  return MEDIA_SNIPPET[dialogue.media[0].kind]
 }
 
 // Intl rather than a date library — see CLAUDE.md § Dependencies.

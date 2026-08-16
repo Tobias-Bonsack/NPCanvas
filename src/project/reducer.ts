@@ -4,10 +4,11 @@ import { isSamePolygon } from '../map/geometry.ts'
 import type {
   AppState,
   Dialogue,
-  DialogueContent,
   DialogueId,
+  DialogueMedia,
   GameMap,
   MapId,
+  MediaId,
   Point,
   Polygon,
   ProjectFile,
@@ -48,7 +49,9 @@ export type Action =
   | { kind: 'dialogue/npc-named'; dialogueId: DialogueId; npcName: string }
   | { kind: 'npc/renamed'; from: string; to: string }
   | { kind: 'dialogue/text-set'; dialogueId: DialogueId; text: string }
-  | { kind: 'dialogue/content-set'; dialogueId: DialogueId; content: DialogueContent }
+  | { kind: 'dialogue/media-added'; dialogueId: DialogueId; media: DialogueMedia }
+  | { kind: 'dialogue/media-removed'; dialogueId: DialogueId; mediaId: MediaId }
+  | { kind: 'dialogue/media-reordered'; dialogueId: DialogueId; mediaId: MediaId; toIndex: number }
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
   | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTag[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
@@ -301,27 +304,46 @@ export function reduce(state: AppState, action: Action): AppState {
       return { ...state, project: { ...state.project, dialogues } }
     }
 
-    // Only meaningful for a text dialogue: media content has no text body, and inventing one
-    // would discard the file reference.
+    // Unconditional: what was said and what proves it are separate fields, so a dialogue that
+    // already carries pictures still has a line to edit — and a capture appends both.
     case 'dialogue/text-set': {
       if (state.kind !== 'ready') return state
       const target = findDialogue(state.project, action.dialogueId)
-      if (target === null || target.content.kind !== 'text') return state
-      if (target.content.text === action.text) return state
-      return withDialogue(state, target, {
-        ...target,
-        content: { kind: 'text', text: action.text },
-      })
+      if (target === null || target.text === action.text) return state
+      return withDialogue(state, target, { ...target, text: action.text })
     }
 
-    // Replaces the content wholesale, which is what changing *kind* is — `dialogue/text-set`
-    // edits a text body in place and cannot express this. Deleting the file the old content
-    // referenced is the caller's job: it is IO, and IO never enters the reducer.
-    case 'dialogue/content-set': {
+    // Appended, never replacing: several frames of one line is the case the list exists for.
+    case 'dialogue/media-added': {
       if (state.kind !== 'ready') return state
       const target = findDialogue(state.project, action.dialogueId)
       if (target === null) return state
-      return withDialogue(state, target, { ...target, content: action.content })
+      return withDialogue(state, target, { ...target, media: [...target.media, action.media] })
+    }
+
+    // Deleting the file the medium referenced is the caller's job: it is IO, and IO never
+    // enters the reducer.
+    case 'dialogue/media-removed': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null || !target.media.some((medium) => medium.id === action.mediaId)) {
+        return state
+      }
+      return withDialogue(state, target, {
+        ...target,
+        media: target.media.filter((medium) => medium.id !== action.mediaId),
+      })
+    }
+
+    // Moves one medium to a position, rather than taking a whole order: an order supplied from
+    // outside could drop an id, and a list that loses a picture on a drag is a lost file.
+    case 'dialogue/media-reordered': {
+      if (state.kind !== 'ready') return state
+      const target = findDialogue(state.project, action.dialogueId)
+      if (target === null) return state
+      const media = moveMedium(target.media, action.mediaId, action.toIndex)
+      if (media === null) return state
+      return withDialogue(state, target, { ...target, media })
     }
 
     case 'dialogue/spoken-at-set': {
@@ -503,6 +525,26 @@ function findZone(project: ProjectFile, id: ZoneId): Zone | null {
 
 function findQuest(project: ProjectFile, id: QuestId): Quest | null {
   return project.quests.find((quest) => quest.id === id) ?? null
+}
+
+/**
+ * The list with one medium moved, or `null` when nothing would change — an unknown id, or a
+ * target index that is already where the medium sits. The index is clamped rather than
+ * rejected, so a drag past the end of the list means "last" instead of doing nothing.
+ */
+function moveMedium(
+  media: readonly DialogueMedia[],
+  mediaId: MediaId,
+  toIndex: number,
+): DialogueMedia[] | null {
+  const from = media.findIndex((medium) => medium.id === mediaId)
+  if (from === -1) return null
+  const to = Math.min(Math.max(Math.trunc(toIndex), 0), media.length - 1)
+  if (from === to) return null
+  const next = [...media]
+  const [moved] = next.splice(from, 1)
+  next.splice(to, 0, moved)
+  return next
 }
 
 /**

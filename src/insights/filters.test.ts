@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { asDialogueId, asMapId, asZoneId } from '../project/ids.ts'
-import type { Dialogue, DialogueContent, DialogueId, MapId, ZoneId } from '../project/types.ts'
+import { asDialogueId, asMapId, asMediaId, asZoneId } from '../project/ids.ts'
+import type { Dialogue, DialogueId, DialogueMedia, MapId, ZoneId } from '../project/types.ts'
 import type { DialogueFilter } from './filters.ts'
 import { EMPTY_FILTER, NO_ZONE, applyFilter, isEmptyFilter, toggleFilterValue } from './filters.ts'
 
@@ -15,14 +15,16 @@ function dialogue(id: string, overrides: Partial<Dialogue> = {}): Dialogue {
     mapId: HARBOUR,
     npcName: 'Mara',
     position: { x: 0, y: 0 },
-    content: { kind: 'text', text: '' },
+    text: '',
+    media: [],
     spokenAt: '2026-08-14T10:00:00.000Z',
     relevance: [],
     ...overrides,
   }
 }
 
-const image: DialogueContent = {
+const image: DialogueMedia = {
+  id: asMediaId('media-a'),
   kind: 'image',
   file: { fileName: 'a.png', mimeType: 'image/png', byteSize: 1 },
   width: 10,
@@ -32,20 +34,20 @@ const image: DialogueContent = {
 /** Four lines that differ on every axis the filter can narrow. */
 const MARA = dialogue('mara', {
   npcName: '  Mara  ',
-  content: { kind: 'text', text: 'The harbour master owes me a debt' },
+  text: 'The harbour master owes me a debt',
   relevance: ['worldbuilding'],
   spokenAt: '2026-08-10T08:00:00.000Z',
 })
 const TOMAS = dialogue('tomas', {
   npcName: 'Tomas',
   mapId: FOREST,
-  content: image,
+  media: [image],
   relevance: ['peoplebuilding', 'other'],
   spokenAt: '2026-08-12T08:00:00.000Z',
 })
 const UNNAMED = dialogue('unnamed', {
   npcName: '',
-  content: { kind: 'text', text: 'Someone muttering about the debt' },
+  text: 'Someone muttering about the debt',
   relevance: [],
   spokenAt: '2026-08-14T08:00:00.000Z',
 })

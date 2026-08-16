@@ -3,11 +3,11 @@ import { MAP_LAYOUT_GAP } from '../map/canvas-layout.ts'
 import { QUEST_HUES } from '../quest/quest-style.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
-// A document exercising every branch of the reader: all four content kinds, a polygon, a
-// quest, and a media file. Rebuilt per test so a mutation cannot leak into the next case.
+// A document exercising every branch of the reader: a line with no pictures, all three media
+// kinds, a polygon and a quest. Rebuilt per test so a mutation cannot leak into the next case.
 function validDocument(): Record<string, unknown> {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     projectName: 'Fisherman’s Rest',
     savedAt: '2026-08-14T10:00:00.000Z',
     maps: [
@@ -41,7 +41,8 @@ function validDocument(): Record<string, unknown> {
         mapId: 'map-1',
         npcName: 'Old Fisher',
         position: { x: 40, y: 30 },
-        content: { kind: 'text', text: 'The tide took it.' },
+        text: 'The tide took it.',
+        media: [],
         spokenAt: '2026-08-14T09:12:00.000Z',
         relevance: ['worldbuilding'],
       },
@@ -50,12 +51,23 @@ function validDocument(): Record<string, unknown> {
         mapId: 'map-1',
         npcName: 'Dockhand',
         position: { x: 55, y: 12 },
-        content: {
-          kind: 'image',
-          file: { fileName: 'dialogue-2.png', mimeType: 'image/png', byteSize: 1024 },
-          width: 800,
-          height: 600,
-        },
+        text: 'Two crates, no more.',
+        media: [
+          {
+            id: 'media-2a',
+            kind: 'image',
+            file: { fileName: 'dialogue-2-media-2a.png', mimeType: 'image/png', byteSize: 1024 },
+            width: 800,
+            height: 600,
+          },
+          {
+            id: 'media-2b',
+            kind: 'image',
+            file: { fileName: 'dialogue-2-media-2b.png', mimeType: 'image/png', byteSize: 2048 },
+            width: 800,
+            height: 600,
+          },
+        ],
         spokenAt: '2026-08-14T09:20:00.000Z',
         relevance: [],
       },
@@ -64,12 +76,16 @@ function validDocument(): Record<string, unknown> {
         mapId: 'map-1',
         npcName: 'Gull',
         position: { x: 5, y: 5 },
-        content: {
-          kind: 'gif',
-          file: { fileName: 'dialogue-3.gif', mimeType: 'image/gif', byteSize: 2048 },
-          width: 320,
-          height: 240,
-        },
+        text: '',
+        media: [
+          {
+            id: 'media-3',
+            kind: 'gif',
+            file: { fileName: 'dialogue-3-media-3.gif', mimeType: 'image/gif', byteSize: 2048 },
+            width: 320,
+            height: 240,
+          },
+        ],
         spokenAt: '2026-08-14T09:30:00.000Z',
         relevance: ['out-of-world', 'other'],
       },
@@ -78,13 +94,17 @@ function validDocument(): Record<string, unknown> {
         mapId: 'map-1',
         npcName: 'Harbourmaster',
         position: { x: 90, y: 70 },
-        content: {
-          kind: 'video',
-          file: { fileName: 'dialogue-4.webm', mimeType: 'video/webm', byteSize: 65536 },
-          width: 640,
-          height: 360,
-          durationMs: 4200,
-        },
+        text: '',
+        media: [
+          {
+            id: 'media-4',
+            kind: 'video',
+            file: { fileName: 'dialogue-4-media-4.webm', mimeType: 'video/webm', byteSize: 65536 },
+            width: 640,
+            height: 360,
+            durationMs: 4200,
+          },
+        ],
         spokenAt: '2026-08-14T09:40:00.000Z',
         relevance: ['peoplebuilding'],
       },
@@ -99,6 +119,7 @@ function validDocument(): Record<string, unknown> {
         hue: 45,
       },
     ],
+    captureProfiles: [],
   }
 }
 
@@ -118,12 +139,10 @@ describe('parseProjectFile', () => {
     expect(result.file.projectName).toBe('Fisherman’s Rest')
     expect(result.file.maps).toHaveLength(1)
     expect(result.file.zones[0].polygon).toHaveLength(4)
-    expect(result.file.dialogues.map((dialogue) => dialogue.content.kind)).toEqual([
-      'text',
-      'image',
-      'gif',
-      'video',
-    ])
+    expect(
+      result.file.dialogues.map((dialogue) => dialogue.media.map((medium) => medium.kind)),
+    ).toEqual([[], ['image', 'image'], ['gif'], ['video']])
+    expect(result.file.dialogues[1].text).toBe('Two crates, no more.')
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
 
     const roundTripped = parseProjectFile(serializeProject(result.file))
@@ -168,8 +187,8 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 4
-    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2 or 3, but found 4')
+    data.schemaVersion = 5
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3 or 4, but found 5')
   })
 
   it('rejects a map with no placement', () => {
@@ -179,12 +198,12 @@ describe('parseProjectFile', () => {
     expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
   })
 
-  it('round trips a V3 document with its placements and quest hues unchanged', () => {
+  it('round trips a V4 document with its placements and quest hues unchanged', () => {
     const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(3)
+    expect(result.file.schemaVersion).toBe(4)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
@@ -194,12 +213,78 @@ describe('parseProjectFile', () => {
     if (!rewritten.ok) return
     expect(rewritten.file.maps).toEqual(result.file.maps)
     expect(rewritten.file.quests).toEqual(result.file.quests)
+    expect(rewritten.file.dialogues).toEqual(result.file.dialogues)
   })
 })
 
+/**
+ * A V3 document: one exclusive content slot per dialogue, and no capture profiles. All four old
+ * kinds, because the V3→V4 migration has a branch per kind.
+ */
+function v3Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 3
+  delete data.captureProfiles
+  data.dialogues = [
+    {
+      id: 'dialogue-1',
+      mapId: 'map-1',
+      npcName: 'Old Fisher',
+      position: { x: 40, y: 30 },
+      content: { kind: 'text', text: 'The tide took it.' },
+      spokenAt: '2026-08-14T09:12:00.000Z',
+      relevance: ['worldbuilding'],
+    },
+    {
+      id: 'dialogue-2',
+      mapId: 'map-1',
+      npcName: 'Dockhand',
+      position: { x: 55, y: 12 },
+      content: {
+        kind: 'image',
+        file: { fileName: 'dialogue-2.png', mimeType: 'image/png', byteSize: 1024 },
+        width: 800,
+        height: 600,
+      },
+      spokenAt: '2026-08-14T09:20:00.000Z',
+      relevance: [],
+    },
+    {
+      id: 'dialogue-3',
+      mapId: 'map-1',
+      npcName: 'Gull',
+      position: { x: 5, y: 5 },
+      content: {
+        kind: 'gif',
+        file: { fileName: 'dialogue-3.gif', mimeType: 'image/gif', byteSize: 2048 },
+        width: 320,
+        height: 240,
+      },
+      spokenAt: '2026-08-14T09:30:00.000Z',
+      relevance: ['out-of-world', 'other'],
+    },
+    {
+      id: 'dialogue-4',
+      mapId: 'map-1',
+      npcName: 'Harbourmaster',
+      position: { x: 90, y: 70 },
+      content: {
+        kind: 'video',
+        file: { fileName: 'dialogue-4.webm', mimeType: 'video/webm', byteSize: 65536 },
+        width: 640,
+        height: 360,
+        durationMs: 4200,
+      },
+      spokenAt: '2026-08-14T09:40:00.000Z',
+      relevance: ['peoplebuilding'],
+    },
+  ]
+  return data
+}
+
 /** A V2 document is a V3 one with the quest hues removed and the version rolled back. */
 function v2Document(): Record<string, unknown> {
-  const data = validDocument()
+  const data = v3Document()
   data.schemaVersion = 2
   const [quest] = data.quests as Record<string, unknown>[]
   delete quest.hue
@@ -226,6 +311,59 @@ function v1Document(): Record<string, unknown> {
   return data
 }
 
+describe('parseProjectFile: V3 migration', () => {
+  it('splits every old content kind into a line and its pictures', () => {
+    const result = parseProjectFile(JSON.stringify(v3Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.captureProfiles).toEqual([])
+
+    const [text, image, gif, video] = result.file.dialogues
+    expect(text).toMatchObject({ text: 'The tide took it.', media: [] })
+
+    expect(image.text).toBe('')
+    expect(image.media).toHaveLength(1)
+    expect(image.media[0]).toMatchObject({ kind: 'image', width: 800, height: 600 })
+
+    expect(gif.media[0]).toMatchObject({ kind: 'gif', width: 320, height: 240 })
+    expect(video.media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
+  })
+
+  it('carries every fileName over verbatim, because a migration cannot rename a file', () => {
+    const result = parseProjectFile(JSON.stringify(v3Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.dialogues.flatMap((dialogue) => dialogue.media.map((m) => m.file))).toEqual([
+      { fileName: 'dialogue-2.png', mimeType: 'image/png', byteSize: 1024 },
+      { fileName: 'dialogue-3.gif', mimeType: 'image/gif', byteSize: 2048 },
+      { fileName: 'dialogue-4.webm', mimeType: 'video/webm', byteSize: 65536 },
+    ])
+  })
+
+  it('gives every migrated medium its own id', () => {
+    const result = parseProjectFile(JSON.stringify(v3Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const ids = result.file.dialogues.flatMap((dialogue) => dialogue.media.map((m) => m.id))
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids).size).toBe(3)
+  })
+
+  it('leaves everything a V3 document already got right alone', () => {
+    const result = parseProjectFile(JSON.stringify(v3Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
+    expect(result.file.quests[0].hue).toBe(45)
+    expect(result.file.zones[0].name).toBe('Harbour')
+  })
+})
+
 describe('parseProjectFile: V2 migration', () => {
   it('colours every quest distinctly, in palette order, and changes nothing else', () => {
     const before = v2Document()
@@ -233,7 +371,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(3)
+    expect(result.file.schemaVersion).toBe(4)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -257,13 +395,16 @@ describe('parseProjectFile: V2 migration', () => {
 })
 
 describe('parseProjectFile: V1 migration', () => {
-  it('chains V1 through V2 to V3, placing the maps and colouring the quests', () => {
+  it('chains V1 through V2 and V3 to V4, placing the maps and colouring the quests', () => {
     const result = parseProjectFile(JSON.stringify(v1Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(3)
+    expect(result.file.schemaVersion).toBe(4)
     expect(result.file.dialogues).toHaveLength(4)
+    expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
+    expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
+    expect(result.file.captureProfiles).toEqual([])
     expect(result.file.zones[0].name).toBe('Harbour')
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
@@ -296,7 +437,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 3, maps: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 4, maps: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -331,8 +472,25 @@ describe('parseProjectFile: field validation', () => {
     expect(rejectionMessage(data)).toBe('zones[0].polygon: expected at least 3 points')
   })
 
-  it('rejects an unknown dialogue content kind', () => {
+  it('rejects an unknown dialogue media kind', () => {
     const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[2].media = [{ id: 'media-3', kind: 'audio', file: {}, width: 1, height: 1 }]
+    expect(rejectionMessage(data)).toBe(
+      'dialogues[2].media[0].kind: expected one of image, gif, video',
+    )
+  })
+
+  it('rejects a medium with no id, so nothing can address it later', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    const media = dialogues[2].media as Record<string, unknown>[]
+    delete media[0].id
+    expect(rejectionMessage(data)).toBe('dialogues[2].media[0].id: expected a string')
+  })
+
+  it('rejects an unknown V3 content kind', () => {
+    const data = v3Document()
     const dialogues = data.dialogues as Record<string, unknown>[]
     dialogues[2].content = { kind: 'audio', file: {}, width: 1, height: 1 }
     expect(rejectionMessage(data)).toContain('dialogues[2].content.kind')
@@ -351,17 +509,38 @@ describe('parseProjectFile: field validation', () => {
     quests[0].status = 'abandoned'
     expect(rejectionMessage(data)).toBe('quests[0].status: expected open or done')
   })
+
+  it('rejects a capture profile whose rect is not a rect', () => {
+    const data = validDocument()
+    data.captureProfiles = [
+      {
+        id: 'profile-1',
+        name: 'Game Boy',
+        frameWidth: 1998,
+        frameHeight: 1123,
+        screenRect: { x: 0, y: 0, width: 1148 },
+        nativeWidth: 160,
+        nativeHeight: 144,
+        textRect: { x: 8, y: 96, width: 144, height: 40 },
+        glyphs: [],
+      },
+    ]
+    expect(rejectionMessage(data)).toBe(
+      'captureProfiles[0].screenRect.height: expected a finite number',
+    )
+  })
 })
 
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(3)
+    expect(project.schemaVersion).toBe(4)
+    expect(project.captureProfiles).toEqual([])
 
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(3)
+    expect(reread.file.schemaVersion).toBe(4)
   })
 })
 

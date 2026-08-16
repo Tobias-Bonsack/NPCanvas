@@ -3,6 +3,7 @@ import { formatRoute } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import type { Dialogue, Zone } from '../project/types.ts'
+import { dialogueContentKind } from '../project/types.ts'
 import { dialogueSnippet, formatSpokenAt, zoneLabel } from './dialogue-summary.ts'
 import { npcKey, npcLabel } from './filters.ts'
 
@@ -27,9 +28,9 @@ export function DialogueRow({
       className="dialogue-row"
       href={formatRoute({ kind: 'canvas', dialogueId: dialogue.id, focusMapId: dialogue.mapId })}
     >
-      <ContentGlyph kind={dialogue.content.kind} />
+      <ContentGlyph kind={dialogueContentKind(dialogue)} />
       <span className="dialogue-row__npc">{npcLabel(npcKey(dialogue))}</span>
-      <span className="dialogue-row__snippet">{dialogueSnippet(dialogue.content)}</span>
+      <span className="dialogue-row__snippet">{dialogueSnippet(dialogue)}</span>
       <span className="dialogue-row__where">
         {zones.length === 0 ? (
           <span className="dialogue-row__nowhere">Outside any zone</span>

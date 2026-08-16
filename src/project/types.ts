@@ -4,6 +4,8 @@ export type MapId = string & { readonly brand: 'MapId' }
 export type ZoneId = string & { readonly brand: 'ZoneId' }
 export type DialogueId = string & { readonly brand: 'DialogueId' }
 export type QuestId = string & { readonly brand: 'QuestId' }
+export type MediaId = string & { readonly brand: 'MediaId' }
+export type CaptureProfileId = string & { readonly brand: 'CaptureProfileId' }
 
 /**
  * A coordinate pair, in whichever space the field holding it names.
@@ -30,25 +32,31 @@ export type RelevanceTag = (typeof RELEVANCE_TAGS)[number]
 export type MediaFile = { fileName: string; mimeType: string; byteSize: number }
 
 /**
- * The content kinds, as a runtime list, for anything that has to iterate them — the canvas
- * legend, chiefly. Kept beside the union: a fifth variant has to be added to both, and the
- * `Record<DialogueContent['kind'], …>` glyph and label maps make forgetting one a compile
- * error at the point where it would otherwise render as nothing.
+ * What a dialogue reads as at a glance, as a runtime list, for anything that has to iterate the
+ * possibilities — the canvas legend and the insights filter. It is `DialogueMedia['kind']` plus
+ * the text case, which is not a medium: a dialogue that owns no picture still has to be drawn.
+ * The `Record<DialogueContentKind, …>` glyph and label maps make forgetting one a compile error
+ * at the point where it would otherwise render as nothing.
  */
 export const DIALOGUE_CONTENT_KINDS = ['text', 'image', 'gif', 'video'] as const
-
-export type DialogueContent =
-  | { kind: 'text'; text: string }
-  | { kind: 'image'; file: MediaFile; width: number; height: number }
-  | { kind: 'gif'; file: MediaFile; width: number; height: number }
-  | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
+export type DialogueContentKind = (typeof DIALOGUE_CONTENT_KINDS)[number]
 
 /**
- * The variants that own a file in `media/`. Derived rather than declared, so a fifth content
- * kind joins it automatically and every `file`-handling site fails to compile until it is
- * handled.
+ * One picture of a line. A dialogue owns a list of them, because a line that ran over five text
+ * boxes is one thing said and five frames proving it — see CLAUDE.md § Media contract for why
+ * the id is part of the file name.
  */
-export type DialogueMediaContent = Exclude<DialogueContent, { kind: 'text' }>
+export type DialogueMedia =
+  | { id: MediaId; kind: 'image'; file: MediaFile; width: number; height: number }
+  | { id: MediaId; kind: 'gif'; file: MediaFile; width: number; height: number }
+  | {
+      id: MediaId
+      kind: 'video'
+      file: MediaFile
+      width: number
+      height: number
+      durationMs: number
+    }
 
 export type GameMap = {
   id: MapId
@@ -71,16 +79,67 @@ export type Zone = {
   hue: number // 0..359; fill/stroke derived via hsl() so colors stay in one system
 }
 
+/**
+ * What was said, and what proves it. The two are orthogonal and stored separately: a captured
+ * line appends a frame *and* transcribed text, which an exclusive union could not express.
+ */
 export type Dialogue = {
   id: DialogueId
   mapId: MapId
   npcName: string
   position: Point
-  content: DialogueContent
+  /** The line itself. Empty is ordinary — a picture logged before it was transcribed. */
+  text: string
+  /** In the order they were captured; the first is what the pin shows. Empty is ordinary too. */
+  media: DialogueMedia[]
   /** ISO 8601 from Date#toISOString — when the line was heard in real time. */
   spokenAt: string
   /** Deduplicated, stored in RELEVANCE_TAGS order. Empty = untagged. */
   relevance: RelevanceTag[]
+}
+
+/**
+ * What a pin, a row and the kind filter show for a dialogue: its first medium, or text when it
+ * owns none. Derived on every read for the same reason a location is — a stored summary of the
+ * media list would go stale the moment a medium is added or removed.
+ */
+export function dialogueContentKind(dialogue: Dialogue): DialogueContentKind {
+  return dialogue.media.length === 0 ? 'text' : dialogue.media[0].kind
+}
+
+/** A pixel rectangle inside a captured frame or a console screen — never canvas space. */
+export type PixelRect = { x: number; y: number; width: number; height: number }
+
+/**
+ * One 8×8 tile of a console font, and the character it means. `char` may be empty: Pokémon's
+ * blinking continuation arrow is a glyph that is recognised and then dropped, which is not the
+ * same as an unmatched tile.
+ */
+export type Glyph = {
+  char: string
+  /** The bitmap as 16 hex characters, row-major, one bit per pixel. */
+  bits: string
+}
+
+/**
+ * How to cut a console screen out of a captured frame, and where the text box sits inside it.
+ * Declared here because it is document state — several per project, written by #52 onwards.
+ */
+export type CaptureProfile = {
+  id: CaptureProfileId
+  name: string
+  /** Frame size at calibration time. A different size means the profile no longer applies. */
+  frameWidth: number
+  frameHeight: number
+  /** The console screen inside the captured frame, in frame pixels. */
+  screenRect: PixelRect
+  /** The console's own resolution — 160 × 144 for a Game Boy. With screenRect it fixes the grid. */
+  nativeWidth: number
+  nativeHeight: number
+  /** The text box, in native pixels, snapped to the 8-pixel tile grid. */
+  textRect: PixelRect
+  /** The alphabet learned so far. Empty until #53 fills it. */
+  glyphs: Glyph[]
 }
 
 /**
@@ -116,6 +175,24 @@ export type GameMapV1 = {
   height: number
 }
 
+/**
+ * A V1–V3 dialogue: one exclusive content slot, so a line was *either* text or one file and
+ * never both. `readDialogueV3` is the only thing that still reads this shape.
+ */
+export type DialogueV3 = {
+  id: DialogueId
+  mapId: MapId
+  npcName: string
+  position: Point
+  content:
+    | { kind: 'text'; text: string }
+    | { kind: 'image'; file: MediaFile; width: number; height: number }
+    | { kind: 'gif'; file: MediaFile; width: number; height: number }
+    | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
+  spokenAt: string
+  relevance: RelevanceTag[]
+}
+
 /** A V1/V2 quest: no colour, because every quest was drawn in one shared gold. */
 export type QuestV2 = {
   id: QuestId
@@ -132,7 +209,7 @@ export type ProjectFileV1 = {
   savedAt: string
   maps: GameMapV1[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV3[]
   quests: QuestV2[]
 }
 
@@ -143,7 +220,7 @@ export type ProjectFileV2 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV3[]
   quests: QuestV2[]
 }
 
@@ -154,18 +231,33 @@ export type ProjectFileV3 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
+  dialogues: DialogueV3[]
+  quests: Quest[]
+}
+
+/**
+ * V4 splits a dialogue into what was said and the pictures of it, and gives the project the
+ * capture profiles those pictures come from.
+ */
+export type ProjectFileV4 = {
+  schemaVersion: 4
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
   dialogues: Dialogue[]
   quests: Quest[]
+  captureProfiles: CaptureProfile[]
 }
 
 /**
  * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
  * it migrates anything older forward, so nothing downstream branches on a version.
  */
-export type StoredProjectFile = ProjectFileV1 | ProjectFileV2 | ProjectFileV3
+export type StoredProjectFile = ProjectFileV1 | ProjectFileV2 | ProjectFileV3 | ProjectFileV4
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV3
+export type ProjectFile = ProjectFileV4
 
 // ---- in-memory app state ----
 

@@ -1,7 +1,5 @@
 import type { ReactElement } from 'react'
-import type { DialogueContent } from '../project/types.ts'
-
-type ContentKind = DialogueContent['kind']
+import type { DialogueContentKind } from '../project/types.ts'
 
 /**
  * Filled silhouettes in a 16×16 box. Hand-drawn SVG rather than emoji or an icon dependency:
@@ -16,7 +14,7 @@ type ContentKind = DialogueContent['kind']
  * A `Record`, not a lookup function, so a fifth content kind is a compile error here rather
  * than a pin that silently renders nothing.
  */
-const CONTENT_KIND_PATH: Record<ContentKind, string> = {
+const CONTENT_KIND_PATH: Record<DialogueContentKind, string> = {
   /** Lines of text. */
   text: 'M2 3.6h12v2.4H2z M2 6.8h12v2.4H2z M2 10h7.5v2.4H2z',
   /** Sun over a mountain: a picture, with no frame to eat the little space there is. */
@@ -31,7 +29,7 @@ const CONTENT_KIND_PATH: Record<ContentKind, string> = {
 }
 
 /** The mark on a pin and in the legend, so the two can never disagree about what a kind looks like. */
-export function ContentGlyph({ kind }: { kind: ContentKind }): ReactElement {
+export function ContentGlyph({ kind }: { kind: DialogueContentKind }): ReactElement {
   return (
     <svg
       className="content-glyph"

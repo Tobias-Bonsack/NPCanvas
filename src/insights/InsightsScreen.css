@@ -694,6 +694,19 @@
   font-size: 0.75rem;
 }
 
+/* pre-wrap: a logged line keeps the breaks it was typed with — a dialogue box's own line
+   breaks are part of what was seen. */
+.npc-line__text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.npc-line__empty {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 /* Pushed right, so the line's own content starts at a predictable left edge. */
 .npc-line__link {
   margin-left: auto;

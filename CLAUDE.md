@@ -81,8 +81,8 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   substrate the coordinates are expressed in.
 - **No enums** (`erasableSyntaxOnly` is on). The pattern is `export const X = [...] as const` plus
   `type X = (typeof X)[number]` — runtime list and union type from one declaration.
-- **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`) are constructed only in
-  `src/project/ids.ts`. Those are the only permitted `as` casts on ids.
+- **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`, `MediaId`, `CaptureProfileId`) are
+  constructed only in `src/project/ids.ts`. Those are the only permitted `as` casts on ids.
 - **Store scope.** `src/project/store.ts` is a module-level store over a pure reducer, read through
   `useSyncExternalStore`. It holds the persisted document, connection state, and selection.
   Transient UI — canvas viewport, active tool, form drafts, filter bar — stays in component
@@ -98,26 +98,40 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   specific overlapping zone comes first. A cached FK would silently go stale when a zone moves. If an
   explicit override is ever needed, add `locationOverride: ZoneId | null` — never a cache.
 - **Zones are polygons only.** Rectangles are 4-point polygons. Do not introduce a shape union.
+- **A dialogue is a line and its pictures.** `Dialogue.text` and `Dialogue.media: DialogueMedia[]`
+  are orthogonal fields, not an exclusive union: a line that ran over five text boxes is one thing
+  said and five frames proving it, and a capture appends both. `text` may be empty (a picture not
+  yet transcribed) and `media` may be empty (a line typed by hand). What a pin, a row or the kind
+  filter shows comes from `dialogueContentKind()` — the first medium's kind, or `'text'` — derived
+  on every read, never stored.
 - **Media contract.** `data.json` stores `{ fileName, mimeType, byteSize }` plus intrinsic
-  dimensions — never URLs, paths, or data URLs. Files are `media/<dialogueId>.<ext>` with the
-  extension derived from the MIME type, never from the upload's filename (untrusted, and this makes
-  collisions impossible by construction). Object URLs are ref-counted with a 30 s deferred revoke in
+  dimensions — never URLs, paths, or data URLs. Files are `media/<dialogueId>-<mediaId>.<ext>` with
+  the extension derived from the MIME type, never from the upload's filename (untrusted, and both
+  ids together keep collisions impossible by construction now that one dialogue owns several
+  files). A `MediaId` is what a remove or a reorder addresses, so the list needs no index
+  arithmetic anywhere outside the reducer. Files migrated from V3 keep their old
+  `<dialogueId>.<ext>` name: `fileName` has always been stored rather than derived, and a migration
+  is pure and must not touch `media/`. Object URLs are ref-counted with a 30 s deferred revoke in
   `src/media/media-url-cache.ts`, because pins remount constantly while panning.
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **3**. To
-  evolve: add `ProjectFileV4`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **4**. To
+  evolve: add `ProjectFileV5`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV2(migrateV1(…))` — so a new version adds one function and one case, not one per shape
-  already on disk. The V1→V2 migration lays legacy maps out left to right through `nextMapOrigin`,
-  and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building the array up as it
-  goes so each quest sees those already coloured. Both call the same function the live app calls
-  (an import; a newly created quest), which is what makes a migrated project indistinguishable from
-  one built by hand.
+  `migrateV3(migrateV2(migrateV1(…)))` — so a new version adds one function and one case, not one
+  per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
+  the array up as it goes so each quest sees those already coloured. Both call the same function the
+  live app calls (an import; a newly created quest), which is what makes a migrated project
+  indistinguishable from one built by hand. The V3→V4 migration turns the old exclusive `content`
+  slot into the new pair: a text dialogue becomes `{ text, media: [] }`, a media one
+  `{ text: '', media: [one medium] }` with a fresh `MediaId` and its `fileName` untouched, and every
+  project gets `captureProfiles: []`. `DialogueV3` is kept in `types.ts` as the pre-migration shape,
+  beside `GameMapV1` and `QuestV2`, and is the only thing `readDialogueV3` still builds.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

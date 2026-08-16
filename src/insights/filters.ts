@@ -1,13 +1,14 @@
 import type {
   Dialogue,
-  DialogueContent,
+  DialogueContentKind,
   DialogueId,
   MapId,
   RelevanceTag,
   ZoneId,
 } from '../project/types.ts'
+import { dialogueContentKind } from '../project/types.ts'
 
-export type ContentKind = DialogueContent['kind']
+export type ContentKind = DialogueContentKind
 
 /**
  * "Outside every zone", as a filter value. A branded `ZoneId` can never equal this literal, so
@@ -83,7 +84,10 @@ export function applyFilter(
 
     if (filter.npcKeys.length > 0 && !filter.npcKeys.includes(npcKey(dialogue))) return false
 
-    if (filter.contentKinds.length > 0 && !filter.contentKinds.includes(dialogue.content.kind)) {
+    if (
+      filter.contentKinds.length > 0 &&
+      !filter.contentKinds.includes(dialogueContentKind(dialogue))
+    ) {
       return false
     }
 
@@ -137,10 +141,12 @@ export function npcLabel(key: string): string {
   return key === '' ? UNNAMED_NPC : key
 }
 
-/** Everything the free-text field matches against. Media lines have no body, only a name. */
+/**
+ * Everything the free-text field matches against. A dialogue that is only a picture so far has
+ * an empty body, so it matches on its NPC name alone until the line is transcribed.
+ */
 export function dialogueSearchText(dialogue: Dialogue): string {
-  const said = dialogue.content.kind === 'text' ? dialogue.content.text : ''
-  return `${dialogue.npcName} ${said}`.toLowerCase()
+  return `${dialogue.npcName} ${dialogue.text}`.toLowerCase()
 }
 
 /**

@@ -12,7 +12,8 @@ function at(local: string): Dialogue {
     mapId: HARBOUR,
     npcName: 'Mara',
     position: { x: 0, y: 0 },
-    content: { kind: 'text', text: '' },
+    text: '',
+    media: [],
     spokenAt: new Date(local).toISOString(),
     relevance: [],
   }

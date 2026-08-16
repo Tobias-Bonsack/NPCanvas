@@ -1,76 +1,64 @@
 import type { ReactElement } from 'react'
 import { assertNever } from '../assert-never.ts'
-import type { DialogueContent, DialogueMediaContent } from '../project/types.ts'
+import type { DialogueMedia } from '../project/types.ts'
 import { useMediaUrl } from './media-url-cache.ts'
 import './MediaView.css'
 
 /**
- * A dialogue's content, whatever variant it is. Exhaustive over `DialogueContent` and over
- * every `MediaUrl` state, because a file the user deleted from `media/` outside the app is an
- * ordinary situation — the panel has to say so, not crash.
+ * One picture of a line. Exhaustive over `DialogueMedia` and over every `MediaUrl` state,
+ * because a file the user deleted from `media/` outside the app is an ordinary situation — the
+ * panel has to say so, not crash.
+ *
+ * The line itself is not rendered here: text is not a medium, and the two are separate fields
+ * whose layouts differ per screen.
  */
 export function MediaView({
-  content,
+  media,
   label,
 }: {
-  content: DialogueContent
+  media: DialogueMedia
   /** Alt text and the video's accessible name — the NPC's name reads best. */
   label: string
 }): ReactElement {
-  // Split rather than switched here, because the media branches call a hook and the text
-  // branch must not. The early return also narrows `content` for the component below.
-  if (content.kind === 'text') {
-    return <p className="media-view__text">{content.text}</p>
-  }
-  return <MediaFileView content={content} label={label} />
-}
+  const url = useMediaUrl(media.file)
 
-function MediaFileView({
-  content,
-  label,
-}: {
-  content: DialogueMediaContent
-  label: string
-}): ReactElement {
-  const media = useMediaUrl(content.file)
-
-  switch (media.kind) {
+  switch (url.kind) {
     case 'loading':
-      return <p className="media-view__notice">Loading {content.file.fileName}…</p>
+      return <p className="media-view__notice">Loading {media.file.fileName}…</p>
 
     case 'missing':
       return (
         <p className="media-view__notice" role="alert">
-          {content.file.fileName} is no longer in the project’s media folder.
+          {media.file.fileName} is no longer in the project’s media folder.
         </p>
       )
 
     case 'failed':
       return (
         <p className="media-view__notice" role="alert">
-          {content.file.fileName} could not be read: {media.message}
+          {media.file.fileName} could not be read: {url.message}
         </p>
       )
 
     case 'ready':
-      return <MediaElement content={content} label={label} url={media.url} />
+      return <MediaElement media={media} label={label} url={url.url} />
 
     default:
-      return assertNever(media)
+      return assertNever(url)
   }
 }
 
 /** Exhaustive over the media kinds; `width`/`height` come from the probe, so nothing reflows. */
 function MediaElement({
-  content,
+  media,
   label,
   url,
 }: {
-  content: DialogueMediaContent
+  media: DialogueMedia
   label: string
   url: string
 }): ReactElement {
-  switch (content.kind) {
+  switch (media.kind) {
     case 'image':
     case 'gif':
       return (
@@ -78,8 +66,8 @@ function MediaElement({
           className="media-view__image"
           src={url}
           alt={label}
-          width={content.width}
-          height={content.height}
+          width={media.width}
+          height={media.height}
         />
       )
 
@@ -93,12 +81,12 @@ function MediaElement({
           preload="metadata"
           controls
           aria-label={label}
-          width={content.width}
-          height={content.height}
+          width={media.width}
+          height={media.height}
         />
       )
 
     default:
-      return assertNever(content)
+      return assertNever(media)
   }
 }

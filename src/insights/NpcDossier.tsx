@@ -211,8 +211,8 @@ function Dossier({
 
 /**
  * One line in full, rather than the one-row summary the timeline lists: this is the view where
- * the *content* is the point. `MediaView` covers every variant, text included — it renders a
- * text body as a paragraph and everything else through the media cache.
+ * the *content* is the point — so the line and every picture of it are shown, not just the first.
+ * A dialogue with neither says so, rather than rendering as an empty box.
  */
 function NpcLine({
   dialogue,
@@ -223,6 +223,7 @@ function NpcLine({
   label: string
   zones: readonly Zone[]
 }): ReactElement {
+  const said = dialogue.text.trim()
   return (
     <article className="npc-line">
       <header className="npc-line__head">
@@ -247,7 +248,13 @@ function NpcLine({
           Show on canvas
         </a>
       </header>
-      <MediaView content={dialogue.content} label={label} />
+      {said !== '' && <p className="npc-line__text">{dialogue.text}</p>}
+      {dialogue.media.map((medium) => (
+        <MediaView key={medium.id} media={medium} label={label} />
+      ))}
+      {said === '' && dialogue.media.length === 0 && (
+        <p className="npc-line__empty">No text yet</p>
+      )}
     </article>
   )
 }
