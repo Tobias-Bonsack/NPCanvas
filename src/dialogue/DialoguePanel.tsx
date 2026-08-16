@@ -1,5 +1,6 @@
 import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useEffect, useId, useMemo, useState } from 'react'
+import { CaptureBar } from '../capture/CaptureBar.tsx'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
@@ -255,6 +256,10 @@ export function DialoguePanel({
           </p>
         )}
       </section>
+
+      {/* Below the media it will eventually feed: the connection is a session-long setup step,
+          not something touched per dialogue, so it must not push the line's own fields down. */}
+      <CaptureBar />
 
       <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
     </aside>

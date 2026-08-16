@@ -1,0 +1,101 @@
+/* A section of the dialogue panel, separated the way the media section is: a rule above rather
+   than a card, because the panel is one column and a box around every group would fragment it. */
+.capture-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Matches `.dialogue-form__legend` by value rather than by class: this is a section heading in
+   the panel's column and must read as a sibling of MEDIA and QUESTS, but the capture feature
+   does not otherwise depend on the dialogue form's stylesheet. */
+.capture-bar__title {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.capture-bar__row {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The primary action of the section, so it wears the accent the media picker wears. */
+.capture-bar__connect {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.capture-bar__connect:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.capture-bar__button {
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.capture-bar__button:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.capture-bar__source {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Chromium's raw track label can be long and has no spaces to wrap at, so it is clipped rather
+   than allowed to widen the panel. */
+.capture-bar__label {
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.capture-bar__size {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.capture-bar__hint,
+.capture-bar__note,
+.capture-bar__error {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.capture-bar__hint,
+.capture-bar__note {
+  color: var(--text-muted);
+}
+
+.capture-bar__error {
+  color: #ff8f8f;
+}
