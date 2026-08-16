@@ -49,9 +49,16 @@ in real time, and one or more relevance tags. Locations are named zones drawn on
 user-created threads that reference dialogues. Three views, in priority order: map canvas, quest
 board, insights.
 
-Work is tracked as GitHub issues (`gh issue list`), grouped into milestones M1–M7. Each issue is
-sized to fit one Claude context window and leaves `main` deployable. Do not batch issues — one issue,
-one commit.
+Work is tracked as GitHub issues (`gh issue list`), grouped into numbered milestones. A `.5`
+milestone is an increment inserted after its base milestone shipped, so the base stays the record of
+what shipped rather than being retconned. Each issue is sized to fit one Claude context window and
+leaves `main` deployable. Do not batch issues — one issue, one commit.
+
+The milestone and issue format — titles, the fixed body schema, labels, and the `gh` invocations
+that survive Windows — lives in the `milestone-issues` skill
+(`.claude/skills/milestone-issues/SKILL.md`). Load it before writing or editing either, rather than
+inferring the shape from a sample of existing issues: the early milestones follow an older
+convention that is deliberately not carried forward.
 
 ## Domain and architecture decisions
 
