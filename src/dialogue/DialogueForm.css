@@ -1,6 +1,8 @@
+/* Deliberately not a flexible child of the panel: `flex: 1; min-height: 0` let the form absorb
+   the leftover height, and once the media list filled the panel that same rule let it collapse
+   to nothing and spill its fields over the section below. The panel scrolls instead. */
 .dialogue-form {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -12,9 +14,11 @@
   gap: var(--space-1);
 }
 
-/* The text body takes whatever height is left, so the panel scrolls only when it must. */
+/* The text body is the tallest field and the one worth dragging taller by hand, so it gets a
+   floor rather than a share of the leftover height — there is no leftover height in a column
+   that scrolls. `rows` on the textarea sets the rest. */
 .dialogue-form__field--grow {
-  flex: 1;
+  flex: none;
   min-height: 6rem;
 }
 
@@ -51,7 +55,7 @@
 }
 
 .dialogue-form__textarea {
-  flex: 1;
+  flex: none;
   resize: vertical;
   line-height: 1.5;
 }

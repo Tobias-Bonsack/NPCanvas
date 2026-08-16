@@ -14,6 +14,14 @@
   background: var(--surface-1);
 }
 
+/* Nothing in the column may shrink. A flex child compressed below its content does not scroll,
+   it *overlaps* the next one — which is what several media did to the form, collapsing the date,
+   the tags and the text body into the media heading. The panel scrolls; its sections keep the
+   height their content asks for. */
+.dialogue-panel > * {
+  flex: none;
+}
+
 /* The whole panel is the drop zone, so the feedback is on the whole panel. An inset shadow
    rather than a border: a border would resize the box and reflow the form under the cursor. */
 .dialogue-panel[data-drop-target='true'] {
