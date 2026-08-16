@@ -1,12 +1,23 @@
 import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useActiveCaptureProfile } from '../capture/active-profile.ts'
 import { CaptureBar } from '../capture/CaptureBar.tsx'
+import {
+  captureBlocker,
+  captureIntoDialogue,
+  describeCapture,
+  readLiveBox,
+} from '../capture/capture-to-dialogue.ts'
+import { useCaptureSource } from '../capture/capture-session.ts'
+import { GlyphLearner } from '../capture/GlyphLearner.tsx'
+import type { UnknownTile } from '../capture/glyph-matcher.ts'
+import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
-import type { Dialogue, DialogueMedia, ProjectFile, Zone } from '../project/types.ts'
+import type { CaptureProfile, Dialogue, DialogueMedia, Glyph, ProjectFile, Zone } from '../project/types.ts'
 import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import './DialoguePanel.css'
@@ -22,6 +33,30 @@ type ImportState =
   /** The import succeeded; the message is advice, not an error. */
   | { kind: 'warned'; message: string }
   | { kind: 'failed'; message: string }
+
+/**
+ * One press of the capture button, as the panel sees it.
+ *
+ * `learning` holds the frame that raised the question, because the emulator has moved on by the
+ * time the characters are typed in — and it is the state that makes "nothing is written until the
+ * box can be read whole" true, rather than a rule the handler is trusted to follow.
+ */
+type CaptureState =
+  | { kind: 'idle' }
+  | { kind: 'capturing' }
+  | {
+      kind: 'learning'
+      /** The capture stays with the profile it started under, whatever the bar switches to. */
+      profile: CaptureProfile
+      frame: ImageData
+      tiles: readonly UnknownTile[]
+    }
+  | { kind: 'done'; message: string }
+  | { kind: 'failed'; message: string }
+
+/** The in-page shortcut, and the words for it — the emulator has the keyboard the rest of the time. */
+const CAPTURE_KEY = 'Enter'
+const CAPTURE_SHORTCUT = 'Ctrl+Enter'
 
 /**
  * The detail view for the selected dialogue. Rendering it at all *is* "open" — the parent
@@ -47,24 +82,35 @@ export function DialoguePanel({
   onClose: () => void
 }): ReactElement {
   const [importState, setImportState] = useState<ImportState>({ kind: 'idle' })
+  const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
   const [dropTarget, setDropTarget] = useState(false)
   const pickerId = useId()
 
+  const source = useCaptureSource()
+  const profile = useActiveCaptureProfile(project.captureProfiles)
+  const blocker = captureBlocker(source, profile)
+  const busy = captureState.kind === 'capturing' || captureState.kind === 'learning'
+
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
   // Escape aimed at "close this" would otherwise have to be pressed inside the panel first.
+  // Stood down while the learner is up, so one Escape does not both cancel a capture in flight
+  // and close the panel that was going to report what it did.
+  const learning = captureState.kind === 'learning'
   useEffect(() => {
+    if (learning) return
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [onClose, learning])
 
   // A warning or an error belongs to the import that produced it, and would otherwise hang
   // over whichever dialogue the user selected next.
   const dialogueId = dialogue.id
   useEffect(() => {
     setImportState({ kind: 'idle' })
+    setCaptureState({ kind: 'idle' })
     setDropTarget(false)
   }, [dialogueId])
 
@@ -95,6 +141,79 @@ export function DialoguePanel({
 
     setImportState(batchOutcome(files.length, failures, warnings))
   }
+
+  /**
+   * One press: the frame becomes a picture on the pin and the new part of the box becomes text.
+   *
+   * An unreadable tile stops the chain here, before anything is written — a dialogue must never
+   * end up holding a picture beside half a sentence.
+   */
+  async function capture(): Promise<void> {
+    if (busy) return
+    if (blocker !== null || profile === null) {
+      setCaptureState({ kind: 'failed', message: blocker ?? 'No capture profile is active.' })
+      return
+    }
+    setCaptureState({ kind: 'capturing' })
+    try {
+      const { frame, reading } = await readLiveBox(profile)
+      if (reading.unknown.length > 0) {
+        setCaptureState({ kind: 'learning', profile, frame, tiles: reading.unknown })
+        return
+      }
+      await write(profile, frame, reading.text)
+    } catch (error) {
+      setCaptureState({ kind: 'failed', message: describeError(error) })
+    }
+  }
+
+  /** `transcript === null` is a box that could not be read whole: the picture is kept, the line is not. */
+  async function write(
+    target: CaptureProfile,
+    frame: ImageData,
+    transcript: string | null,
+  ): Promise<void> {
+    setCaptureState({ kind: 'capturing' })
+    try {
+      const result = await captureIntoDialogue(dialogue, target, frame, transcript)
+      setCaptureState({ kind: 'done', message: describeCapture(result) })
+    } catch (error) {
+      setCaptureState({ kind: 'failed', message: describeError(error) })
+    }
+  }
+
+  function onGlyphsLearned(target: CaptureProfile, frame: ImageData, glyphs: Glyph[]): void {
+    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: target.id, glyphs })
+    // The store's own copy arrives on the next render and the transcript is wanted now, so the
+    // grown alphabet is applied here through the same merge the reducer just ran — as CaptureBar
+    // does. Re-read rather than assumed complete: two glyphs learned one bit apart stay ambiguous.
+    const grown = { ...target, glyphs: mergeGlyphs(target.glyphs, glyphs) }
+    const reading = readTextBox(frame, grown)
+    if (reading.unknown.length > 0) {
+      setCaptureState({ kind: 'learning', profile: grown, frame, tiles: reading.unknown })
+      return
+    }
+    void write(grown, frame, reading.text)
+  }
+
+  // The handler closes over the dialogue, so it is a new function on every keystroke in the line
+  // field. A ref keeps the window binding stable while the shortcut still runs the current one.
+  const captureRef = useRef(capture)
+  useEffect(() => {
+    captureRef.current = capture
+  })
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== CAPTURE_KEY || !event.ctrlKey || event.altKey || event.shiftKey) return
+      // The panel's line field is a textarea, where the default would be a newline in the very
+      // text this is about to append to.
+      event.preventDefault()
+      void captureRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   async function removeMedium(medium: DialogueMedia): Promise<void> {
     dispatch({ kind: 'dialogue/media-removed', dialogueId: dialogue.id, mediaId: medium.id })
@@ -214,17 +333,35 @@ export function DialoguePanel({
           </ol>
         )}
 
-        {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
-            cannot be restyled, and a button would need a ref plus a synthetic click. */}
-        <label
-          className="dialogue-media__label"
-          htmlFor={pickerId}
-          aria-disabled={importState.kind === 'importing'}
-        >
-          {importState.kind === 'importing'
-            ? importingLabel(importState.done, importState.total)
-            : 'Add images, gifs or clips'}
-        </label>
+        <div className="dialogue-media__actions">
+          {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
+              cannot be restyled, and a button would need a ref plus a synthetic click. */}
+          <label
+            className="dialogue-media__label"
+            htmlFor={pickerId}
+            aria-disabled={importState.kind === 'importing'}
+          >
+            {importState.kind === 'importing'
+              ? importingLabel(importState.done, importState.total)
+              : 'Add images, gifs or clips'}
+          </label>
+          {/* Beside the import because it is the other way a picture gets here — and the faster
+              one, once the source and the profile are set up below. */}
+          <button
+            type="button"
+            className="dialogue-media__capture"
+            disabled={blocker !== null || busy}
+            title={
+              blocker ??
+              `Capture the console screen, attach it, and append what the text box says — ${CAPTURE_SHORTCUT}`
+            }
+            onClick={() => void capture()}
+          >
+            {captureState.kind === 'capturing'
+              ? 'Capturing…'
+              : `Capture the screen · ${CAPTURE_SHORTCUT}`}
+          </button>
+        </div>
         <input
           id={pickerId}
           className="dialogue-media__input"
@@ -245,6 +382,24 @@ export function DialoguePanel({
           …or drop files anywhere on this panel. They are added in the order they are dropped.
         </p>
 
+        {/* Never disabled and silent: the button's `title` is the same sentence, and a tooltip on
+            a disabled control is not something anyone goes looking for. */}
+        {blocker !== null && (
+          <p className="dialogue-media__hint" role="status">
+            {blocker}
+          </p>
+        )}
+        {captureState.kind === 'done' && (
+          <p className="dialogue-media__capture-note" role="status">
+            {captureState.message}
+          </p>
+        )}
+        {captureState.kind === 'failed' && (
+          <p className="dialogue-media__error" role="alert">
+            {captureState.message}
+          </p>
+        )}
+
         {importState.kind === 'warned' && (
           <p className="dialogue-media__warning" role="status">
             {importState.message}
@@ -262,6 +417,18 @@ export function DialoguePanel({
       <CaptureBar profiles={project.captureProfiles} />
 
       <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
+
+      {/* Cancelling keeps the picture and says the text was not transcribed — the frame is the
+          record, and it is the half that cannot be produced again once the game has advanced. */}
+      {captureState.kind === 'learning' && (
+        <GlyphLearner
+          tiles={captureState.tiles}
+          onCancel={() => void write(captureState.profile, captureState.frame, null)}
+          onConfirm={(glyphs) =>
+            onGlyphsLearned(captureState.profile, captureState.frame, glyphs)
+          }
+        />
+      )}
     </aside>
   )
 }

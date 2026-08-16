@@ -159,6 +159,15 @@
   gap: var(--space-2);
 }
 
+/* The two ways a picture gets onto a dialogue, side by side — wrapping rather than shrinking,
+   because the panel is a 22rem column and neither label survives being squeezed. */
+.dialogue-media__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .dialogue-media__label {
   font-size: 0.8125rem;
   color: var(--accent-contrast);
@@ -192,11 +201,42 @@
   outline-offset: 2px;
 }
 
+/* Outlined rather than filled: the import is the primary way in until a source is connected,
+   and two solid accent blocks side by side would say nothing about which to press first. */
+.dialogue-media__capture {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.dialogue-media__capture:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.dialogue-media__capture:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.6;
+  cursor: default;
+}
+
 .dialogue-media__hint,
 .dialogue-media__warning,
-.dialogue-media__error {
+.dialogue-media__error,
+.dialogue-media__capture-note {
   margin: 0;
   font-size: 0.75rem;
+}
+
+/* What the last capture did. Not muted like a hint: it is the only confirmation that a press
+   which changed nothing visible — the same frame twice — was understood. */
+.dialogue-media__capture-note {
+  color: var(--text);
 }
 
 .dialogue-media__hint {

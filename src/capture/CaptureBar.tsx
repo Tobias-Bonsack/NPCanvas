@@ -12,10 +12,10 @@ import {
   connectCaptureSource,
   disconnectCaptureSource,
   freezeFrame,
-  grabFrame,
   releaseFrozenFrame,
   useCaptureSource,
 } from './capture-session.ts'
+import { readLiveBox } from './capture-to-dialogue.ts'
 import { GlyphLearner } from './GlyphLearner.tsx'
 import type { TextBoxReading } from './glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from './glyph-matcher.ts'
@@ -119,8 +119,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
     if (read.kind === 'reading') return
     setRead({ kind: 'reading' })
     try {
-      const frame = await grabFrame()
-      setRead({ kind: 'read', frame, reading: readTextBox(frame, profile) })
+      setRead({ kind: 'read', ...(await readLiveBox(profile)) })
     } catch (error) {
       setRead({ kind: 'failed', message: error instanceof Error ? error.message : String(error) })
     }
@@ -341,6 +340,12 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
               {active.glyphs.length} {active.glyphs.length === 1 ? 'glyph' : 'glyphs'} learned
             </span>
           </div>
+          {/* Says what this is *not*, because there are now two buttons that read the same box:
+              this one is the calibration check, and Capture the screen is the one that writes. */}
+          <p className="capture-bar__hint">
+            A trial read. It shows what the box says and learns whatever tiles are new, but writes
+            nothing to this dialogue — Capture the screen, above, is what attaches and appends.
+          </p>
           {read.kind === 'failed' && (
             <p className="capture-bar__error" role="alert">
               {read.message}
