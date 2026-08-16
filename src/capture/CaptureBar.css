@@ -29,6 +29,12 @@
   gap: var(--space-2);
 }
 
+/* The profile row is a picker plus its actions, which belong together on the left rather than
+   pushed to opposite ends the way the connection row's source and Disconnect are. */
+.capture-bar__row--actions {
+  justify-content: flex-start;
+}
+
 /* The primary action of the section, so it wears the accent the media picker wears. */
 .capture-bar__connect {
   font: inherit;
@@ -60,6 +66,45 @@
 .capture-bar__button:hover {
   color: var(--text);
   background: var(--surface-3);
+}
+
+.capture-bar__button--danger {
+  color: #ff8f8f;
+  border-color: rgb(255 143 143 / 0.5);
+}
+
+/* The row holds a picker plus up to four actions, so it wraps rather than compressing them. */
+.capture-bar__select {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  max-width: 12rem;
+}
+
+.capture-bar__form,
+.capture-bar__confirm {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 0.75rem;
+}
+
+.capture-bar__input {
+  flex: 1;
+  min-width: 6rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
 }
 
 .capture-bar__source {

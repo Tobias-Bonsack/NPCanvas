@@ -1,8 +1,11 @@
 import { assertNever } from '../assert-never.ts'
+import type { ProfileCalibration } from '../capture/capture-profile.ts'
 import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
 import { isSamePolygon } from '../map/geometry.ts'
 import type {
   AppState,
+  CaptureProfile,
+  CaptureProfileId,
   Dialogue,
   DialogueId,
   DialogueMedia,
@@ -63,6 +66,14 @@ export type Action =
   | { kind: 'quest/dialogue-attached'; questId: QuestId; dialogueId: DialogueId }
   | { kind: 'quest/dialogue-detached'; questId: QuestId; dialogueId: DialogueId }
   | { kind: 'quest/deleted'; questId: QuestId }
+  | { kind: 'capture-profile/added'; profile: CaptureProfile }
+  | { kind: 'capture-profile/renamed'; profileId: CaptureProfileId; name: string }
+  | {
+      kind: 'capture-profile/calibrated'
+      profileId: CaptureProfileId
+      calibration: ProfileCalibration
+    }
+  | { kind: 'capture-profile/deleted'; profileId: CaptureProfileId }
 
 /**
  * Pure. Returns the *same* reference for a no-op, which is how `dispatch` skips notifying
@@ -458,6 +469,52 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    case 'capture-profile/added': {
+      if (state.kind !== 'ready') return state
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          captureProfiles: [...state.project.captureProfiles, action.profile],
+        },
+      }
+    }
+
+    case 'capture-profile/renamed': {
+      if (state.kind !== 'ready') return state
+      const target = findCaptureProfile(state.project, action.profileId)
+      if (target === null || target.name === action.name) return state
+      return withCaptureProfile(state, target, { ...target, name: action.name })
+    }
+
+    // Re-calibrating keeps `glyphs`: an alphabet is 8 × 8 tiles in *native* pixels, so it
+    // survives the emulator window moving, resizing, or being re-outlined. Dropping it would
+    // make every window nudge cost the user their learned font.
+    case 'capture-profile/calibrated': {
+      if (state.kind !== 'ready') return state
+      const target = findCaptureProfile(state.project, action.profileId)
+      if (target === null) return state
+      return withCaptureProfile(state, target, { ...target, ...action.calibration })
+    }
+
+    // No cascade: a profile is how pixels were read, not something the document references.
+    // Which profile is active is transient UI state and never enters the store, so there is
+    // nothing here to clear either.
+    case 'capture-profile/deleted': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (!project.captureProfiles.some((profile) => profile.id === action.profileId)) return state
+      return {
+        ...state,
+        project: {
+          ...project,
+          captureProfiles: project.captureProfiles.filter(
+            (profile) => profile.id !== action.profileId,
+          ),
+        },
+      }
+    }
+
     default:
       return assertNever(action)
   }
@@ -515,6 +572,23 @@ function withQuest(state: ReadyState, target: Quest, replacement: Quest): AppSta
   }
 }
 
+/** Replaces one capture profile by reference identity, mirroring `withMap`. */
+function withCaptureProfile(
+  state: ReadyState,
+  target: CaptureProfile,
+  replacement: CaptureProfile,
+): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      captureProfiles: state.project.captureProfiles.map((profile) =>
+        profile === target ? replacement : profile,
+      ),
+    },
+  }
+}
+
 function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {
   return project.dialogues.find((dialogue) => dialogue.id === id) ?? null
 }
@@ -525,6 +599,10 @@ function findZone(project: ProjectFile, id: ZoneId): Zone | null {
 
 function findQuest(project: ProjectFile, id: QuestId): Quest | null {
   return project.quests.find((quest) => quest.id === id) ?? null
+}
+
+function findCaptureProfile(project: ProjectFile, id: CaptureProfileId): CaptureProfile | null {
+  return project.captureProfiles.find((profile) => profile.id === id) ?? null
 }
 
 /**

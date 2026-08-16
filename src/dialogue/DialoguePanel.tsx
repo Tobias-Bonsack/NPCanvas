@@ -259,7 +259,7 @@ export function DialoguePanel({
 
       {/* Below the media it will eventually feed: the connection is a session-long setup step,
           not something touched per dialogue, so it must not push the line's own fields down. */}
-      <CaptureBar />
+      <CaptureBar profiles={project.captureProfiles} />
 
       <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
     </aside>

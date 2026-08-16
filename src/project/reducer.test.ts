@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
+import type { ProfileCalibration } from '../capture/capture-profile.ts'
 import { createEmptyProject } from './data-file.ts'
-import { asDialogueId, asMapId, asMediaId, asQuestId, asZoneId } from './ids.ts'
+import {
+  asCaptureProfileId,
+  asDialogueId,
+  asMapId,
+  asMediaId,
+  asQuestId,
+  asZoneId,
+} from './ids.ts'
 import type { Action } from './reducer.ts'
 import { reduce } from './reducer.ts'
 import type {
   AppState,
+  CaptureProfile,
   Dialogue,
   DialogueMedia,
   GameMap,
@@ -90,6 +99,20 @@ function quest(id: string, dialogueIds: string[]): Quest {
     note: '',
     hue: 45,
   }
+}
+
+/** A Game Boy screen letterboxed into a 1998 × 1123 window. */
+const CALIBRATION: ProfileCalibration = {
+  frameWidth: 1998,
+  frameHeight: 1123,
+  screenRect: { x: 40, y: 90, width: 420, height: 360 },
+  nativeWidth: 160,
+  nativeHeight: 144,
+  textRect: { x: 8, y: 96, width: 144, height: 40 },
+}
+
+function captureProfile(id: string, name = id): CaptureProfile {
+  return { id: asCaptureProfileId(id), name, ...CALIBRATION, glyphs: [] }
 }
 
 /** Two maps, each with a dialogue and a zone, plus a quest spanning both. */
@@ -185,6 +208,14 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     dialogueId: asDialogueId('dialogue-1'),
   },
   { kind: 'quest/deleted', questId: asQuestId('quest-1') },
+  { kind: 'capture-profile/added', profile: captureProfile('profile-1') },
+  { kind: 'capture-profile/renamed', profileId: asCaptureProfileId('profile-1'), name: 'Red' },
+  {
+    kind: 'capture-profile/calibrated',
+    profileId: asCaptureProfileId('profile-1'),
+    calibration: CALIBRATION,
+  },
+  { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') },
 ]
 
 describe('reduce: connection actions', () => {
@@ -1030,5 +1061,102 @@ describe('reduce: npc/renamed', () => {
     const state = ready(npcProject())
     expect(reduce(state, { kind: 'npc/renamed', from: 'Nobody', to: 'X' })).toBe(state)
     expect(reduce(state, { kind: 'npc/renamed', from: 'Mara', to: '  Mara  ' })).toBe(state)
+  })
+})
+
+describe('reduce: capture profiles', () => {
+  function withOneProfile(): ReadyState {
+    return ready({
+      ...createEmptyProject('Harbour'),
+      captureProfiles: [captureProfile('profile-1', 'Pokémon Red')],
+    })
+  }
+
+  function profilesOf(state: AppState): CaptureProfile[] {
+    return readyOf(state).project.captureProfiles
+  }
+
+  it('adds a profile', () => {
+    const next = reduce(ready(), {
+      kind: 'capture-profile/added',
+      profile: captureProfile('profile-1', 'Pokémon Red'),
+    })
+    expect(profilesOf(next).map((profile) => profile.name)).toEqual(['Pokémon Red'])
+  })
+
+  it('renames one', () => {
+    const next = reduce(withOneProfile(), {
+      kind: 'capture-profile/renamed',
+      profileId: asCaptureProfileId('profile-1'),
+      name: 'Pokémon Blue',
+    })
+    expect(profilesOf(next)[0].name).toBe('Pokémon Blue')
+  })
+
+  it('re-calibrates one, keeping the glyphs it has learned', () => {
+    const learned = ready({
+      ...createEmptyProject('Harbour'),
+      captureProfiles: [
+        { ...captureProfile('profile-1'), glyphs: [{ char: 'A', bits: '0123456789abcdef' }] },
+      ],
+    })
+    const next = reduce(learned, {
+      kind: 'capture-profile/calibrated',
+      profileId: asCaptureProfileId('profile-1'),
+      calibration: {
+        ...CALIBRATION,
+        frameWidth: 1920,
+        frameHeight: 1080,
+        screenRect: { x: 10, y: 20, width: 320, height: 288 },
+      },
+    })
+    expect(profilesOf(next)[0].frameWidth).toBe(1920)
+    expect(profilesOf(next)[0].screenRect).toEqual({ x: 10, y: 20, width: 320, height: 288 })
+    expect(profilesOf(next)[0].glyphs).toEqual([{ char: 'A', bits: '0123456789abcdef' }])
+  })
+
+  it('deletes one, and nothing else', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      captureProfiles: [captureProfile('profile-1'), captureProfile('profile-2')],
+      dialogues: [dialogue('dialogue-1', asMapId('harbour'))],
+    })
+    const next = reduce(state, {
+      kind: 'capture-profile/deleted',
+      profileId: asCaptureProfileId('profile-1'),
+    })
+    expect(profilesOf(next).map((profile) => profile.id)).toEqual([asCaptureProfileId('profile-2')])
+    expect(readyOf(next).project.dialogues).toBe(readyOf(state).project.dialogues)
+  })
+
+  it('returns the identical state for an unknown id or an unchanged name', () => {
+    const state = withOneProfile()
+    expect(
+      reduce(state, {
+        kind: 'capture-profile/renamed',
+        profileId: asCaptureProfileId('missing'),
+        name: 'X',
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'capture-profile/renamed',
+        profileId: asCaptureProfileId('profile-1'),
+        name: 'Pokémon Red',
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'capture-profile/calibrated',
+        profileId: asCaptureProfileId('missing'),
+        calibration: CALIBRATION,
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'capture-profile/deleted',
+        profileId: asCaptureProfileId('missing'),
+      }),
+    ).toBe(state)
   })
 })

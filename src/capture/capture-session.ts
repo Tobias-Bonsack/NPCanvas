@@ -127,6 +127,43 @@ export function disconnectCaptureSource(): void {
  * will do.
  */
 export async function grabFrame(): Promise<ImageData> {
+  const drawn = await drawCurrentFrame()
+  return drawn.context.getImageData(0, 0, drawn.width, drawn.height)
+}
+
+/**
+ * One frame held still, as something an `<img>` can show.
+ *
+ * Calibration is minutes of dragging rectangles over a picture, and the live source keeps
+ * moving underneath — an emulator does not pause because the app opened a panel. So the frame
+ * is copied out once and the rest of the work happens against a still that cannot shift under
+ * the rectangles already drawn on it.
+ */
+export type FrozenFrame = { url: string; width: number; height: number }
+
+export async function freezeFrame(): Promise<FrozenFrame> {
+  const drawn = await drawCurrentFrame()
+  // PNG, not JPEG: a text box read at 1:1 is the whole point, and JPEG ringing around 8-pixel
+  // glyph edges is exactly the artefact that would make a tile grid look misaligned.
+  const blob = await new Promise<Blob | null>((resolve) => {
+    drawn.canvas.toBlob(resolve, 'image/png')
+  })
+  if (blob === null) throw new Error('The captured frame could not be encoded.')
+  return { url: URL.createObjectURL(blob), width: drawn.width, height: drawn.height }
+}
+
+/** Frozen frames are not ref-counted the way media URLs are — one owner, one revoke. */
+export function releaseFrozenFrame(frame: FrozenFrame): void {
+  URL.revokeObjectURL(frame.url)
+}
+
+/** The live element's current pixels, on the shared canvas. Both grab paths start here. */
+async function drawCurrentFrame(): Promise<{
+  canvas: HTMLCanvasElement
+  context: CanvasRenderingContext2D
+  width: number
+  height: number
+}> {
   const element = video
   if (state.kind !== 'live' || element === null) {
     throw new Error('Connect a screen or window before capturing a frame.')
@@ -142,7 +179,8 @@ export async function grabFrame(): Promise<ImageData> {
 
   const context = frameContext(width, height)
   context.drawImage(element, 0, 0, width, height)
-  return context.getImageData(0, 0, width, height)
+  // `frameContext` created or resized it, so the module-level handle is the one just drawn to.
+  return { canvas: context.canvas, context, width, height }
 }
 
 /**

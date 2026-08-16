@@ -1,0 +1,361 @@
+import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
+import { useEffect, useState } from 'react'
+import type { CaptureProfile, PixelRect, Point } from '../project/types.ts'
+import type { FrozenFrame } from './capture-session.ts'
+import type { ProfileCalibration, ScreenMapping } from './capture-profile.ts'
+import {
+  DEFAULT_NATIVE_HEIGHT,
+  DEFAULT_NATIVE_WIDTH,
+  TILE_SIZE,
+  frameToNative,
+  nativeToFrame,
+  profileApplies,
+  rectFromCorners,
+  snapToTileGrid,
+  tileStep,
+} from './capture-profile.ts'
+import './CaptureCalibration.css'
+
+/**
+ * Which rectangle the next drag draws. The screen comes first because the text box is stored in
+ * native pixels, and there is no native space to store it in until the screen is outlined.
+ */
+type Step = 'screen' | 'text'
+
+/** A drag in progress, in frame pixels. In state rather than a ref: it is drawn every move. */
+type Drag = { pointerId: number; from: Point; to: Point }
+
+/** How large the frozen frame is drawn. `fit` is for aiming, 1 and 2 for judging the grid. */
+const ZOOMS = ['fit', 1, 2] as const
+type Zoom = (typeof ZOOMS)[number]
+
+/**
+ * Outlining a console screen and its text box on one frozen frame.
+ *
+ * Two rectangles, and only the first is measured freely: the screen rect plus the console's own
+ * resolution fix the 8-pixel tile grid exactly, so the text box can be dragged sloppily and snap
+ * to whole tiles. The grid is drawn over the frame throughout, because a screen rect that is a
+ * few pixels off is obvious there and invisible everywhere else — it would surface as glyphs
+ * that never match, several issues later.
+ */
+export function CaptureCalibration({
+  frame,
+  profile,
+  onCancel,
+  onSave,
+}: {
+  frame: FrozenFrame
+  /** The profile being re-calibrated, or `null` for a new one. */
+  profile: CaptureProfile | null
+  onCancel: () => void
+  onSave: (name: string, calibration: ProfileCalibration) => void
+}): ReactElement {
+  const [name, setName] = useState(profile?.name ?? '')
+  const [nativeWidth, setNativeWidth] = useState(profile?.nativeWidth ?? DEFAULT_NATIVE_WIDTH)
+  const [nativeHeight, setNativeHeight] = useState(profile?.nativeHeight ?? DEFAULT_NATIVE_HEIGHT)
+  // A screen rect measured against a different frame size means nothing, so it is dropped and
+  // drawn again. The text box is native-pixel and therefore still true — see CLAUDE.md.
+  const [screenRect, setScreenRect] = useState<PixelRect | null>(() =>
+    profile !== null && profileApplies(profile, frame.width, frame.height) ? profile.screenRect : null,
+  )
+  const [textRect, setTextRect] = useState<PixelRect | null>(profile?.textRect ?? null)
+  const [step, setStep] = useState<Step>(() =>
+    profile !== null && profileApplies(profile, frame.width, frame.height) ? 'text' : 'screen',
+  )
+  const [zoom, setZoom] = useState<Zoom>('fit')
+  const [drag, setDrag] = useState<Drag | null>(null)
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') onCancel()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [onCancel])
+
+  const nativeBounds = { width: nativeWidth, height: nativeHeight }
+  const mapping: ScreenMapping | null =
+    screenRect === null ? null : { screenRect, nativeWidth, nativeHeight }
+
+  /** The rectangle a live drag would commit — snapped already, so what is drawn is what is kept. */
+  function dragResult(current: Drag): PixelRect | null {
+    const dragged = rectFromCorners(current.from, current.to)
+    if (step === 'screen') return dragged
+    if (mapping === null) return null
+    return snapToTileGrid(frameToNative(mapping, dragged), nativeBounds)
+  }
+
+  function onPointerDown(event: ReactPointerEvent<SVGSVGElement>): void {
+    if (event.button !== 0) return
+    if (step === 'text' && mapping === null) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const point = framePoint(event)
+    setDrag({ pointerId: event.pointerId, from: point, to: point })
+  }
+
+  function onPointerMove(event: ReactPointerEvent<SVGSVGElement>): void {
+    if (drag === null || event.pointerId !== drag.pointerId) return
+    setDrag({ ...drag, to: framePoint(event) })
+  }
+
+  function onPointerUp(event: ReactPointerEvent<SVGSVGElement>): void {
+    if (drag === null || event.pointerId !== drag.pointerId) return
+    const result = dragResult(drag)
+    setDrag(null)
+    if (result === null) return
+    if (step === 'screen') {
+      // A stray click must not wipe a screen rect that took aiming to place.
+      if (result.width < 8 || result.height < 8) return
+      setScreenRect(result)
+      // Straight on to the box, which is what the user came to draw; the screen rect stays
+      // adjustable by stepping back to it.
+      setStep('text')
+      return
+    }
+    setTextRect(result)
+  }
+
+  /** Pointer position in frame pixels, independent of how large the frame is being drawn. */
+  function framePoint(event: ReactPointerEvent<SVGSVGElement>): Point {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * frame.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * frame.height,
+    }
+  }
+
+  /** The live drag, in frame pixels — the text step draws its snapped native rect mapped back. */
+  function previewRect(): PixelRect | null {
+    if (drag === null) return null
+    const result = dragResult(drag)
+    if (result === null) return null
+    return step === 'screen' || mapping === null ? result : nativeToFrame(mapping, result)
+  }
+
+  const previewInFrame = previewRect()
+  const textInFrame = mapping === null || textRect === null ? null : nativeToFrame(mapping, textRect)
+  const saveable = name.trim() !== '' && screenRect !== null && textRect !== null
+
+  return (
+    <div className="capture-calibration" role="dialog" aria-modal="true" aria-label="Calibrate a capture profile">
+      <div className="capture-calibration__panel">
+        <header className="capture-calibration__header">
+          <h2 className="capture-calibration__title">
+            {profile === null ? 'New capture profile' : `Re-calibrate ${profile.name}`}
+          </h2>
+          <p className="capture-calibration__step">{STEP_HINTS[step]}</p>
+        </header>
+
+        <div className="capture-calibration__viewport">
+          <div className="capture-calibration__stage" style={stageStyle(frame, zoom)}>
+            <img className="capture-calibration__frame" src={frame.url} alt="" draggable={false} />
+            <svg
+              className="capture-calibration__overlay"
+              viewBox={`0 0 ${frame.width} ${frame.height}`}
+              preserveAspectRatio="none"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+              onPointerCancel={onPointerUp}
+            >
+              {screenRect !== null && (
+                <rect
+                  className="capture-calibration__screen"
+                  x={screenRect.x}
+                  y={screenRect.y}
+                  width={screenRect.width}
+                  height={screenRect.height}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {mapping !== null && <TileGrid mapping={mapping} />}
+              {textInFrame !== null && (
+                <rect
+                  className="capture-calibration__text"
+                  x={textInFrame.x}
+                  y={textInFrame.y}
+                  width={textInFrame.width}
+                  height={textInFrame.height}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+              {previewInFrame !== null && (
+                <rect
+                  className="capture-calibration__preview"
+                  x={previewInFrame.x}
+                  y={previewInFrame.y}
+                  width={previewInFrame.width}
+                  height={previewInFrame.height}
+                  vectorEffect="non-scaling-stroke"
+                />
+              )}
+            </svg>
+          </div>
+        </div>
+
+        <div className="capture-calibration__controls">
+          <fieldset className="capture-calibration__group">
+            <legend className="capture-calibration__legend">Step</legend>
+            <button
+              type="button"
+              className="capture-calibration__toggle"
+              aria-pressed={step === 'screen'}
+              onClick={() => setStep('screen')}
+            >
+              1 · Console screen
+            </button>
+            <button
+              type="button"
+              className="capture-calibration__toggle"
+              aria-pressed={step === 'text'}
+              disabled={screenRect === null}
+              onClick={() => setStep('text')}
+            >
+              2 · Text box
+            </button>
+          </fieldset>
+
+          <fieldset className="capture-calibration__group">
+            <legend className="capture-calibration__legend">Zoom</legend>
+            {ZOOMS.map((option) => (
+              <button
+                key={String(option)}
+                type="button"
+                className="capture-calibration__toggle"
+                aria-pressed={zoom === option}
+                onClick={() => setZoom(option)}
+              >
+                {option === 'fit' ? 'Fit' : `${option}:1`}
+              </button>
+            ))}
+          </fieldset>
+
+          <label className="capture-calibration__field">
+            Profile name
+            <input
+              className="capture-calibration__input"
+              value={name}
+              autoFocus
+              placeholder="Pokémon Red"
+              onChange={(event) => setName(event.target.value)}
+            />
+          </label>
+
+          <label className="capture-calibration__field capture-calibration__field--narrow">
+            Native width
+            <input
+              className="capture-calibration__input"
+              type="number"
+              min={TILE_SIZE}
+              step={TILE_SIZE}
+              value={nativeWidth}
+              onChange={(event) => setNativeWidth(readSize(event.target.value, DEFAULT_NATIVE_WIDTH))}
+            />
+          </label>
+          <label className="capture-calibration__field capture-calibration__field--narrow">
+            Native height
+            <input
+              className="capture-calibration__input"
+              type="number"
+              min={TILE_SIZE}
+              step={TILE_SIZE}
+              value={nativeHeight}
+              onChange={(event) =>
+                setNativeHeight(readSize(event.target.value, DEFAULT_NATIVE_HEIGHT))
+              }
+            />
+          </label>
+        </div>
+
+        <footer className="capture-calibration__footer">
+          <p className="capture-calibration__readout">
+            <span>
+              Frame {frame.width} × {frame.height}
+            </span>
+            <span>{screenRect === null ? 'Screen not outlined' : describeRect(screenRect, 'frame px')}</span>
+            <span>{textRect === null ? 'Text box not drawn' : describeTextRect(textRect)}</span>
+          </p>
+          <div className="capture-calibration__actions">
+            <button type="button" className="capture-calibration__button" onClick={onCancel}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="capture-calibration__button capture-calibration__button--primary"
+              disabled={!saveable}
+              onClick={() => {
+                if (screenRect === null || textRect === null) return
+                onSave(name.trim(), {
+                  frameWidth: frame.width,
+                  frameHeight: frame.height,
+                  screenRect,
+                  nativeWidth,
+                  nativeHeight,
+                  textRect,
+                })
+              }}
+            >
+              Save profile
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+const STEP_HINTS: Readonly<Record<Step, string>> = {
+  screen: 'Drag a rectangle around the console screen itself — not the window, not the letterbox.',
+  text: 'Drag roughly around the text box. It snaps to the tile grid, so sloppy is fine.',
+}
+
+/**
+ * The console's own 8-pixel cells, drawn over the frame. Lines rather than a `<pattern>`: the
+ * grid has to start exactly at the screen rect and step by a non-integer number of frame pixels,
+ * which is what makes a screen rect that is off by two pixels visible as drift across the screen.
+ */
+function TileGrid({ mapping }: { mapping: ScreenMapping }): ReactElement {
+  const step = tileStep(mapping)
+  const { screenRect } = mapping
+  const columns = Math.floor(mapping.nativeWidth / TILE_SIZE)
+  const rows = Math.floor(mapping.nativeHeight / TILE_SIZE)
+  const lines: ReactElement[] = []
+  for (let column = 1; column < columns; column++) {
+    const x = screenRect.x + column * step.x
+    lines.push(
+      <line key={`c${column}`} x1={x} y1={screenRect.y} x2={x} y2={screenRect.y + screenRect.height} />,
+    )
+  }
+  for (let row = 1; row < rows; row++) {
+    const y = screenRect.y + row * step.y
+    lines.push(
+      <line key={`r${row}`} x1={screenRect.x} y1={y} x2={screenRect.x + screenRect.width} y2={y} />,
+    )
+  }
+  // `vector-effect` does not inherit, so the stroke width is pinned on the lines themselves
+  // through the stylesheet rather than as an attribute on this group.
+  return <g className="capture-calibration__grid">{lines}</g>
+}
+
+/** `fit` lets CSS size the frame; a numeric zoom pins it and lets the viewport scroll. */
+function stageStyle(frame: FrozenFrame, zoom: Zoom): { width: string; height?: string; aspectRatio?: string } {
+  if (zoom === 'fit') return { width: '100%', aspectRatio: `${frame.width} / ${frame.height}` }
+  return { width: `${frame.width * zoom}px`, height: `${frame.height * zoom}px` }
+}
+
+/** An emptied number field must not become NaN and take the whole tile grid with it. */
+function readSize(raw: string, fallback: number): number {
+  const value = Number.parseInt(raw, 10)
+  if (!Number.isFinite(value) || value < TILE_SIZE) return fallback
+  return value
+}
+
+function describeRect(rect: PixelRect, unit: string): string {
+  return `Screen ${Math.round(rect.width)} × ${Math.round(rect.height)} ${unit} at ${Math.round(rect.x)}, ${Math.round(rect.y)}`
+}
+
+function describeTextRect(rect: PixelRect): string {
+  return `Text box ${rect.width} × ${rect.height} native px — ${rect.width / TILE_SIZE} × ${rect.height / TILE_SIZE} tiles at ${rect.x}, ${rect.y}`
+}
