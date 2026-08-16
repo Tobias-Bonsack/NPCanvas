@@ -55,13 +55,20 @@ export function clampScale(scale: number): number {
 }
 
 /**
- * Largest scale that shows the whole rectangle, centred in the container. Takes a `Rect`
- * rather than a `Size` because the canvas is shared: `mapsBounds` may start anywhere,
- * including at negative coordinates, so an origin of 0,0 cannot be assumed.
+ * Fraction of the container left empty on each side by a fit. A rectangle fitted flush to
+ * all four edges touches the frame and reads as clipped rather than as fitted.
+ */
+const FIT_MARGIN = 0.04
+
+/**
+ * Largest scale that shows the whole rectangle with `FIT_MARGIN` to spare, centred in the
+ * container. Takes a `Rect` rather than a `Size` because the canvas is shared: `mapsBounds`
+ * may start anywhere, including at negative coordinates, so an origin of 0,0 cannot be
+ * assumed.
  */
 export function fitRectToContainer(rect: Rect, container: Size): Viewport {
   const scale = clampScale(
-    Math.min(container.width / rect.width, container.height / rect.height),
+    Math.min(container.width / rect.width, container.height / rect.height) * (1 - 2 * FIT_MARGIN),
   )
   return {
     x: rect.x + rect.width / 2 - container.width / (2 * scale),

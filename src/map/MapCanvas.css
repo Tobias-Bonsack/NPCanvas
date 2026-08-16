@@ -106,6 +106,22 @@
   font-size: 0.8125rem;
 }
 
+/* Bottom-left, opposite the HUD: a gesture that refused to commit has to be visible without
+   covering the controls the user is about to reach for again. */
+.map-canvas__rejected {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  max-width: 22rem;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
 .map-canvas__zoom {
   font-family: var(--font-mono);
   color: var(--text-muted);

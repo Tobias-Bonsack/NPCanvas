@@ -95,17 +95,19 @@ describe('clampScale', () => {
   })
 })
 
+// The fit leaves FIT_MARGIN of the container empty on each side, so the binding dimension
+// lands 4% in from both edges rather than flush against them.
 describe('fitRectToContainer', () => {
   it('centres a rect in a container wider than the rect aspect', () => {
     const rect = { x: 0, y: 0, width: 1000, height: 1000 }
     const container = { width: 800, height: 400 }
     const viewport = fitRectToContainer(rect, container)
 
-    // Height is the binding dimension, so the whole rect height exactly fills the container.
-    expect(viewport.scale).toBeCloseTo(0.4, 9)
+    // Height is the binding dimension: 400 / 1000, less the margin on each side.
+    expect(viewport.scale).toBeCloseTo(0.368, 9)
     expectClose(worldToScreen(viewport, { x: 500, y: 500 }), { x: 400, y: 200 })
-    expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 200, y: 0 })
-    expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 600, y: 400 })
+    expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 216, y: 16 })
+    expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 584, y: 384 })
   })
 
   it('centres a rect in a container taller than the rect aspect', () => {
@@ -113,10 +115,10 @@ describe('fitRectToContainer', () => {
     const container = { width: 400, height: 800 }
     const viewport = fitRectToContainer(rect, container)
 
-    expect(viewport.scale).toBeCloseTo(0.4, 9)
+    expect(viewport.scale).toBeCloseTo(0.368, 9)
     expectClose(worldToScreen(viewport, { x: 500, y: 500 }), { x: 200, y: 400 })
-    expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 0, y: 200 })
-    expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 400, y: 600 })
+    expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 16, y: 216 })
+    expectClose(worldToScreen(viewport, { x: 1000, y: 1000 }), { x: 384, y: 584 })
   })
 
   it('centres a non-square rect too', () => {
@@ -124,8 +126,20 @@ describe('fitRectToContainer', () => {
       { x: 0, y: 0, width: 4000, height: 1000 },
       { width: 800, height: 800 },
     )
-    expect(viewport.scale).toBeCloseTo(0.2, 9)
+    expect(viewport.scale).toBeCloseTo(0.184, 9)
     expectClose(worldToScreen(viewport, { x: 2000, y: 500 }), { x: 400, y: 400 })
+  })
+
+  // A map fitted flush to the frame reads as clipped, so the fit must stay inside it on
+  // every side — including the dimension that binds.
+  it('leaves a margin on the binding dimension, so a fitted rect never touches the frame', () => {
+    // Same aspect as the container, so both dimensions bind and both must clear the frame.
+    const rect = { x: 0, y: 0, width: 1000, height: 500 }
+    const container = { width: 800, height: 400 }
+    const viewport = fitRectToContainer(rect, container)
+
+    expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 32, y: 16 })
+    expectClose(worldToScreen(viewport, { x: 1000, y: 500 }), { x: 768, y: 384 })
   })
 
   // The canvas is shared, so `mapsBounds` may start anywhere — a fit that assumed an origin
@@ -135,10 +149,10 @@ describe('fitRectToContainer', () => {
     const container = { width: 800, height: 400 }
     const viewport = fitRectToContainer(rect, container)
 
-    expect(viewport.scale).toBeCloseTo(0.4, 9)
+    expect(viewport.scale).toBeCloseTo(0.368, 9)
     expectClose(worldToScreen(viewport, { x: -2500, y: 1000 }), { x: 400, y: 200 })
-    expectClose(worldToScreen(viewport, { x: -3000, y: 500 }), { x: 200, y: 0 })
-    expectClose(worldToScreen(viewport, { x: -2000, y: 1500 }), { x: 600, y: 400 })
+    expectClose(worldToScreen(viewport, { x: -3000, y: 500 }), { x: 216, y: 16 })
+    expectClose(worldToScreen(viewport, { x: -2000, y: 1500 }), { x: 584, y: 384 })
   })
 
   it('clamps a fit that would exceed the scale range', () => {

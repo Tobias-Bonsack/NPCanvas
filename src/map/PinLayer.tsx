@@ -24,17 +24,18 @@ import type { Rect } from './geometry.ts'
 import { rectContains } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 
-/** What a pin drag snapshots at pointerdown; `DragGesture` owns the pointer bookkeeping. */
+/** What a pin drag carries; `DragGesture` owns the pointer bookkeeping. */
 type PinDragGesture = {
   id: DialogueId
-  from: Point
   /**
-   * Screen pixels per map-local pixel, read once at pointerdown: the drag must not shift if
-   * the canvas is zoomed mid-gesture.
+   * The live map-local position, advanced by each move rather than recomputed from the press.
+   * Only the increment *since the last move* belongs to the scale in force now, so a canvas
+   * zoom mid-drag changes what the next pixel is worth without re-scaling the travel so far.
+   * It also mirrors what is rendered, so pointerup depends on no state closure.
    */
-  scale: number
-  /** Mirrors the rendered drag position, so pointerup does not depend on a state closure. */
-  latest: Point | null
+  position: Point
+  /** Client coordinates of the previous move — the other half of that increment. */
+  client: Point
 }
 
 /**
@@ -103,9 +104,8 @@ export const PinLayer = memo(function PinLayer({
     event.stopPropagation()
     beginDrag(drag, event, {
       id: dialogue.id,
-      from: dialogue.position,
-      scale: readScreenScale(event.currentTarget),
-      latest: null,
+      position: dialogue.position,
+      client: { x: event.clientX, y: event.clientY },
     })
   }
 
@@ -113,11 +113,15 @@ export const PinLayer = memo(function PinLayer({
     const move = moveDrag(drag, event)
     if (move === null) return
 
+    // Read every move, not once at pointerdown: the canvas zoom is what this converts by, and
+    // the wheel keeps working while a pin is held.
+    const scale = readScreenScale(event.currentTarget)
     const position: Point = {
-      x: move.data.from.x + move.dx / move.data.scale,
-      y: move.data.from.y + move.dy / move.data.scale,
+      x: move.data.position.x + (event.clientX - move.data.client.x) / scale,
+      y: move.data.position.y + (event.clientY - move.data.client.y) / scale,
     }
-    move.data.latest = position
+    move.data.position = position
+    move.data.client = { x: event.clientX, y: event.clientY }
     setDragged({ id: move.data.id, position })
   }
 
@@ -136,10 +140,7 @@ export const PinLayer = memo(function PinLayer({
       return
     }
 
-    const final = end.data.latest
-    if (final !== null) {
-      dispatch({ kind: 'dialogue/moved', dialogueId: end.data.id, position: final })
-    }
+    dispatch({ kind: 'dialogue/moved', dialogueId: end.data.id, position: end.data.position })
   }
 
   /**
@@ -422,9 +423,14 @@ function pinStyle(position: Point): CSSProperties {
  * Screen pixels per map-local pixel: the product of the canvas zoom and the map's own scale,
  * which is exactly what a drag delta must be divided by to land in map-local coordinates.
  *
- * Read from the DOM at pointerdown rather than passed in as a prop — a `scale` prop would
- * change on every wheel notch and defeat the `memo` above. The world element publishes
- * `--map-zoom` and each map group publishes `--map-scale`; both inherit down to the pin.
+ * Read from the DOM rather than passed in as a prop — a `scale` prop would change on every
+ * wheel notch and defeat the `memo` above. The world element publishes `--map-zoom` and each
+ * map group publishes `--map-scale`; both inherit down to the pin.
+ *
+ * Read per move rather than once per gesture, because the value is exactly what a zoom
+ * changes. The cost is one computed-style read on a single element, in a handler that already
+ * re-renders that pin — and it happens after the browser has recalculated for the last frame,
+ * so it flushes nothing extra.
  */
 function readScreenScale(element: Element): number {
   const style = getComputedStyle(element)
