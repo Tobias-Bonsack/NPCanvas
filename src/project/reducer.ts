@@ -30,6 +30,7 @@ import { RELEVANCE_TAGS } from './types.ts'
 export type Action =
   | { kind: 'project/unsupported' }
   | { kind: 'project/disconnected' }
+  | { kind: 'project/pick-cancelled' }
   | { kind: 'project/reconnecting'; directoryName: string }
   | { kind: 'project/loading'; directoryName: string }
   | { kind: 'project/loaded'; directoryName: string; project: ProjectFile }
@@ -89,6 +90,13 @@ export function reduce(state: AppState, action: Action): AppState {
       return state.kind === 'unsupported' ? state : { kind: 'unsupported' }
 
     case 'project/disconnected':
+      return state.kind === 'disconnected' ? state : { kind: 'disconnected' }
+
+    // Closing the folder picker means only that no folder was chosen. What follows from that
+    // depends on what there was to keep: a project already open stays open, and anywhere else
+    // there is nothing to fall back to but `disconnected`.
+    case 'project/pick-cancelled':
+      if (state.kind === 'ready') return state
       return state.kind === 'disconnected' ? state : { kind: 'disconnected' }
 
     case 'project/reconnecting':

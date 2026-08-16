@@ -29,8 +29,16 @@ export function startAutosave(): () => void {
   }
 }
 
-/** The Nav's retry button after a `failed` save. Skips the debounce — the user asked now. */
-export function retrySave(): void {
+/**
+ * Writes the pending edit now instead of at the end of the debounce. Two callers: the Nav's
+ * retry button after a `failed` save, and the project switch, which must get the edit into
+ * the folder it was made in before the folder changes — entering a non-`ready` state drops
+ * the debounce, see `onStoreChange`.
+ *
+ * Deliberately not `async`: the switch calls it *before* `showDirectoryPicker`, and an await
+ * here would spend the transient user activation the picker needs.
+ */
+export function saveNow(): void {
   cancelDebounce()
   void writeNow()
 }

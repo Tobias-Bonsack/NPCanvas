@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react'
 import { assertNever } from '../assert-never.ts'
 import type { SaveState } from '../project/types.ts'
-import { retrySave } from '../storage/autosave.ts'
+import { saveNow } from '../storage/autosave.ts'
+import { connectToNewDirectory } from '../storage/project-directory.ts'
 import type { Route } from './route.ts'
-import { formatRoute, useRoute } from './route.ts'
+import { formatRoute, navigate, useRoute } from './route.ts'
 import './Nav.css'
 
 // Real anchors, not buttons: the hash is the navigation mechanism, so middle-click,
@@ -14,7 +15,15 @@ const NAV_ITEMS: readonly { label: string; route: Route }[] = [
   { label: 'Insights', route: { kind: 'insights' } },
 ]
 
-export function Nav({ save }: { save: SaveState }): ReactElement {
+export function Nav({
+  save,
+  directoryName,
+}: {
+  save: SaveState
+  /** The connected folder, named here because it is the only place the app says which project
+   * is open — and the switch below is the only way to open a different one. */
+  directoryName: string
+}): ReactElement {
   const active = useRoute()
   return (
     <nav className="nav" aria-label="Views">
@@ -32,8 +41,39 @@ export function Nav({ save }: { save: SaveState }): ReactElement {
           </li>
         ))}
       </ul>
+      <ProjectSwitch directoryName={directoryName} />
       <SaveIndicator save={save} />
     </nav>
+  )
+}
+
+/**
+ * Which folder is open, and the way to open another one.
+ *
+ * The order inside the handler is the whole subtlety. `saveNow()` is synchronous, so the
+ * pending edit is on its way to the *current* folder before the picker exists — and opening
+ * the new project leaves `ready`, which drops any debounce still waiting. The picker is then
+ * the first `await`, which is what `showDirectoryPicker` requires of its user gesture.
+ */
+function ProjectSwitch({ directoryName }: { directoryName: string }): ReactElement {
+  async function onSwitch(): Promise<void> {
+    saveNow()
+    const opened = await connectToNewDirectory()
+    // Ids in the hash belong to the project that has just been closed, so the switch lands on
+    // a bare canvas rather than a link into a document that no longer contains it.
+    if (opened) navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
+  }
+
+  return (
+    <button
+      type="button"
+      className="nav__project"
+      onClick={() => void onSwitch()}
+      title={`Open a different project folder — ${directoryName} is connected`}
+    >
+      <span className="nav__project-name">{directoryName}</span>
+      <span className="nav__project-action">Switch…</span>
+    </button>
   )
 }
 
@@ -73,7 +113,7 @@ function SaveIndicator({ save }: { save: SaveState }): ReactElement {
       return (
         <p className="nav__save" data-state="failed">
           <span title={save.message}>Save failed</span>
-          <button type="button" className="nav__retry" onClick={retrySave}>
+          <button type="button" className="nav__retry" onClick={saveNow}>
             Retry
           </button>
         </p>

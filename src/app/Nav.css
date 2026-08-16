@@ -33,11 +33,44 @@
   color: var(--text);
 }
 
+/* Pushed right with the save indicator: the two together say which folder is open and
+   whether it is up to date, which is one fact in two halves. */
+.nav__project {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-left: auto;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.nav__project:hover {
+  background: var(--surface-3);
+}
+
+/* The folder can be named anything; a long one must not push the nav's own items around. */
+.nav__project-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav__project-action {
+  color: var(--text-muted);
+}
+
 .nav__save {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0 0 0 auto;
+  margin: 0;
   font-size: 0.8125rem;
   color: var(--text-muted);
 }

@@ -30,21 +30,28 @@ export async function startProjectConnection(): Promise<void> {
   await restoreSavedDirectory()
 }
 
-/** Must be called from a click handler — see the `showDirectoryPicker` comment below. */
-export async function connectToNewDirectory(): Promise<void> {
+/**
+ * Opens the folder picker and adopts what the user chooses — the first connect and a switch
+ * between projects are the same act. Resolves to whether a folder was actually opened, so a
+ * caller can follow up (the switch navigates) without reading the store back.
+ *
+ * Must be called from a click handler — see the `showDirectoryPicker` comment below.
+ */
+export async function connectToNewDirectory(): Promise<boolean> {
   let handle: FileSystemDirectoryHandle
   try {
     // Requires transient user activation, so this must be the first await in the click
     // handler's task. `id` makes Chromium reopen the picker where it was last left.
     handle = await window.showDirectoryPicker({ id: 'npcanvas-project', mode: 'readwrite' })
   } catch (error) {
-    // Every picker rejection ends with no folder chosen, which *is* `disconnected`.
+    // Every picker rejection ends with no folder chosen. What that means depends on whether
+    // a project was already open, which is the reducer's decision — not this module's.
     // Cancelling (AbortError) is an ordinary outcome and stays silent; anything else is a
     // bug worth a console trace, but still not a `load-failed` — there is no folder whose
     // reading could be retried.
     if (!isAbortError(error)) console.error('Folder picker failed', error)
-    dispatch({ kind: 'project/disconnected' })
-    return
+    dispatch({ kind: 'project/pick-cancelled' })
+    return false
   }
 
   try {
@@ -54,6 +61,7 @@ export async function connectToNewDirectory(): Promise<void> {
     console.error('Could not remember the project folder for next time', error)
   }
   await openProject(handle)
+  return true
 }
 
 /** Boot path: reuse the folder from the previous session if the grant is still good. */

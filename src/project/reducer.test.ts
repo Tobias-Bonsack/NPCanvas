@@ -231,6 +231,25 @@ describe('reduce: connection actions', () => {
     })
   })
 
+  // Closing the picker is the same event either way; what it means is not. A project already
+  // open must survive it — that is the whole difference between a first connect and a switch.
+  it('keeps an open project when the folder picker is cancelled', () => {
+    const state = ready()
+    expect(reduce(state, { kind: 'project/pick-cancelled' })).toBe(state)
+  })
+
+  it('falls back to disconnected when a picker is cancelled with no project open', () => {
+    expect(
+      reduce(
+        { kind: 'load-failed', directoryName: 'Harbour', message: 'boom' },
+        { kind: 'project/pick-cancelled' },
+      ),
+    ).toEqual({ kind: 'disconnected' })
+
+    const disconnected: AppState = { kind: 'disconnected' }
+    expect(reduce(disconnected, { kind: 'project/pick-cancelled' })).toBe(disconnected)
+  })
+
   it('moves to reconnecting with the directory name', () => {
     expect(
       reduce({ kind: 'disconnected' }, { kind: 'project/reconnecting', directoryName: 'Harbour' }),

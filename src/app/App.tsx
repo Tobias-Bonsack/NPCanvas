@@ -23,7 +23,7 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
   const route = useRoute()
   return (
     <div className="app-shell">
-      <Nav save={state.save} />
+      <Nav save={state.save} directoryName={state.directoryName} />
       <ReadyView state={state} route={route} />
     </div>
   )
