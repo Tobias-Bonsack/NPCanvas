@@ -11,6 +11,7 @@ import {
   nativeToFrame,
   profileApplies,
   rectFromCorners,
+  roundRect,
   snapToTileGrid,
   tileStep,
 } from './capture-profile.ts'
@@ -108,9 +109,10 @@ export function CaptureCalibration({
     if (step === 'screen') {
       // A stray click must not wipe a screen rect that took aiming to place.
       if (result.width < 8 || result.height < 8) return
-      setScreenRect(result)
-      // Straight on to the box, which is what the user came to draw; the screen rect stays
-      // adjustable by stepping back to it.
+      // Rounded, because the number fields below are how a screen rect is actually finished:
+      // a drag aims it, and single frame pixels are nudged in afterwards.
+      setScreenRect(roundRect(result))
+      // Straight on to the box, which is what the user came to draw.
       setStep('text')
       return
     }
@@ -243,31 +245,60 @@ export function CaptureCalibration({
             />
           </label>
 
-          <label className="capture-calibration__field capture-calibration__field--narrow">
-            Native width
-            <input
-              className="capture-calibration__input"
-              type="number"
-              min={TILE_SIZE}
-              step={TILE_SIZE}
-              value={nativeWidth}
-              onChange={(event) => setNativeWidth(readSize(event.target.value, DEFAULT_NATIVE_WIDTH))}
-            />
-          </label>
-          <label className="capture-calibration__field capture-calibration__field--narrow">
-            Native height
-            <input
-              className="capture-calibration__input"
-              type="number"
-              min={TILE_SIZE}
-              step={TILE_SIZE}
-              value={nativeHeight}
-              onChange={(event) =>
-                setNativeHeight(readSize(event.target.value, DEFAULT_NATIVE_HEIGHT))
-              }
-            />
-          </label>
+          <NumberField
+            label="Native width"
+            value={nativeWidth}
+            min={TILE_SIZE}
+            step={TILE_SIZE}
+            onChange={setNativeWidth}
+          />
+          <NumberField
+            label="Native height"
+            value={nativeHeight}
+            min={TILE_SIZE}
+            step={TILE_SIZE}
+            onChange={setNativeHeight}
+          />
         </div>
+
+        {/* The grid's own numbers. A drag cannot place a rectangle to the pixel — a frame pixel
+            is a fraction of a screen pixel at Fit zoom — and being one pixel out is exactly what
+            makes the tile grid drift across the screen. So the rect is nudged, not redrawn. */}
+        {screenRect !== null && (
+          <div className="capture-calibration__controls">
+            <p className="capture-calibration__legend capture-calibration__legend--row">
+              Screen rect, frame px
+            </p>
+            <NumberField
+              label="Left"
+              value={screenRect.x}
+              min={0}
+              onChange={(x) => setScreenRect({ ...screenRect, x })}
+            />
+            <NumberField
+              label="Top"
+              value={screenRect.y}
+              min={0}
+              onChange={(y) => setScreenRect({ ...screenRect, y })}
+            />
+            <NumberField
+              label="Width"
+              value={screenRect.width}
+              min={1}
+              onChange={(width) => setScreenRect({ ...screenRect, width })}
+            />
+            <NumberField
+              label="Height"
+              value={screenRect.height}
+              min={1}
+              onChange={(height) => setScreenRect({ ...screenRect, height })}
+            />
+            <p className="capture-calibration__tile-size">
+              One tile is {tileStep({ screenRect, nativeWidth, nativeHeight }).x.toFixed(2)} ×{' '}
+              {tileStep({ screenRect, nativeWidth, nativeHeight }).y.toFixed(2)} frame px
+            </p>
+          </div>
+        )}
 
         <footer className="capture-calibration__footer">
           <p className="capture-calibration__readout">
@@ -345,10 +376,45 @@ function stageStyle(frame: FrozenFrame, zoom: Zoom): { width: string; height?: s
   return { width: `${frame.width * zoom}px`, height: `${frame.height * zoom}px` }
 }
 
-/** An emptied number field must not become NaN and take the whole tile grid with it. */
-function readSize(raw: string, fallback: number): number {
+/**
+ * One number in the calibration bar. Every value here is whole frame or native pixels, so the
+ * arrow keys are a real adjustment tool rather than a rounding hazard.
+ */
+function NumberField({
+  label,
+  value,
+  min,
+  step = 1,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  step?: number
+  onChange: (value: number) => void
+}): ReactElement {
+  return (
+    <label className="capture-calibration__field capture-calibration__field--narrow">
+      {label}
+      <input
+        className="capture-calibration__input"
+        type="number"
+        min={min}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(readNumber(event.target.value, value, min))}
+      />
+    </label>
+  )
+}
+
+/**
+ * An emptied or half-typed field must not become NaN and take the whole tile grid with it, so
+ * it holds its previous value — clearing the box changes nothing until a number is in it.
+ */
+function readNumber(raw: string, fallback: number, min: number): number {
   const value = Number.parseInt(raw, 10)
-  if (!Number.isFinite(value) || value < TILE_SIZE) return fallback
+  if (!Number.isFinite(value) || value < min) return fallback
   return value
 }
 

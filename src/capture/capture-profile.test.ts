@@ -9,6 +9,7 @@ import {
   nativeToFrame,
   profileApplies,
   rectFromCorners,
+  roundRect,
   snapToTileGrid,
   tileStep,
 } from './capture-profile.ts'
@@ -128,6 +129,26 @@ describe('profileApplies', () => {
   it('rejects any other frame size, one pixel included', () => {
     expect(profileApplies(profile(), 1998, 1124)).toBe(false)
     expect(profileApplies(profile(), 1920, 1080)).toBe(false)
+  })
+})
+
+describe('roundRect', () => {
+  it('lands a dragged rectangle on whole frame pixels', () => {
+    expect(roundRect({ x: 199.54, y: 80.46, width: 481.38, height: 431.72 })).toEqual({
+      x: 200,
+      y: 80,
+      width: 481,
+      height: 432,
+    })
+  })
+
+  it('normalizes before rounding', () => {
+    expect(roundRect({ x: 60.4, y: 60.4, width: -40.2, height: -40.2 })).toEqual({
+      x: 20,
+      y: 20,
+      width: 40,
+      height: 40,
+    })
   })
 })
 

@@ -113,6 +113,24 @@ export function rectFromCorners(from: Point, to: Point): PixelRect {
   return normalizeRect({ x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y })
 }
 
+/**
+ * The same rectangle on whole frame pixels.
+ *
+ * A frame pixel is the finest thing the source can resolve, so a screen rect carrying fractions
+ * of one is precision that isn't there — and it is what makes the calibration view's number
+ * fields unusable, because nudging 199.54022637728986 by one is not an adjustment anyone can
+ * reason about.
+ */
+export function roundRect(rect: PixelRect): PixelRect {
+  const normalized = normalizeRect(rect)
+  return {
+    x: Math.round(normalized.x),
+    y: Math.round(normalized.y),
+    width: Math.round(normalized.width),
+    height: Math.round(normalized.height),
+  }
+}
+
 /** The same rectangle with non-negative extents. */
 export function normalizeRect(rect: PixelRect): PixelRect {
   return {

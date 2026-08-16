@@ -129,6 +129,21 @@
   color: var(--text-muted);
 }
 
+/* The same label the fieldsets carry, on a row that is not one — the screen-rect numbers are
+   plain fields, and a fieldset around them would nest a legend inside a legend. */
+.capture-calibration__legend--row {
+  margin: 0 0 var(--space-1) 0;
+  align-self: flex-end;
+}
+
+.capture-calibration__tile-size {
+  margin: 0 0 var(--space-1) 0;
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .capture-calibration__toggle {
   font: inherit;
   font-size: 0.75rem;
