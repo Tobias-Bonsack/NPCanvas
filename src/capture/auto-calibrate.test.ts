@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MIN_PROMINENCE,
   contentBounds,
   detectScreenRect,
   detectTextRect,
@@ -66,7 +67,7 @@ describe('fitLattice', () => {
     expect(lattice).not.toBe(null)
     expect(lattice?.pitch).toBeCloseTo(7.1875, 2)
     expect(Math.abs((lattice?.phase ?? 0) - 3.5)).toBeLessThan(0.25)
-    expect(lattice?.confidence).toBeGreaterThan(0.9)
+    expect(lattice?.prominence).toBeGreaterThan(MIN_PROMINENCE)
   })
 
   it('prefers the true pitch over its own harmonic', () => {
@@ -79,13 +80,10 @@ describe('fitLattice', () => {
 
   it('refuses a signal that does not repeat', () => {
     const energy = new Float64Array(600)
-    let seed = 7
-    for (let index = 0; index < energy.length; index++) {
-      seed = (seed * 1103515245 + 12345) % 2147483648
-      energy[index] = seed % 100
-    }
+    const random = noise(7)
+    for (let index = 0; index < energy.length; index++) energy[index] = random() % 100
 
-    expect(fitLattice(energy, 4, 9)?.confidence ?? 0).toBeLessThan(0.5)
+    expect(fitLattice(energy, 4, 9)?.prominence ?? 0).toBeLessThan(MIN_PROMINENCE)
   })
 
   it('refuses a flat signal', () => {
@@ -98,8 +96,9 @@ describe('detectScreenRect', () => {
     const detected = detectScreenRect(frameOf(patterned(), SCALE, SCALE), NATIVE_WIDTH, NATIVE_HEIGHT)
 
     expect(detected).not.toBe(null)
-    expect(detected?.horizontal.pitch).toBeCloseTo(SCALE, 2)
-    expect(detected?.vertical.pitch).toBeCloseTo(SCALE, 2)
+    expect(detected?.horizontal.signal).toBe('step')
+    expect(detected?.horizontal.lattice.pitch).toBeCloseTo(SCALE, 2)
+    expect(detected?.vertical.lattice.pitch).toBeCloseTo(SCALE, 2)
     expect(detected?.screenRect).toEqual({
       x: ORIGIN.x,
       y: ORIGIN.y,
@@ -111,8 +110,8 @@ describe('detectScreenRect', () => {
   it('measures each axis separately when the window stretches the output', () => {
     const detected = detectScreenRect(frameOf(patterned(), 7.1875, 4.25), NATIVE_WIDTH, NATIVE_HEIGHT)
 
-    expect(detected?.horizontal.pitch).toBeCloseTo(7.1875, 2)
-    expect(detected?.vertical.pitch).toBeCloseTo(4.25, 2)
+    expect(detected?.horizontal.lattice.pitch).toBeCloseTo(7.1875, 2)
+    expect(detected?.vertical.lattice.pitch).toBeCloseTo(4.25, 2)
   })
 
   it('is not thrown off by a second window beside the screen', () => {
@@ -143,12 +142,27 @@ describe('detectScreenRect', () => {
     expect(detected?.screenRect.x).toBe(ORIGIN.x)
   })
 
+  it('measures a screen the source scaled smoothly, off its curvature', () => {
+    const detected = detectScreenRect(smoothFrame(patterned(), SCALE, SCALE), NATIVE_WIDTH, NATIVE_HEIGHT)
+
+    // Interpolation leaves the first difference flat, so this can only have come from `ramp` —
+    // and the two combs sit half a native pixel apart, which the origin has to account for.
+    expect(detected?.horizontal.signal).toBe('ramp')
+    expect(detected?.vertical.signal).toBe('ramp')
+    expect(detected?.horizontal.lattice.pitch).toBeCloseTo(SCALE, 2)
+    expect(detected?.screenRect).toEqual({
+      x: ORIGIN.x,
+      y: ORIGIN.y,
+      width: Math.round(NATIVE_WIDTH * SCALE),
+      height: Math.round(NATIVE_HEIGHT * SCALE),
+    })
+  })
+
   it('refuses a frame with no lattice in it', () => {
     const frame = blankFrame()
-    let seed = 11
+    const random = noise(11)
     for (let index = 0; index < FRAME_WIDTH * FRAME_HEIGHT; index++) {
-      seed = (seed * 1103515245 + 12345) % 2147483648
-      const value = seed % 256
+      const value = random() % 256
       frame.data[index * 4] = value
       frame.data[index * 4 + 1] = value
       frame.data[index * 4 + 2] = value
@@ -176,11 +190,18 @@ describe('detectTextRect', () => {
 
 // ---- synthetic frames ----
 
-/** A native image with content on all four edges, so its bounding box is the screen itself. */
+/**
+ * A native image with content on all four edges, so its bounding box is the screen itself.
+ *
+ * The border is the *bright* colour on purpose: an emulator draws its output against dark window
+ * chrome, so the screen's own outline is the strongest edge in the frame — which is what
+ * `latticeOrigin` anchors on, and what a border painted almost the colour of the chrome would take
+ * away.
+ */
 function patterned(): (x: number, y: number) => Pixel {
   return (x, y) => {
     const onEdge = x === 0 || y === 0 || x === NATIVE_WIDTH - 1 || y === NATIVE_HEIGHT - 1
-    if (onEdge) return INK
+    if (onEdge) return FIELD
     // Deliberately busy: every native pixel boundary should be a candidate boundary somewhere.
     return (x * 7 + y * 5) % 3 === 0 ? INK : FIELD
   }
@@ -230,6 +251,58 @@ function frameOf(
     }
   }
   return frame
+}
+
+/**
+ * The same upscale, interpolated rather than repeated — what a window scaled by the compositor,
+ * or by an emulator that filters its output, actually delivers.
+ */
+function smoothFrame(
+  paint: (x: number, y: number) => Pixel,
+  scaleX: number,
+  scaleY: number,
+): PixelBuffer {
+  const frame = blankFrame()
+  const at = (x: number, y: number): Pixel =>
+    paint(clampNative(x, NATIVE_WIDTH), clampNative(y, NATIVE_HEIGHT))
+  for (let y = 0; y < FRAME_HEIGHT; y++) {
+    for (let x = 0; x < FRAME_WIDTH; x++) {
+      const u = (x + 0.5 - ORIGIN.x) / scaleX - 0.5
+      const v = (y + 0.5 - ORIGIN.y) / scaleY - 0.5
+      if (u < -0.5 || v < -0.5 || u > NATIVE_WIDTH - 0.5 || v > NATIVE_HEIGHT - 0.5) continue
+      const left = Math.floor(u)
+      const top = Math.floor(v)
+      const tx = u - left
+      const ty = v - top
+      const colour: Pixel = [0, 0, 0]
+      for (let channel = 0; channel < 3; channel++) {
+        const above =
+          at(left, top)[channel] * (1 - tx) + at(left + 1, top)[channel] * tx
+        const below =
+          at(left, top + 1)[channel] * (1 - tx) + at(left + 1, top + 1)[channel] * tx
+        colour[channel] = Math.round(above * (1 - ty) + below * ty)
+      }
+      write(frame.data, (y * FRAME_WIDTH + x) * 4, colour)
+    }
+  }
+  return frame
+}
+
+function clampNative(value: number, bound: number): number {
+  return Math.min(bound - 1, Math.max(0, value))
+}
+
+/**
+ * A repeatable 32-bit generator. `Math.imul` rather than plain multiplication, because a textbook
+ * LCG in doubles loses its low bits and produces a *periodic* sequence — which is precisely the
+ * thing these frames must not contain.
+ */
+function noise(seed: number): () => number {
+  let state = seed >>> 0
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
+    return state >>> 8
+  }
 }
 
 function blankFrame(): PixelBuffer {
