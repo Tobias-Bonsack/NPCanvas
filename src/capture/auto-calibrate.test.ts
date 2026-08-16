@@ -80,7 +80,7 @@ describe('fitLattice', () => {
 
   it('refuses a signal that does not repeat', () => {
     const energy = new Float64Array(600)
-    const random = noise(7)
+    const random = noise(2463534242)
     for (let index = 0; index < energy.length; index++) energy[index] = random() % 100
 
     expect(fitLattice(energy, 4, 9)?.prominence ?? 0).toBeLessThan(MIN_PROMINENCE)
@@ -160,7 +160,7 @@ describe('detectScreenRect', () => {
 
   it('refuses a frame with no lattice in it', () => {
     const frame = blankFrame()
-    const random = noise(11)
+    const random = noise(2463534242)
     for (let index = 0; index < FRAME_WIDTH * FRAME_HEIGHT; index++) {
       const value = random() % 256
       frame.data[index * 4] = value
@@ -293,15 +293,22 @@ function clampNative(value: number, bound: number): number {
 }
 
 /**
- * A repeatable 32-bit generator. `Math.imul` rather than plain multiplication, because a textbook
- * LCG in doubles loses its low bits and produces a *periodic* sequence — which is precisely the
- * thing these frames must not contain.
+ * A repeatable generator with no structure in it — xorshift32, not a linear congruential one.
+ *
+ * The distinction is the whole point of the frame this feeds: an LCG's low bits cycle with short
+ * periods, so a frame painted from them holds a lattice, and a test that expects such a frame to be
+ * refused is testing nothing. Measured, this generator's frames score around 1 for prominence at
+ * every size, which is what a shuffle of noise should score.
  */
 function noise(seed: number): () => number {
   let state = seed >>> 0
   return () => {
-    state = (Math.imul(state, 1664525) + 1013904223) >>> 0
-    return state >>> 8
+    state ^= state << 13
+    state >>>= 0
+    state ^= state >>> 17
+    state ^= state << 5
+    state >>>= 0
+    return state >>> 24
   }
 }
 

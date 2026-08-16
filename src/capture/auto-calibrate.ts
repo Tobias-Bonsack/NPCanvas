@@ -64,11 +64,13 @@ export type ScreenDetection = {
 /**
  * How far the winning pitch must beat a shuffle of its own energy before it is offered at all.
  *
- * Measured, not guessed: a frame of pure noise scores about 1 — by construction, since a shuffle
- * of noise is noise — while a real VisualBoyAdvance window on a 4K desktop and every synthetic
- * upscale here score several times that.
+ * Measured, not guessed. Pure noise scores between 0.6 and 1.6 whatever the frame size — by
+ * construction, since a shuffle of noise is noise. Two real VisualBoyAdvance captures at
+ * 3840 × 2088 score 2.1, 2.7, 2.8 and 3.5 across their axes; the 2.1 is the axis of a screen whose
+ * right third is black, so it has the least structure a real console frame is likely to offer.
+ * 1.8 sits in the gap, and both axes have to clear it.
  */
-export const MIN_PROMINENCE = 2.5
+export const MIN_PROMINENCE = 1.8
 
 /** Chebyshev distance in RGB that still counts as the window's own background. */
 const BACKGROUND_TOLERANCE = 24
