@@ -166,6 +166,19 @@
   cursor: not-allowed;
 }
 
+/* The action among the toggles, so it does not read as another mode that is currently off. */
+.capture-calibration__toggle--action {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.capture-calibration__warning {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #ff8f8f;
+}
+
 .capture-calibration__field {
   display: flex;
   flex-direction: column;

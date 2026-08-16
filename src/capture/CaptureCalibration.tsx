@@ -1,7 +1,9 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import type { CaptureProfile, PixelRect, Point } from '../project/types.ts'
+import { detectScreenRect, detectTextRect } from './auto-calibrate.ts'
 import type { FrozenFrame } from './capture-session.ts'
+import { sampleNative } from './glyph-matcher.ts'
 import type { ProfileCalibration, ScreenMapping } from './capture-profile.ts'
 import {
   DEFAULT_NATIVE_HEIGHT,
@@ -29,6 +31,15 @@ type Drag = { pointerId: number; from: Point; to: Point }
 /** How large the frozen frame is drawn. `fit` is for aiming, 1 and 2 for judging the grid. */
 const ZOOMS = ['fit', 1, 2] as const
 type Zoom = (typeof ZOOMS)[number]
+
+/**
+ * How far the two tile steps may differ before the bar says so, as a share of the larger.
+ *
+ * A stretched emulator window is legitimate, so this is not an error — but a grid whose rows are
+ * half again as tall as its columns is the shape of a screen rect that swallowed a title bar, and
+ * that mistake is invisible until `GlyphLearner` shows tiles nobody can name.
+ */
+const TILE_STEP_TOLERANCE = 0.05
 
 /**
  * Outlining a console screen and its text box on one frozen frame.
@@ -65,6 +76,8 @@ export function CaptureCalibration({
   )
   const [zoom, setZoom] = useState<Zoom>('fit')
   const [drag, setDrag] = useState<Drag | null>(null)
+  /** Only ever a failure: a measurement that worked is visible as the rectangles it drew. */
+  const [measureFailed, setMeasureFailed] = useState(false)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -86,6 +99,27 @@ export function CaptureCalibration({
     if (step === 'screen') return dragged
     if (mapping === null) return null
     return snapToTileGrid(frameToNative(mapping, dragged), nativeBounds)
+  }
+
+  /**
+   * Measures the console screen out of the frozen frame, and the text box out of that.
+   *
+   * Writes the same state a drag writes, so what is measured is drawn, nudgeable and still saved
+   * by hand. A failure changes nothing at all: half a calibration is worse than none, because the
+   * half that is wrong is the half nobody looks at.
+   */
+  function measure(): void {
+    const detected = detectScreenRect(frame.pixels, nativeWidth, nativeHeight)
+    if (detected === null) {
+      setMeasureFailed(true)
+      return
+    }
+    setMeasureFailed(false)
+    setScreenRect(detected.screenRect)
+    setTextRect(detectTextRect(sampleNative(frame.pixels, detected.screenRect, nativeWidth, nativeHeight)))
+    // The box is what the user came to check either way — found, it wants confirming; missed, it
+    // wants drawing.
+    setStep('text')
   }
 
   function onPointerDown(event: ReactPointerEvent<SVGSVGElement>): void {
@@ -199,6 +233,17 @@ export function CaptureCalibration({
 
         <div className="capture-calibration__controls">
           <fieldset className="capture-calibration__group">
+            <legend className="capture-calibration__legend">Measure</legend>
+            <button
+              type="button"
+              className="capture-calibration__toggle capture-calibration__toggle--action"
+              onClick={measure}
+            >
+              Measure it
+            </button>
+          </fieldset>
+
+          <fieldset className="capture-calibration__group">
             <legend className="capture-calibration__legend">Step</legend>
             <button
               type="button"
@@ -300,6 +345,22 @@ export function CaptureCalibration({
           </div>
         )}
 
+        {measureFailed && (
+          <p className="capture-calibration__warning" role="alert">
+            Nothing in this frame repeats on a pixel grid — the source is most likely smoothing as
+            it scales. Nothing was changed; draw the rectangles by hand.
+          </p>
+        )}
+        {screenRect !== null &&
+          tileStepMismatch({ screenRect, nativeWidth, nativeHeight }) > TILE_STEP_TOLERANCE && (
+            <p className="capture-calibration__warning" role="alert">
+              The tile is {tileStep({ screenRect, nativeWidth, nativeHeight }).x.toFixed(2)} wide but{' '}
+              {tileStep({ screenRect, nativeWidth, nativeHeight }).y.toFixed(2)} tall. A stretched
+              window can do that, but so can a screen rect that swallowed a title bar — and then no
+              glyph will ever match.
+            </p>
+          )}
+
         <footer className="capture-calibration__footer">
           <p className="capture-calibration__readout">
             <span>
@@ -368,6 +429,13 @@ function TileGrid({ mapping }: { mapping: ScreenMapping }): ReactElement {
   // `vector-effect` does not inherit, so the stroke width is pinned on the lines themselves
   // through the stylesheet rather than as an attribute on this group.
   return <g className="capture-calibration__grid">{lines}</g>
+}
+
+/** How far the two tile steps differ, as a share of the larger. `0` is a perfectly square tile. */
+function tileStepMismatch(mapping: ScreenMapping): number {
+  const step = tileStep(mapping)
+  const largest = Math.max(step.x, step.y)
+  return largest === 0 ? 0 : Math.abs(step.x - step.y) / largest
 }
 
 /** `fit` lets CSS size the frame; a numeric zoom pins it and lets the viewport scroll. */

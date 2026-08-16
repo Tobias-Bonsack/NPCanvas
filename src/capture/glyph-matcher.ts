@@ -362,7 +362,7 @@ function popcount(byte: number): number {
 }
 
 /** Rec. 601 luma, in integers: the same weighting a CRT applied, which is what these fonts assume. */
-function luminanceAt(data: Uint8ClampedArray, offset: number): number {
+export function luminanceAt(data: Uint8ClampedArray, offset: number): number {
   return Math.round((data[offset] * 299 + data[offset + 1] * 587 + data[offset + 2] * 114) / 1000)
 }
 

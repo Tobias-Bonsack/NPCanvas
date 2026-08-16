@@ -87,6 +87,22 @@ export function snapToTileGrid(rect: PixelRect, bounds: { width: number; height:
 }
 
 /**
+ * The largest whole-tile rectangle that fits *inside* a native-pixel rectangle.
+ *
+ * The mirror of `snapToTileGrid`, and needed for the opposite claim: a detected text box is a
+ * region the glyphs are known to be inside of, so growing it outwards would swallow the box's
+ * border and hand the matcher a row of tiles that can never be named. `null` when not even one
+ * whole tile fits, which is a detection that found nothing rather than an empty selection.
+ */
+export function snapInsideTileGrid(rect: PixelRect): PixelRect | null {
+  const normalized = normalizeRect(rect)
+  const x = snapInsideAxis(normalized.x, normalized.width)
+  const y = snapInsideAxis(normalized.y, normalized.height)
+  if (x === null || y === null) return null
+  return { x: x.start, y: y.start, width: x.size, height: y.size }
+}
+
+/**
  * Whether a profile still describes what is on screen. Exact, not approximate: one pixel of
  * difference is a different window layout, and reading glyphs out of pixels that moved is the
  * failure this check exists to make loud.
@@ -160,6 +176,14 @@ function snapAxis(start: number, size: number, bound: number): { start: number; 
   const last = clampTile(Math.ceil((start + size) / TILE_SIZE), tiles)
   const end = Math.max(last, first + 1)
   return { start: first * TILE_SIZE, size: (end - first) * TILE_SIZE }
+}
+
+/** One axis of `snapInsideTileGrid`: the whole tiles strictly covered by the span. */
+function snapInsideAxis(start: number, size: number): { start: number; size: number } | null {
+  const first = Math.ceil(start / TILE_SIZE)
+  const last = Math.floor((start + size) / TILE_SIZE)
+  if (last <= first) return null
+  return { start: first * TILE_SIZE, size: (last - first) * TILE_SIZE }
 }
 
 function clampTile(tile: number, max: number): number {

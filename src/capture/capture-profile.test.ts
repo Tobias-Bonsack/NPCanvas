@@ -10,6 +10,7 @@ import {
   profileApplies,
   rectFromCorners,
   roundRect,
+  snapInsideTileGrid,
   snapToTileGrid,
   tileStep,
 } from './capture-profile.ts'
@@ -94,6 +95,30 @@ describe('snapToTileGrid', () => {
       width: 8,
       height: 16,
     })
+  })
+})
+
+describe('snapInsideTileGrid', () => {
+  it('keeps only the whole tiles the rectangle covers', () => {
+    expect(snapInsideTileGrid({ x: 9, y: 39, width: 47, height: 24 })).toEqual({
+      x: 16,
+      y: 40,
+      width: 40,
+      height: 16,
+    })
+  })
+
+  it('leaves a rectangle that is already tile-aligned alone', () => {
+    expect(snapInsideTileGrid({ x: 8, y: 96, width: 144, height: 40 })).toEqual({
+      x: 8,
+      y: 96,
+      width: 144,
+      height: 40,
+    })
+  })
+
+  it('finds nothing when not one whole tile fits', () => {
+    expect(snapInsideTileGrid({ x: 3, y: 3, width: 9, height: 9 })).toBe(null)
   })
 })
 

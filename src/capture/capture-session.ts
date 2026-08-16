@@ -139,7 +139,17 @@ export async function grabFrame(): Promise<ImageData> {
  * is copied out once and the rest of the work happens against a still that cannot shift under
  * the rectangles already drawn on it.
  */
-export type FrozenFrame = { url: string; width: number; height: number }
+export type FrozenFrame = {
+  url: string
+  width: number
+  height: number
+  /**
+   * The same still, as pixels. Carried rather than decoded back out of `url` on demand: the point
+   * of freezing is that every measurement sees one frame, and a second decode would be a second
+   * copy that could drift from the one on screen.
+   */
+  pixels: ImageData
+}
 
 export async function freezeFrame(): Promise<FrozenFrame> {
   const drawn = await drawCurrentFrame()
@@ -149,7 +159,12 @@ export async function freezeFrame(): Promise<FrozenFrame> {
     drawn.canvas.toBlob(resolve, 'image/png')
   })
   if (blob === null) throw new Error('The captured frame could not be encoded.')
-  return { url: URL.createObjectURL(blob), width: drawn.width, height: drawn.height }
+  return {
+    url: URL.createObjectURL(blob),
+    width: drawn.width,
+    height: drawn.height,
+    pixels: drawn.context.getImageData(0, 0, drawn.width, drawn.height),
+  }
 }
 
 /** Frozen frames are not ref-counted the way media URLs are — one owner, one revoke. */
