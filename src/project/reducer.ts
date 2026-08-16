@@ -1,5 +1,6 @@
 import { assertNever } from '../assert-never.ts'
 import type { ProfileCalibration } from '../capture/capture-profile.ts'
+import { mergeGlyphs } from '../capture/glyph-matcher.ts'
 import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
 import { isSamePolygon } from '../map/geometry.ts'
 import type {
@@ -10,6 +11,7 @@ import type {
   DialogueId,
   DialogueMedia,
   GameMap,
+  Glyph,
   MapId,
   MediaId,
   Point,
@@ -73,6 +75,7 @@ export type Action =
       profileId: CaptureProfileId
       calibration: ProfileCalibration
     }
+  | { kind: 'capture-profile/glyphs-learned'; profileId: CaptureProfileId; glyphs: readonly Glyph[] }
   | { kind: 'capture-profile/deleted'; profileId: CaptureProfileId }
 
 /**
@@ -495,6 +498,16 @@ export function reduce(state: AppState, action: Action): AppState {
       const target = findCaptureProfile(state.project, action.profileId)
       if (target === null) return state
       return withCaptureProfile(state, target, { ...target, ...action.calibration })
+    }
+
+    case 'capture-profile/glyphs-learned': {
+      if (state.kind !== 'ready') return state
+      const target = findCaptureProfile(state.project, action.profileId)
+      if (target === null || action.glyphs.length === 0) return state
+      return withCaptureProfile(state, target, {
+        ...target,
+        glyphs: mergeGlyphs(target.glyphs, action.glyphs),
+      })
     }
 
     // No cascade: a profile is how pixels were read, not something the document references.

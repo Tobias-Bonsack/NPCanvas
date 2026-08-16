@@ -129,6 +129,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* What the box said, verbatim. Monospaced and wrapping, because it is being checked against the
+   screen character by character — #55 is what turns it into a dialogue. */
+.capture-bar__transcript {
+  align-self: stretch;
+  margin: 0;
+  padding: var(--space-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  white-space: pre-wrap;
+}
+
 .capture-bar__hint,
 .capture-bar__note,
 .capture-bar__error {

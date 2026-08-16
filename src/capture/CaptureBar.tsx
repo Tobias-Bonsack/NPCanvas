@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
-import type { CaptureProfile } from '../project/types.ts'
+import type { CaptureProfile, Glyph } from '../project/types.ts'
 import { setActiveCaptureProfileId, useActiveCaptureProfile } from './active-profile.ts'
 import { CaptureCalibration } from './CaptureCalibration.tsx'
 import type { ProfileCalibration } from './capture-profile.ts'
@@ -12,9 +12,13 @@ import {
   connectCaptureSource,
   disconnectCaptureSource,
   freezeFrame,
+  grabFrame,
   releaseFrozenFrame,
   useCaptureSource,
 } from './capture-session.ts'
+import { GlyphLearner } from './GlyphLearner.tsx'
+import type { TextBoxReading } from './glyph-matcher.ts'
+import { mergeGlyphs, readTextBox } from './glyph-matcher.ts'
 import './CaptureBar.css'
 
 /**
@@ -30,6 +34,17 @@ type CalibrationState =
 
 /** The profile row's transient modes, one at a time — the same shape `MapList` uses. */
 type ProfileMode = { kind: 'idle' } | { kind: 'renaming'; draft: string } | { kind: 'confirming-delete' }
+
+/**
+ * One read of the text box. The frame is kept beside the reading because learning a tile has to
+ * transcribe *that* frame again — the emulator has moved on by then, and re-grabbing would read
+ * a different box than the one whose characters were just typed in.
+ */
+type ReadState =
+  | { kind: 'idle' }
+  | { kind: 'reading' }
+  | { kind: 'read'; frame: ImageData; reading: TextBoxReading }
+  | { kind: 'failed'; message: string }
 
 /**
  * The screen-capture connection and the profile that says where to read pixels out of it, as a
@@ -50,6 +65,13 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
   const [cancelled, setCancelled] = useState(false)
   const [calibration, setCalibration] = useState<CalibrationState>({ kind: 'closed' })
   const [mode, setMode] = useState<ProfileMode>({ kind: 'idle' })
+  const [read, setRead] = useState<ReadState>({ kind: 'idle' })
+
+  /** A box may only be read through a profile drawn against the frame that is live right now. */
+  const readable =
+    source.kind === 'live' &&
+    active !== null &&
+    profileApplies(active, source.frameWidth, source.frameHeight)
 
   // The frozen frame is an object URL this component owns; closing the overlay by any route —
   // including the selection changing out from under it — has to give it back.
@@ -91,6 +113,25 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
       dispatch({ kind: 'capture-profile/calibrated', profileId: target.id, calibration: values })
     }
     setCalibration({ kind: 'closed' })
+  }
+
+  async function readTheBox(profile: CaptureProfile): Promise<void> {
+    if (read.kind === 'reading') return
+    setRead({ kind: 'reading' })
+    try {
+      const frame = await grabFrame()
+      setRead({ kind: 'read', frame, reading: readTextBox(frame, profile) })
+    } catch (error) {
+      setRead({ kind: 'failed', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  function onGlyphsLearned(profile: CaptureProfile, frame: ImageData, glyphs: Glyph[]): void {
+    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: profile.id, glyphs })
+    // The store's own copy arrives on the next render, and the transcript is wanted now — so the
+    // grown alphabet is applied here through the same merge the reducer just ran.
+    const grown = { ...profile, glyphs: mergeGlyphs(profile.glyphs, glyphs) }
+    setRead({ kind: 'read', frame, reading: readTextBox(frame, grown) })
   }
 
   function onRenameSubmit(profile: CaptureProfile, draft: string): void {
@@ -282,6 +323,37 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
         </p>
       )}
       <MismatchWarning source={source} profile={active} />
+
+      {active !== null && (
+        <>
+          <h3 className="capture-bar__title">Text box</h3>
+          <div className="capture-bar__row capture-bar__row--actions">
+            <button
+              type="button"
+              className="capture-bar__button"
+              disabled={!readable || read.kind === 'reading'}
+              title={readable ? undefined : 'Connect the source this profile was calibrated against.'}
+              onClick={() => void readTheBox(active)}
+            >
+              {read.kind === 'reading' ? 'Reading…' : 'Read the text box'}
+            </button>
+            <span className="capture-bar__size">
+              {active.glyphs.length} {active.glyphs.length === 1 ? 'glyph' : 'glyphs'} learned
+            </span>
+          </div>
+          {read.kind === 'failed' && (
+            <p className="capture-bar__error" role="alert">
+              {read.message}
+            </p>
+          )}
+          {read.kind === 'read' && read.reading.unknown.length === 0 && (
+            <p className="capture-bar__transcript" role="status">
+              {read.reading.text === '' ? 'The box read as empty.' : read.reading.text}
+            </p>
+          )}
+        </>
+      )}
+
       {calibration.kind === 'failed' && (
         <p className="capture-bar__error" role="alert">
           {calibration.message}
@@ -294,6 +366,14 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
           profile={calibration.profile}
           onCancel={() => setCalibration({ kind: 'closed' })}
           onSave={(name, values) => onCalibrationSaved(calibration.profile, name, values)}
+        />
+      )}
+
+      {read.kind === 'read' && read.reading.unknown.length > 0 && active !== null && (
+        <GlyphLearner
+          tiles={read.reading.unknown}
+          onCancel={() => setRead({ kind: 'idle' })}
+          onConfirm={(glyphs) => onGlyphsLearned(active, read.frame, glyphs)}
         />
       )}
     </section>

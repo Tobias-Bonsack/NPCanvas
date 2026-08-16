@@ -1,0 +1,159 @@
+/* An overlay for the same reason calibration is one: the tiles have to be large enough to read,
+   and the dialogue panel is a narrow column. */
+.glyph-learner {
+  position: fixed;
+  inset: 0;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.65);
+}
+
+.glyph-learner__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(560px, 100%);
+  max-height: 100%;
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+}
+
+.glyph-learner__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.glyph-learner__title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.glyph-learner__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* The list is what scrolls — a box with twenty new characters in it must not push the footer off
+   screen, because confirming is the only thing that transcribes. */
+.glyph-learner__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glyph-learner__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+.glyph-learner__tile {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  fill: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+.glyph-learner__fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* The line the tile came out of, so an ambiguous shape is read in context rather than alone. */
+.glyph-learner__context {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+}
+
+.glyph-learner__position {
+  font-family: inherit;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+.glyph-learner__answer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.glyph-learner__input {
+  width: 5rem;
+  font: inherit;
+  font-size: 1rem;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.glyph-learner__input:disabled {
+  opacity: 0.5;
+}
+
+.glyph-learner__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.glyph-learner__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.glyph-learner__button {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.glyph-learner__button--primary {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.glyph-learner__button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
