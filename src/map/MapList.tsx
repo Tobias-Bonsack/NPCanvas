@@ -6,6 +6,8 @@ import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
 import { MapImportButton } from './MapImportButton.tsx'
+import type { RowTrigger } from './row-focus.ts'
+import { useRowFocus } from './row-focus.ts'
 
 /**
  * Transient list UI — the rename draft and the delete confirmation — is component state,
@@ -94,6 +96,8 @@ function MapRow({
   onRenameSubmit: (draft: string) => void
   onDeleteConfirmed: () => void
 }): ReactElement {
+  const triggerRef = useRowFocus(triggerOf(mode))
+
   switch (mode.kind) {
     case 'renaming':
       return (
@@ -168,6 +172,7 @@ function MapRow({
             {map.name}
           </button>
           <button
+            ref={triggerRef.rename}
             type="button"
             className="map-list__button"
             onClick={() => onSetMode({ kind: 'renaming', id: map.id, draft: map.name })}
@@ -175,6 +180,7 @@ function MapRow({
             Rename
           </button>
           <button
+            ref={triggerRef.delete}
             type="button"
             className="map-list__button"
             onClick={() => onSetMode({ kind: 'confirming-delete', id: map.id })}
@@ -184,6 +190,20 @@ function MapRow({
         </>
       )
 
+    default:
+      return assertNever(mode)
+  }
+}
+
+/** Which button opened the mode this row is in — exhaustive, so a new mode must name one. */
+function triggerOf(mode: ListMode): RowTrigger | null {
+  switch (mode.kind) {
+    case 'idle':
+      return null
+    case 'renaming':
+      return 'rename'
+    case 'confirming-delete':
+      return 'delete'
     default:
       return assertNever(mode)
   }

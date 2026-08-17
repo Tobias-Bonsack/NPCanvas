@@ -38,6 +38,7 @@ import { rectToPolygon, translatePolygon } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
+import { nextZoneName } from './zone-name.ts'
 import { nextZoneHue } from './zone-style.ts'
 import './MapCanvas.css'
 
@@ -253,6 +254,30 @@ export function MapCanvas({
     })
     observer.observe(element)
     return () => observer.disconnect()
+  }, [])
+
+  /**
+   * The container must never hold a scroll offset. `overflow: hidden` hides overflow but the
+   * box stays *scrollable*: focusing, or programmatically revealing, any descendant outside the
+   * visible area makes the browser set `scrollLeft`/`scrollTop`, and nothing ever puts them
+   * back. Every conversion here measures from `containerOrigin`, which comes from
+   * `getBoundingClientRect()` — unaffected by an element's own scroll — so from that moment
+   * every click, wheel anchor and drawn zone is off by the offset, permanently, until the
+   * canvas remounts.
+   *
+   * The known trigger is a cold load of `#/canvas?dialogue=<id>` for an off-screen pin, which
+   * `preventScroll` in `PinLayer` already covers. This is the guarantee for every other path —
+   * a future focus call, an `Element.scrollIntoView`, a find-in-page hit.
+   */
+  useEffect(() => {
+    const element = containerRef.current
+    if (element === null) return
+    const onScroll = (): void => {
+      element.scrollLeft = 0
+      element.scrollTop = 0
+    }
+    element.addEventListener('scroll', onScroll)
+    return () => element.removeEventListener('scroll', onScroll)
   }, [])
 
   /**
@@ -497,7 +522,7 @@ export function MapCanvas({
     const created: Zone = {
       id: newZoneId(),
       mapId: gesture.map.id,
-      name: `Zone ${zones.filter((candidate) => candidate.mapId === gesture.map.id).length + 1}`,
+      name: nextZoneName(zones, gesture.map.id),
       polygon: rectToPolygon(rect),
       hue: nextZoneHue(zones, gesture.map.id),
     }

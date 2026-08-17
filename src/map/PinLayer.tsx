@@ -262,8 +262,14 @@ function Pin({
 
   // Selection is reachable from the canvas, the URL, and later the quest board, so focus
   // follows it rather than being set at the click site.
+  //
+  // `preventScroll` is load-bearing, not a nicety: the pin sits inside `.map-canvas`, which is
+  // `overflow: hidden` and therefore still *scrollable*. Focusing a pin outside the visible
+  // box — a cold load of `#/canvas?dialogue=<id>` from an Insights or quest-board link — would
+  // otherwise make the browser scroll the container, and every coordinate conversion after
+  // that is off by the offset. See the scroll guard in `MapCanvas`.
   useEffect(() => {
-    if (selected && !confirmingDelete) buttonRef.current?.focus()
+    if (selected && !confirmingDelete) buttonRef.current?.focus({ preventScroll: true })
   }, [selected, confirmingDelete])
 
   return (
@@ -312,19 +318,27 @@ function Pin({
       </button>
 
       {confirmingDelete && (
-        <div className="pin__confirm" role="alert" data-canvas-ui>
+        <div
+          className="pin__confirm"
+          role="alert"
+          data-canvas-ui
+          // On the container, not on Cancel: `autoFocus` is on Delete, so a handler bound to
+          // the Cancel button never sees the key. Here it fires wherever focus is inside the
+          // prompt. `stopPropagation` keeps it from also reaching `DialoguePanel`'s window
+          // listener — React binds at the root container, so stopping the synthetic event
+          // stops the native one before it bubbles out of the app — because Escape on a
+          // destructive prompt must dismiss the prompt, not close the whole panel.
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            event.stopPropagation()
+            onCancelDelete()
+          }}
+        >
           <span>Delete this dialogue?</span>
           <button type="button" className="pin__button pin__button--danger" autoFocus onClick={onConfirmDelete}>
             Delete
           </button>
-          <button
-            type="button"
-            className="pin__button"
-            onClick={onCancelDelete}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') onCancelDelete()
-            }}
-          >
+          <button type="button" className="pin__button" onClick={onCancelDelete}>
             Cancel
           </button>
         </div>

@@ -3,6 +3,8 @@ import { useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, ProjectFile, Zone, ZoneId } from '../project/types.ts'
+import type { RowTrigger } from './row-focus.ts'
+import { useRowFocus } from './row-focus.ts'
 import { ZONE_HUES, zoneHueStyle } from './zone-style.ts'
 
 /**
@@ -126,6 +128,8 @@ function ZoneRow({
   onSetMode: (mode: ZoneListMode) => void
   onRenameSubmit: (draft: string) => void
 }): ReactElement {
+  const triggerRef = useRowFocus(triggerOf(mode))
+
   switch (mode.kind) {
     case 'renaming':
       return (
@@ -234,6 +238,7 @@ function ZoneRow({
             </span>
           </button>
           <button
+            ref={triggerRef.rename}
             type="button"
             className="map-list__button"
             onClick={() => onSetMode({ kind: 'renaming', id: zone.id, draft: zone.name })}
@@ -241,6 +246,7 @@ function ZoneRow({
             Rename
           </button>
           <button
+            ref={triggerRef.colour}
             type="button"
             className="map-list__button"
             onClick={() => onSetMode({ kind: 'recolouring', id: zone.id })}
@@ -248,6 +254,7 @@ function ZoneRow({
             Colour
           </button>
           <button
+            ref={triggerRef.delete}
             type="button"
             className="map-list__button"
             onClick={() => onSetMode({ kind: 'confirming-delete', id: zone.id })}
@@ -257,6 +264,22 @@ function ZoneRow({
         </>
       )
 
+    default:
+      return assertNever(mode)
+  }
+}
+
+/** Which button opened the mode this row is in — exhaustive, so a new mode must name one. */
+function triggerOf(mode: ZoneListMode): RowTrigger | null {
+  switch (mode.kind) {
+    case 'idle':
+      return null
+    case 'renaming':
+      return 'rename'
+    case 'recolouring':
+      return 'colour'
+    case 'confirming-delete':
+      return 'delete'
     default:
       return assertNever(mode)
   }
