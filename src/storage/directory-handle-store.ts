@@ -35,9 +35,17 @@ async function withStore<T>(
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, mode)
       const request = run(transaction.objectStore(STORE_NAME))
-      request.onsuccess = () => {
+      // Commit, not request success: for a readwrite `put`, `onsuccess` fires *before* the
+      // transaction commits, so an abort after that point — quota, storage pressure — would
+      // be invisible and `saveDirectoryHandle` would report a handle that is not on disk.
+      // `request.result` is settled by the time the transaction completes.
+      transaction.oncomplete = () => {
         resolve(request.result)
       }
+      transaction.onabort = () => {
+        reject(transaction.error ?? new Error('IndexedDB transaction was aborted'))
+      }
+      // Fires before the abort it causes, so the specific failure wins the rejection.
       request.onerror = () => {
         reject(request.error ?? new Error('IndexedDB request failed'))
       }

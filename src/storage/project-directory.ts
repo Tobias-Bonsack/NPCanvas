@@ -21,6 +21,26 @@ const MEDIA_DIRECTORY_NAME = 'media'
  */
 let directoryHandle: FileSystemDirectoryHandle | null = null
 
+/**
+ * Which load attempt is current. Two loads can be in flight at once — "Choose another folder"
+ * clicked while the first read is still going, or the boot-time restore racing a picker click
+ * — and without this the one that *finishes* last wins the dispatch while `directoryHandle`
+ * points at the other folder. The first edit then autosaves one project into the other's
+ * folder and clobbers its `data.json`. Every assignment to `directoryHandle` and every
+ * dispatch on the load path is therefore gated on the generation it started under.
+ */
+let loadGeneration = 0
+
+/** Claims the load path. Everything the caller does afterwards is conditional on this. */
+function beginLoad(): number {
+  loadGeneration += 1
+  return loadGeneration
+}
+
+function isCurrentLoad(generation: number): boolean {
+  return generation === loadGeneration
+}
+
 /** Boot entry point, called once from `main.tsx`. */
 export async function startProjectConnection(): Promise<void> {
   if (!isFileSystemAccessSupported()) {
@@ -54,30 +74,46 @@ export async function connectToNewDirectory(): Promise<boolean> {
     return false
   }
 
-  try {
-    await saveDirectoryHandle(handle)
-  } catch (error) {
-    // Losing the handle only costs a re-pick after reload; the session itself is fine.
-    console.error('Could not remember the project folder for next time', error)
-  }
+  // The folder is remembered by `openProject`, once it has actually loaded — a folder whose
+  // `data.json` will not parse must not become the one every reload lands back on.
   await openProject(handle)
   return true
 }
 
 /** Boot path: reuse the folder from the previous session if the grant is still good. */
 export async function restoreSavedDirectory(): Promise<void> {
+  const generation = beginLoad()
+
   let handle: FileSystemDirectoryHandle | null = null
   try {
     handle = await readDirectoryHandle()
   } catch (error) {
     console.error('Could not read the remembered project folder', error)
   }
+  if (!isCurrentLoad(generation)) return
   if (handle === null) {
     dispatch({ kind: 'project/disconnected' })
     return
   }
 
-  const permission = await handle.queryPermission({ mode: 'readwrite' })
+  let permission: PermissionState
+  try {
+    // Inside the try: a handle whose folder has since been deleted or renamed on disk rejects
+    // here, and the rejection would otherwise escape this function unhandled — the app has no
+    // error boundary and no `unhandledrejection` listener, so it would be a blank boot.
+    permission = await handle.queryPermission({ mode: 'readwrite' })
+  } catch (error) {
+    if (isCurrentLoad(generation)) {
+      dispatch({
+        kind: 'project/load-failed',
+        directoryName: handle.name,
+        message: describeError(error),
+      })
+    }
+    return
+  }
+  if (!isCurrentLoad(generation)) return
+
   switch (permission) {
     case 'granted':
       await openProject(handle)
@@ -94,7 +130,7 @@ export async function restoreSavedDirectory(): Promise<void> {
       // A denied grant is permanent for this origin+folder, so the stored handle is dead
       // weight that would otherwise show a Reconnect button that can never succeed.
       await clearDirectoryHandle().catch(() => undefined)
-      dispatch({ kind: 'project/disconnected' })
+      if (isCurrentLoad(generation)) dispatch({ kind: 'project/disconnected' })
       return
 
     default:
@@ -134,7 +170,17 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
 export async function writeProjectFile(project: ProjectFile): Promise<string> {
   const handle = directoryHandle
   if (handle === null) throw new Error('No project folder is connected')
+  await writeDataFile(handle, project)
+  // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
+  // Reading it back out of the JSON just to display it is not worth the parse.
+  return new Date().toISOString()
+}
 
+/** Takes the folder explicitly, so a caller can name one that is not (yet) the connected one. */
+async function writeDataFile(
+  handle: FileSystemDirectoryHandle,
+  project: ProjectFile,
+): Promise<void> {
   const fileHandle = await handle.getFileHandle(DATA_FILE_NAME, { create: true })
   const writable = await fileHandle.createWritable()
   try {
@@ -146,9 +192,6 @@ export async function writeProjectFile(project: ProjectFile): Promise<string> {
     await writable.abort().catch(() => undefined)
     throw error
   }
-  // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
-  // Reading it back out of the JSON just to display it is not worth the parse.
-  return new Date().toISOString()
 }
 
 // ---- media/ ----
@@ -215,17 +258,33 @@ async function getMediaDirectory(options: {
 }
 
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
+  const generation = beginLoad()
   directoryHandle = handle
   dispatch({ kind: 'project/loading', directoryName: handle.name })
+
+  let project: ProjectFile
   try {
-    const project = await readOrCreateProjectFile(handle)
-    dispatch({ kind: 'project/loaded', directoryName: handle.name, project })
+    project = await readOrCreateProjectFile(handle)
   } catch (error) {
-    dispatch({
-      kind: 'project/load-failed',
-      directoryName: handle.name,
-      message: describeError(error),
-    })
+    if (isCurrentLoad(generation)) {
+      dispatch({
+        kind: 'project/load-failed',
+        directoryName: handle.name,
+        message: describeError(error),
+      })
+    }
+    return
+  }
+  if (!isCurrentLoad(generation)) return
+  dispatch({ kind: 'project/loaded', directoryName: handle.name, project })
+
+  // Remembered only now, and only for the load that won: the folder a reload lands back on is
+  // the one that last actually opened, never one whose `data.json` would not parse.
+  try {
+    await saveDirectoryHandle(handle)
+  } catch (error) {
+    // Losing the handle only costs a re-pick after reload; the session itself is fine.
+    console.error('Could not remember the project folder for next time', error)
   }
 }
 
@@ -238,8 +297,11 @@ async function readOrCreateProjectFile(handle: FileSystemDirectoryHandle): Promi
     // A folder without data.json is a new project, not a failure. Write it immediately so
     // the folder is never left half-adopted — with nothing on disk, a reload that restores
     // the handle would find an empty folder and bootstrap a *second* empty project.
+    //
+    // Through `handle`, not the module-level one: a second load starting during this read
+    // would have replaced it, and this bootstrap belongs to the folder it was read from.
     const project = createEmptyProject(handle.name)
-    await writeProjectFile(project)
+    await writeDataFile(handle, project)
     return project
   }
 

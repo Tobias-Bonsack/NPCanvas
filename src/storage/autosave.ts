@@ -1,5 +1,7 @@
+import { assertNever } from '../assert-never.ts'
 import { dispatch, getState, subscribe } from '../project/store.ts'
 import type { ProjectFile } from '../project/types.ts'
+import { decideOnStoreChange, decideOnWrite } from './autosave-decision.ts'
 import { describeError, writeProjectFile } from './project-directory.ts'
 
 // Long enough that a burst of typing is one write, short enough that a user who alt-tabs
@@ -43,26 +45,31 @@ export function saveNow(): void {
   void writeNow()
 }
 
+// What each decision *means* lives in `autosave-decision.ts`; this only carries it out.
 function onStoreChange(): void {
-  const state = getState()
-  if (state.kind !== 'ready') {
-    // Disconnected, reconnecting, or reloading: drop the pending write so it cannot land
-    // in a folder the user has since left.
-    cancelDebounce()
-    lastSeenProject = null
-    return
+  const decision = decideOnStoreChange(getState(), lastSeenProject)
+  switch (decision.kind) {
+    case 'drop':
+      cancelDebounce()
+      lastSeenProject = null
+      return
+
+    case 'adopt':
+      lastSeenProject = decision.project
+      return
+
+    case 'ignore':
+      return
+
+    case 'schedule':
+      lastSeenProject = decision.project
+      dispatch({ kind: 'save/pending' })
+      scheduleWrite()
+      return
+
+    default:
+      return assertNever(decision)
   }
-
-  const previous = lastSeenProject
-  lastSeenProject = state.project
-  // Entering `ready` adopts the freshly loaded document as the baseline instead of marking
-  // it dirty: it is already on disk, and writing it back would be a spurious save on every
-  // connect. An unchanged reference is every other dispatch — selection, save state — and
-  // must not schedule a write either, or the save actions below would loop.
-  if (previous === null || previous === state.project) return
-
-  dispatch({ kind: 'save/pending' })
-  scheduleWrite()
 }
 
 function scheduleWrite(): void {
@@ -80,25 +87,35 @@ function cancelDebounce(): void {
 }
 
 async function writeNow(): Promise<void> {
-  if (writeInFlight) {
-    // At most one follow-up ever queues: it re-reads the current document when it runs, so
-    // any number of edits during this write collapse into that single next pass.
-    writeQueued = true
-    return
+  const decision = decideOnWrite(getState(), writeInFlight)
+  switch (decision.kind) {
+    case 'queue':
+      writeQueued = true
+      return
+
+    case 'skip':
+      return
+
+    case 'write':
+      await writeProject(decision.project)
+      return
+
+    default:
+      return assertNever(decision)
   }
+}
 
-  const state = getState()
-  if (state.kind !== 'ready') return
-
+/** The document decided on, not whatever the store holds when the await resolves. */
+async function writeProject(project: ProjectFile): Promise<void> {
   writeInFlight = true
   dispatch({ kind: 'save/saving' })
   try {
-    const at = await writeProjectFile(state.project)
+    const at = await writeProjectFile(project)
     // Claiming `saved` while a newer document is already queued would be a lie for as long
     // as it takes the follow-up to start.
-    if (!writeQueued) dispatch({ kind: 'save/saved', at })
+    if (isStillCurrent(project) && !writeQueued) dispatch({ kind: 'save/saved', at })
   } catch (error) {
-    dispatch({ kind: 'save/failed', message: describeError(error) })
+    if (isStillCurrent(project)) dispatch({ kind: 'save/failed', message: describeError(error) })
   } finally {
     writeInFlight = false
   }
@@ -107,6 +124,17 @@ async function writeNow(): Promise<void> {
     writeQueued = false
     await writeNow()
   }
+}
+
+/**
+ * Whether the document this write carried is still the one the store holds. The project can
+ * be switched during the await, and a `save/saved` landing on the *next* project is the Nav
+ * showing "Saved 14:03" for a document nothing has written. A `save/failed` from the previous
+ * folder is the same lie in the other direction.
+ */
+function isStillCurrent(project: ProjectFile): boolean {
+  const state = getState()
+  return state.kind === 'ready' && state.project === project
 }
 
 function onVisibilityChange(): void {
