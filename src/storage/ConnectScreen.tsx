@@ -65,7 +65,9 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
     case 'loading':
       return (
         <Panel title="Loading">
-          <p className="connect__lead">
+          {/* The whole panel is swapped per state, so the announcement has to ride on the text
+              that appears: a folder opening is otherwise silent, and it can take a while. */}
+          <p className="connect__lead" role="status">
             Reading <strong>{state.directoryName}</strong>…
           </p>
         </Panel>
@@ -77,23 +79,21 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
           <p className="connect__lead">
             <strong>{state.directoryName}</strong> could not be opened.
           </p>
-          <p className="connect__error">{state.message}</p>
-          <div className="connect__actions">
-            <button
-              type="button"
-              className="connect__button"
-              onClick={() => void grantSavedDirectoryAccess()}
-            >
-              Try again
-            </button>
-            <button
-              type="button"
-              className="connect__button connect__button--quiet"
-              onClick={() => void connectToNewDirectory()}
-            >
-              Choose another folder
-            </button>
-          </div>
+          <p className="connect__error" role="status">
+            {state.message}
+          </p>
+          {/* The picker, and only the picker. A "Try again" here re-asked for a grant the user
+              had just refused — and Chromium answers `denied` for a refused origin and folder
+              without prompting, so that button could only ever fail again. Choosing the folder
+              in the picker re-asks properly, and is equally the way out of an unreadable
+              `data.json`. */}
+          <button
+            type="button"
+            className="connect__button"
+            onClick={() => void connectToNewDirectory()}
+          >
+            Choose project folder
+          </button>
         </Panel>
       )
 

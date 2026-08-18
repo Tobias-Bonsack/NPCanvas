@@ -150,15 +150,49 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
   // it runs outside a user gesture. It must therefore be the first await in the click
   // handler's task, and this function must never be called from an effect or a timer.
   const permission = await handle.requestPermission({ mode: 'readwrite' })
-  if (permission !== 'granted') {
-    dispatch({
-      kind: 'project/load-failed',
-      directoryName: handle.name,
-      message: 'Access to this folder was not granted. Pick the folder again to continue.',
-    })
-    return
+  switch (permission) {
+    case 'granted':
+      await openProject(handle)
+      return
+
+    case 'prompt':
+      // Dismissed, not refused: Escape or a click outside the bubble leaves the grant askable,
+      // and Chromium reports that as `prompt`. The handle is still good, so stay on the
+      // Reconnect screen rather than spending it — the next click prompts again.
+      dispatch({ kind: 'project/reconnecting', directoryName: handle.name })
+      return
+
+    case 'denied':
+      // A refused grant is remembered by Chromium for this origin and folder: the next
+      // requestPermission resolves to `denied` without prompting at all. Keeping the handle
+      // would leave a Reconnect button that can only fail again — and it survives reloads, so
+      // the dead end would outlive the session. Drop it and let the picker be the way back.
+      directoryHandle = null
+      await clearDirectoryHandle().catch(() => undefined)
+      dispatch({
+        kind: 'project/load-failed',
+        directoryName: handle.name,
+        message: 'Access to this folder was not granted. Pick the folder again to continue.',
+      })
+      return
+
+    default:
+      return assertNever(permission)
   }
-  await openProject(handle)
+}
+
+/**
+ * Re-asks for write access to the folder that is already open. Chromium can revoke a
+ * `readwrite` grant mid-session — the file-access chip in the omnibox does exactly that — and
+ * every write from then on throws `NotAllowedError`, which no amount of retrying clears.
+ *
+ * Like every `requestPermission`, it prompts only under transient user activation, so this must
+ * be the first await in a click handler's task. Resolves to whether the folder is writable now.
+ */
+export async function regrantConnectedDirectory(): Promise<boolean> {
+  const handle = directoryHandle
+  if (handle === null) return false
+  return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted'
 }
 
 /**
@@ -321,4 +355,13 @@ function isAbortError(error: unknown): boolean {
 
 function isNotFoundError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError'
+}
+
+/**
+ * A lost or refused `readwrite` grant, as opposed to a disk, quota or serialisation failure.
+ * The two need different offers — one a permission prompt, the other a plain retry — so the
+ * caller has to be able to tell them apart. See `regrantConnectedDirectory`.
+ */
+export function isPermissionError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotAllowedError'
 }

@@ -144,7 +144,7 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'save/pending' },
   { kind: 'save/saving' },
   { kind: 'save/saved', at: '2026-08-14T10:00:00.000Z' },
-  { kind: 'save/failed', message: 'disk full' },
+  { kind: 'save/failed', message: 'disk full', failure: 'write' },
   { kind: 'selection/set', selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') } },
   { kind: 'map/added', map: gameMap('harbour') },
   { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'Docks' },
@@ -312,9 +312,24 @@ describe('reduce: save actions', () => {
     })
   })
 
-  it('records a failure message', () => {
-    const failed = reduce(ready(), { kind: 'save/failed', message: 'disk full' })
-    expect(failed.kind === 'ready' && failed.save).toEqual({ kind: 'failed', message: 'disk full' })
+  it('records a failure message and what the retry has to do first', () => {
+    const failed = reduce(ready(), { kind: 'save/failed', message: 'disk full', failure: 'write' })
+    expect(failed.kind === 'ready' && failed.save).toEqual({
+      kind: 'failed',
+      message: 'disk full',
+      failure: 'write',
+    })
+
+    const revoked = reduce(ready(), {
+      kind: 'save/failed',
+      message: 'no access',
+      failure: 'permission',
+    })
+    expect(revoked.kind === 'ready' && revoked.save).toEqual({
+      kind: 'failed',
+      message: 'no access',
+      failure: 'permission',
+    })
   })
 
   it('keeps the project reference across a save transition', () => {
@@ -350,8 +365,16 @@ describe('reduce: no-ops return the identical state reference', () => {
     const state = ready()
     expect(reduce(state, { kind: 'save/saved', at: state.project.savedAt })).toBe(state)
 
-    const failed = reduce(state, { kind: 'save/failed', message: 'disk full' })
-    expect(reduce(failed, { kind: 'save/failed', message: 'disk full' })).toBe(failed)
+    const failed = reduce(state, { kind: 'save/failed', message: 'disk full', failure: 'write' })
+    expect(reduce(failed, { kind: 'save/failed', message: 'disk full', failure: 'write' })).toBe(
+      failed,
+    )
+
+    // The same wording out of a different cause is a different failure: the banner offers a
+    // permission prompt for one and a plain retry for the other, so it must not be collapsed.
+    expect(
+      reduce(failed, { kind: 'save/failed', message: 'disk full', failure: 'permission' }),
+    ).not.toBe(failed)
   })
 
   it('for a selection action that restates the current selection', () => {

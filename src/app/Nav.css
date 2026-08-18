@@ -66,6 +66,12 @@
   color: var(--text-muted);
 }
 
+/* A flex child of .nav in its own right: the region is permanent, only its contents change. */
+.nav__save-region {
+  display: flex;
+  align-items: center;
+}
+
 .nav__save {
   display: flex;
   align-items: center;
@@ -75,21 +81,17 @@
   color: var(--text-muted);
 }
 
-.nav__save[data-state='failed'] {
-  color: var(--text);
-}
-
-.nav__retry {
+.nav__save-review {
   font: inherit;
   padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-strong);
+  border: 1px solid #ff8f8f;
   border-radius: var(--radius-1);
-  background: var(--surface-2);
-  color: var(--text);
+  background: transparent;
+  color: #ff8f8f;
   cursor: pointer;
 }
 
-.nav__retry:hover {
+.nav__save-review:hover {
   background: var(--surface-3);
 }
 

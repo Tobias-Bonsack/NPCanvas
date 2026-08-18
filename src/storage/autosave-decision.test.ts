@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createEmptyProject } from '../project/data-file.ts'
 import type { AppState, ProjectFile, SaveState } from '../project/types.ts'
-import { decideOnStoreChange, decideOnWrite } from './autosave-decision.ts'
+import {
+  decideOnStoreChange,
+  decideOnWrite,
+  hasUnsavedEdits,
+  needsFlushOnHide,
+} from './autosave-decision.ts'
 
 function ready(project: ProjectFile, save: SaveState = { kind: 'saved', at: project.savedAt }): AppState {
   return {
@@ -48,7 +53,10 @@ describe('decideOnStoreChange', () => {
       kind: 'ignore',
     })
     expect(
-      decideOnStoreChange(ready(HARBOUR, { kind: 'failed', message: 'disk full' }), HARBOUR),
+      decideOnStoreChange(
+        ready(HARBOUR, { kind: 'failed', message: 'disk full', failure: 'write' }),
+        HARBOUR,
+      ),
     ).toEqual({ kind: 'ignore' })
   })
 
@@ -91,5 +99,65 @@ describe('decideOnWrite', () => {
     expect(decideOnWrite({ kind: 'loading', directoryName: 'Caves' }, false)).toEqual({
       kind: 'skip',
     })
+  })
+})
+
+describe('hasUnsavedEdits', () => {
+  it('counts a failed save, which is where the edits are guaranteed not to be on disk', () => {
+    expect(
+      hasUnsavedEdits(ready(HARBOUR, { kind: 'failed', message: 'disk full', failure: 'write' })),
+    ).toBe(true)
+    expect(
+      hasUnsavedEdits(
+        ready(HARBOUR, { kind: 'failed', message: 'no access', failure: 'permission' }),
+      ),
+    ).toBe(true)
+  })
+
+  it('counts an edit that is on its way to disk', () => {
+    expect(hasUnsavedEdits(ready(HARBOUR, { kind: 'pending' }))).toBe(true)
+    expect(hasUnsavedEdits(ready(HARBOUR, { kind: 'saving' }))).toBe(true)
+  })
+
+  it('is false once the write landed', () => {
+    expect(hasUnsavedEdits(ready(HARBOUR, { kind: 'saved', at: HARBOUR.savedAt }))).toBe(false)
+  })
+
+  it('is false with no project open — there is nothing to warn about or flush', () => {
+    for (const state of [
+      { kind: 'disconnected' },
+      { kind: 'unsupported' },
+      { kind: 'reconnecting', directoryName: 'Harbour' },
+      { kind: 'loading', directoryName: 'Harbour' },
+      { kind: 'load-failed', directoryName: 'Harbour', message: 'broken' },
+    ] satisfies AppState[]) {
+      expect(hasUnsavedEdits(state)).toBe(false)
+    }
+  })
+})
+
+describe('needsFlushOnHide', () => {
+  it('flushes a failed save — no timer is left to do it, and the edits are only in memory', () => {
+    expect(
+      needsFlushOnHide(ready(HARBOUR, { kind: 'failed', message: 'disk full', failure: 'write' })),
+    ).toBe(true)
+  })
+
+  it('flushes a debounced edit that has not come due yet', () => {
+    expect(needsFlushOnHide(ready(HARBOUR, { kind: 'pending' }))).toBe(true)
+  })
+
+  it('does not flush during a write, unlike the unload warning', () => {
+    // `saving` means the in-flight write already carries the document the store holds — an edit
+    // landing mid-write would have moved this to `pending`. Flushing here only queues a
+    // byte-identical second write and swallows the first one's `save/saved`.
+    const saving = ready(HARBOUR, { kind: 'saving' })
+    expect(needsFlushOnHide(saving)).toBe(false)
+    expect(hasUnsavedEdits(saving)).toBe(true)
+  })
+
+  it('does not flush once the write landed, or with no project open', () => {
+    expect(needsFlushOnHide(ready(HARBOUR, { kind: 'saved', at: HARBOUR.savedAt }))).toBe(false)
+    expect(needsFlushOnHide({ kind: 'disconnected' })).toBe(false)
   })
 })

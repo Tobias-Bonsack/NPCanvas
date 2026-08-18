@@ -261,11 +261,19 @@ export type ProjectFile = ProjectFileV4
 
 // ---- in-memory app state ----
 
+/**
+ * Why a write failed, and therefore what the retry has to do first. Chromium can drop a
+ * `readwrite` grant mid-session; every later write then throws `NotAllowedError`, and a plain
+ * retry can only throw it again. Re-granting is `requestPermission`, which prompts only inside
+ * a user gesture — so the distinction has to survive as far as the button that offers it.
+ */
+export type SaveFailure = 'write' | 'permission'
+
 export type SaveState =
   | { kind: 'saved'; at: string }
   | { kind: 'pending' }
   | { kind: 'saving' }
-  | { kind: 'failed'; message: string }
+  | { kind: 'failed'; message: string; failure: SaveFailure }
 
 export type Selection =
   | { kind: 'none' }

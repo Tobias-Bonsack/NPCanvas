@@ -37,12 +37,6 @@
   font-size: 0.875rem;
 }
 
-.connect__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
 .connect__button {
   font: inherit;
   padding: var(--space-2) var(--space-4);
@@ -55,10 +49,4 @@
 
 .connect__button:hover {
   filter: brightness(1.1);
-}
-
-.connect__button--quiet {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  color: var(--text);
 }

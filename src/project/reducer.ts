@@ -20,6 +20,7 @@ import type {
   Quest,
   QuestId,
   RelevanceTag,
+  SaveFailure,
   SaveState,
   Selection,
   Zone,
@@ -38,7 +39,7 @@ export type Action =
   | { kind: 'save/pending' }
   | { kind: 'save/saving' }
   | { kind: 'save/saved'; at: string }
-  | { kind: 'save/failed'; message: string }
+  | { kind: 'save/failed'; message: string; failure: SaveFailure }
   | { kind: 'selection/set'; selection: Selection }
   | { kind: 'map/added'; map: GameMap }
   | { kind: 'map/renamed'; mapId: MapId; name: string }
@@ -132,7 +133,11 @@ export function reduce(state: AppState, action: Action): AppState {
       return withSaveState(state, { kind: 'saved', at: action.at })
 
     case 'save/failed':
-      return withSaveState(state, { kind: 'failed', message: action.message })
+      return withSaveState(state, {
+        kind: 'failed',
+        message: action.message,
+        failure: action.failure,
+      })
 
     case 'selection/set': {
       if (state.kind !== 'ready') return state
@@ -711,7 +716,9 @@ function withSaveState(state: AppState, save: SaveState): AppState {
 function isSameSaveState(a: SaveState, b: SaveState): boolean {
   if (a.kind !== b.kind) return false
   if (a.kind === 'saved' && b.kind === 'saved') return a.at === b.at
-  if (a.kind === 'failed' && b.kind === 'failed') return a.message === b.message
+  if (a.kind === 'failed' && b.kind === 'failed') {
+    return a.message === b.message && a.failure === b.failure
+  }
   return true
 }
 

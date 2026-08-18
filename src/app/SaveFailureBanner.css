@@ -1,0 +1,65 @@
+/* Sits between the nav and the view, at the shell's own width: a failure that scrolled away
+   with the canvas would be exactly as easy to miss as the chip it replaces. `flex-shrink: 0`
+   because `.app-shell` is a flex column whose view child takes all the remaining height. */
+.save-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  /* The app's danger ink, matching every other destructive affordance. */
+  border-left: 3px solid #ff8f8f;
+}
+
+.save-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.save-banner__title {
+  font-size: 0.875rem;
+  color: #ff8f8f;
+}
+
+.save-banner__message {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.save-banner__action {
+  font: inherit;
+  font-size: 0.8125rem;
+  margin-left: auto;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.save-banner__action:hover {
+  filter: brightness(1.1);
+}
+
+.save-banner__dismiss {
+  font: inherit;
+  font-size: 1.125rem;
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.save-banner__dismiss:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}

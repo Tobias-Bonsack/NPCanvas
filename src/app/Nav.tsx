@@ -18,11 +18,15 @@ const NAV_ITEMS: readonly { label: string; route: Route }[] = [
 export function Nav({
   save,
   directoryName,
+  onReviewSaveFailure,
 }: {
   save: SaveState
   /** The connected folder, named here because it is the only place the app says which project
    * is open — and the switch below is the only way to open a different one. */
   directoryName: string
+  /** Reopens a save-failure banner the user dismissed. Without it, dismissing the banner would
+   * take the retry away with it and leave the failure with no action at all. */
+  onReviewSaveFailure: () => void
 }): ReactElement {
   const active = useRoute()
   return (
@@ -42,7 +46,12 @@ export function Nav({
         ))}
       </ul>
       <ProjectSwitch directoryName={directoryName} />
-      <SaveIndicator save={save} />
+      {/* One region for the whole session, its contents swapped underneath. A live region only
+          announces what changes *inside* it — mounting one that already holds the new text says
+          nothing at all, which is what a per-state `role="status"` would have done. */}
+      <div className="nav__save-region" role="status">
+        <SaveIndicator save={save} onReview={onReviewSaveFailure} />
+      </div>
     </nav>
   )
 }
@@ -86,7 +95,7 @@ const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
 })
 
 /** Exhaustive over `SaveState`; the `ReactElement` return type rejects a new variant. */
-function SaveIndicator({ save }: { save: SaveState }): ReactElement {
+function SaveIndicator({ save, onReview }: { save: SaveState; onReview: () => void }): ReactElement {
   switch (save.kind) {
     case 'saved':
       return (
@@ -110,11 +119,12 @@ function SaveIndicator({ save }: { save: SaveState }): ReactElement {
       )
 
     case 'failed':
+      // The reason and the action live in the banner, which is where they fit; this stays the
+      // persistent marker, and clicking it brings the banner back after a dismissal.
       return (
         <p className="nav__save" data-state="failed">
-          <span title={save.message}>Save failed</span>
-          <button type="button" className="nav__retry" onClick={saveNow}>
-            Retry
+          <button type="button" className="nav__save-review" onClick={onReview}>
+            Save failed
           </button>
         </p>
       )

@@ -1,16 +1,26 @@
 import { assertNever } from '../assert-never.ts'
 import { dispatch, getState, subscribe } from '../project/store.ts'
-import type { ProjectFile } from '../project/types.ts'
-import { decideOnStoreChange, decideOnWrite } from './autosave-decision.ts'
-import { describeError, writeProjectFile } from './project-directory.ts'
+import type { ProjectFile, SaveFailure } from '../project/types.ts'
+import {
+  decideOnStoreChange,
+  decideOnWrite,
+  hasUnsavedEdits,
+  needsFlushOnHide,
+} from './autosave-decision.ts'
+import {
+  describeError,
+  isPermissionError,
+  regrantConnectedDirectory,
+  writeProjectFile,
+} from './project-directory.ts'
 
 // Long enough that a burst of typing is one write, short enough that a user who alt-tabs
 // away without triggering `visibilitychange` still loses under a second of work.
 const DEBOUNCE_MS = 800
 
 // Module-level rather than closed over by `startAutosave`, because there is exactly one
-// store and therefore exactly one autosave — and `retrySave` has to reach this state from
-// the Nav's retry button without threading a handle through the component tree.
+// store and therefore exactly one autosave — and `retrySave` has to reach this state from the
+// failure banner's button without threading a handle through the component tree.
 let lastSeenProject: ProjectFile | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let writeInFlight = false
@@ -32,10 +42,9 @@ export function startAutosave(): () => void {
 }
 
 /**
- * Writes the pending edit now instead of at the end of the debounce. Two callers: the Nav's
- * retry button after a `failed` save, and the project switch, which must get the edit into
- * the folder it was made in before the folder changes — entering a non-`ready` state drops
- * the debounce, see `onStoreChange`.
+ * Writes the pending edit now instead of at the end of the debounce. Two callers: `retrySave`
+ * below, and the project switch, which must get the edit into the folder it was made in before
+ * the folder changes — entering a non-`ready` state drops the debounce, see `onStoreChange`.
  *
  * Deliberately not `async`: the switch calls it *before* `showDirectoryPicker`, and an await
  * here would spend the transient user activation the picker needs.
@@ -43,6 +52,39 @@ export function startAutosave(): () => void {
 export function saveNow(): void {
   cancelDebounce()
   void writeNow()
+}
+
+// The browser's own NotAllowedError message ("The request is not allowed by the user agent or
+// the platform in the current context") names neither the folder nor the way out, and it is the
+// text the failure banner shows.
+const PERMISSION_LOST_MESSAGE =
+  'NPCanvas no longer has write access to the project folder. Grant it again to save your changes.'
+const PERMISSION_REFUSED_MESSAGE =
+  'Write access to the project folder was refused. Your changes are still only in this tab.'
+
+/**
+ * The save-failure banner's action. Async, but `regrantConnectedDirectory` is deliberately the
+ * first await: re-granting a revoked folder permission is a `requestPermission` call, that only
+ * prompts under transient user activation, and this runs directly off the button's click.
+ */
+export async function retrySave(failure: SaveFailure): Promise<void> {
+  const state = getState()
+  if (failure === 'permission') {
+    const granted = await regrantConnectedDirectory()
+    // The permission bubble can stand open across a project switch, and reporting this refusal
+    // against whatever is open by then would mark a perfectly writable folder as failed. Same
+    // guard, same reason as `isStillCurrent` on the write path.
+    if (state.kind !== 'ready' || !isStillCurrent(state.project)) return
+    if (!granted) {
+      dispatch({
+        kind: 'save/failed',
+        message: PERMISSION_REFUSED_MESSAGE,
+        failure: 'permission',
+      })
+      return
+    }
+  }
+  saveNow()
 }
 
 // What each decision *means* lives in `autosave-decision.ts`; this only carries it out.
@@ -115,7 +157,14 @@ async function writeProject(project: ProjectFile): Promise<void> {
     // as it takes the follow-up to start.
     if (isStillCurrent(project) && !writeQueued) dispatch({ kind: 'save/saved', at })
   } catch (error) {
-    if (isStillCurrent(project)) dispatch({ kind: 'save/failed', message: describeError(error) })
+    const permission = isPermissionError(error)
+    if (isStillCurrent(project)) {
+      dispatch({
+        kind: 'save/failed',
+        message: permission ? PERMISSION_LOST_MESSAGE : describeError(error),
+        failure: permission ? 'permission' : 'write',
+      })
+    }
   } finally {
     writeInFlight = false
   }
@@ -139,17 +188,19 @@ function isStillCurrent(project: ProjectFile): boolean {
 
 function onVisibilityChange(): void {
   if (document.visibilityState !== 'hidden') return
-  if (debounceTimer === null) return
-  // A hidden tab can be discarded outright, and `beforeunload` does not fire then. This is
-  // the last reliable moment to get the pending edit onto disk.
+  // Whether there is an edit no write is carrying yet, not whether a timer happens to be armed:
+  // after a failed write there is no timer and the edit is definitely not on disk, which used to
+  // mean the one state that most needed this flush was the one state that never got it.
+  //
+  // A hidden tab can be discarded outright, and `beforeunload` does not fire then. This is the
+  // last reliable moment to get the edit onto disk.
+  if (!needsFlushOnHide(getState())) return
   cancelDebounce()
   void writeNow()
 }
 
 function onBeforeUnload(event: BeforeUnloadEvent): void {
-  const state = getState()
-  if (state.kind !== 'ready') return
-  if (state.save.kind !== 'pending' && state.save.kind !== 'saving') return
+  if (!hasUnsavedEdits(getState())) return
   // preventDefault() is the specified way; returnValue is what older Chromium still checks.
   // Neither can supply the wording — the browser shows its own generic message.
   event.preventDefault()

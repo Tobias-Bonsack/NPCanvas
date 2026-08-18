@@ -1,3 +1,4 @@
+import { assertNever } from '../assert-never.ts'
 import type { AppState, ProjectFile } from '../project/types.ts'
 
 /**
@@ -56,4 +57,53 @@ export function decideOnWrite(state: AppState, writeInFlight: boolean): WriteDec
   if (writeInFlight) return { kind: 'queue' }
   if (state.kind !== 'ready') return { kind: 'skip' }
   return { kind: 'write', project: state.project }
+}
+
+/**
+ * Whether the store holds edits that are not on disk — what the unload warning asks. `failed`
+ * counts, and counts most: it is the one state where the edits are *guaranteed* absent from the
+ * folder, and the one the warning used to skip entirely.
+ */
+export function hasUnsavedEdits(state: AppState): boolean {
+  if (state.kind !== 'ready') return false
+  switch (state.save.kind) {
+    case 'saved':
+      return false
+
+    case 'pending':
+    case 'saving':
+    case 'failed':
+      return true
+
+    default:
+      return assertNever(state.save)
+  }
+}
+
+/**
+ * Whether hiding the tab should start a write now — a narrower question than `hasUnsavedEdits`,
+ * and the reason the two are not one function.
+ *
+ * `saving` is excluded: the document in the store is already the one being written, because an
+ * edit landing mid-write moves the state to `pending`. Flushing there only sets `writeQueued`,
+ * which suppresses the in-flight write's `save/saved` and then rewrites byte-identical JSON.
+ *
+ * `failed` is included, and is the whole point: there is no debounce timer left after a failed
+ * write, so the old timer-based guard skipped exactly the state whose edits were known to be
+ * only in memory — on the last event a discarded tab ever fires.
+ */
+export function needsFlushOnHide(state: AppState): boolean {
+  if (state.kind !== 'ready') return false
+  switch (state.save.kind) {
+    case 'saved':
+    case 'saving':
+      return false
+
+    case 'pending':
+    case 'failed':
+      return true
+
+    default:
+      return assertNever(state.save)
+  }
 }
