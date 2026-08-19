@@ -227,11 +227,21 @@ async function probeVideoSize(
       setTimeout(fail, VIDEO_PROBE_TIMEOUT_MS)
     })
 
+    // A container Chromium can open but that holds no decodable video track — an audio-only
+    // `.webm`, a `.mp4` whose video codec it ignores — fires `loadedmetadata` like any other
+    // and reports 0 × 0. Neither the `error` listener nor the timeout sees it, so without this
+    // the import "succeeds", the pin renders nothing, and the 0 written to `data.json` is a
+    // size no reader will accept. Refusing here is the only point the user can still act on it.
+    if (video.videoWidth === 0 || video.videoHeight === 0) {
+      throw new Error(`${file.name} has no video track that this browser can play.`)
+    }
+
     return {
       width: video.videoWidth,
       height: video.videoHeight,
       // A stream with no known length reports Infinity, and `Math.round(Infinity)` is not a
-      // storable number. Zero is the honest "unknown" and renders as no duration at all.
+      // storable number. Zero is the honest "unknown" and renders as no duration at all —
+      // `readNonNegativeNumber` in data-file.ts exists to keep it readable back.
       durationMs: Number.isFinite(video.duration) ? Math.round(video.duration * 1000) : 0,
     }
   } finally {

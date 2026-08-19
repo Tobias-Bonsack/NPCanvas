@@ -99,8 +99,9 @@ export async function restoreSavedDirectory(): Promise<void> {
   let permission: PermissionState
   try {
     // Inside the try: a handle whose folder has since been deleted or renamed on disk rejects
-    // here, and the rejection would otherwise escape this function unhandled — the app has no
-    // error boundary and no `unhandledrejection` listener, so it would be a blank boot.
+    // here, and the rejection would otherwise escape this function unhandled. `ErrorBoundary`
+    // does not help — React boundaries catch render, not a rejected promise from a module-scope
+    // boot call — and there is no `unhandledrejection` listener, so it would be a blank boot.
     permission = await handle.queryPermission({ mode: 'readwrite' })
   } catch (error) {
     if (isCurrentLoad(generation)) {
@@ -257,7 +258,7 @@ export async function readMediaFile(fileName: string): Promise<File | null> {
   try {
     return await (await media.getFileHandle(fileName)).getFile()
   } catch (error) {
-    if (isNotFoundError(error)) return null
+    if (isMissingFile(error)) return null
     throw error
   }
 }
@@ -269,7 +270,7 @@ export async function deleteMediaFile(fileName: string): Promise<void> {
   try {
     await media.removeEntry(fileName)
   } catch (error) {
-    if (!isNotFoundError(error)) throw error
+    if (!isMissingFile(error)) throw error
   }
 }
 
@@ -355,6 +356,20 @@ function isAbortError(error: unknown): boolean {
 
 function isNotFoundError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError'
+}
+
+/**
+ * No file of that name can be produced — whether the folder simply lacks it, or the name is
+ * one the FS Access API refuses outright. A hand-edited `fileName` containing `/`, `.` or `..`
+ * rejects with a plain `TypeError` ("Name is not allowed"), not a `NotFoundError`; treating
+ * that as a hard failure surfaced a validation message where the honest answer is that the
+ * picture is missing, which is the state the media layer already knows how to draw.
+ *
+ * Read and delete only. A *write* under an unusable name is a real failure and must not be
+ * swallowed — and the app writes only names it generated itself.
+ */
+function isMissingFile(error: unknown): boolean {
+  return isNotFoundError(error) || error instanceof TypeError
 }
 
 /**

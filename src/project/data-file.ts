@@ -1,4 +1,4 @@
-import { nextMapOrigin } from '../map/canvas-layout.ts'
+import { clampMapScale, nextMapOrigin } from '../map/canvas-layout.ts'
 import { nextQuestHue } from '../quest/quest-style.ts'
 import {
   asCaptureProfileId,
@@ -133,6 +133,78 @@ function readNumber(value: unknown, path: string): number {
   return value
 }
 
+/**
+ * A measurement, not a coordinate: a size of zero or less is never a legitimate value and is
+ * always divided by, laid out with, or allocated from somewhere downstream.
+ */
+function readPositiveNumber(value: unknown, path: string): number {
+  const number = readNumber(value, path)
+  if (number <= 0) throw new SchemaError(path, 'a number greater than 0')
+  return number
+}
+
+/**
+ * A measurement that is allowed to be unknown. Only `durationMs` is: `probeVideoSize` stores
+ * `0` for a container whose header carries no length, and calls zero "the honest unknown" —
+ * so rejecting it here would make a clip the app itself imported take the whole project down
+ * on the next load. Nothing divides by it; it is displayed or it is not.
+ */
+function readNonNegativeNumber(value: unknown, path: string): number {
+  const number = readNumber(value, path)
+  if (number < 0) throw new SchemaError(path, 'a number of 0 or more')
+  return number
+}
+
+/** 0..359, the invariant `types.ts` declares and every hsl() downstream assumes. */
+function readHue(value: unknown, path: string): number {
+  const hue = readNumber(value, path)
+  if (hue < 0 || hue > 359) throw new SchemaError(path, 'a hue in 0..359')
+  return hue
+}
+
+/**
+ * A timestamp that `new Date()` can actually read. `savedAt` reaches `Nav.tsx` and `spokenAt`
+ * the timeline, both of which format it — and `Intl.DateTimeFormat#format` throws
+ * `RangeError` on an invalid date, during render, where there is no recovering the value.
+ * Rejecting the document at parse time is the only place the user can still be told which
+ * field is wrong.
+ */
+function readInstant(value: unknown, path: string): string {
+  const text = readString(value, path)
+  if (!Number.isFinite(Date.parse(text))) {
+    throw new SchemaError(path, 'a date the browser can read, such as 2026-08-14T10:00:00.000Z')
+  }
+  return text
+}
+
+/**
+ * Ids are the document's only identity. A duplicate parses cleanly today and then goes wrong
+ * silently and differently everywhere: `withDialogue` replaces by reference so only one copy
+ * is editable, a delete removes both, `PinLayer` renders two nodes under one React key, and
+ * `indexDialoguesByZone` keeps whichever came last. Copy-pasting a block in the
+ * pretty-printed `data.json` is all it takes.
+ */
+function assertUniqueIds(items: readonly { id: string }[], path: string): void {
+  const seen = new Set<string>()
+  items.forEach((item, index) => {
+    if (seen.has(item.id)) {
+      throw new SchemaError(`${path}[${index}].id`, `an id not already used, but "${item.id}" is`)
+    }
+    seen.add(item.id)
+  })
+}
+
+/** Reads an array of records and rejects the whole document if two of them share an id. */
+function readUniqueArray<T extends { id: string }>(
+  raw: Record<string, unknown>,
+  key: string,
+  read: (value: unknown, path: string) => T,
+): T[] {
+  const items = readArray(raw[key], key).map((item, index) => read(item, `${key}[${index}]`))
+  assertUniqueIds(items, key)
+  return items
+}
+
 function readMapId(value: unknown, path: string): MapId {
   return asMapId(readString(value, path))
 }
@@ -182,7 +254,7 @@ function readMediaFile(value: unknown, path: string): MediaFile {
   return {
     fileName: readString(raw.fileName, `${path}.fileName`),
     mimeType: readString(raw.mimeType, `${path}.mimeType`),
-    byteSize: readNumber(raw.byteSize, `${path}.byteSize`),
+    byteSize: readPositiveNumber(raw.byteSize, `${path}.byteSize`),
   }
 }
 
@@ -216,17 +288,17 @@ function readDialogueContentV3(value: unknown, path: string): DialogueV3['conten
       return {
         kind,
         file: readMediaFile(raw.file, `${path}.file`),
-        width: readNumber(raw.width, `${path}.width`),
-        height: readNumber(raw.height, `${path}.height`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
       }
 
     case 'video':
       return {
         kind: 'video',
         file: readMediaFile(raw.file, `${path}.file`),
-        width: readNumber(raw.width, `${path}.width`),
-        height: readNumber(raw.height, `${path}.height`),
-        durationMs: readNumber(raw.durationMs, `${path}.durationMs`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
+        durationMs: readNonNegativeNumber(raw.durationMs, `${path}.durationMs`),
       }
 
     default:
@@ -245,8 +317,8 @@ function readDialogueMedia(value: unknown, path: string): DialogueMedia {
         id,
         kind,
         file: readMediaFile(raw.file, `${path}.file`),
-        width: readNumber(raw.width, `${path}.width`),
-        height: readNumber(raw.height, `${path}.height`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
       }
 
     case 'video':
@@ -254,9 +326,9 @@ function readDialogueMedia(value: unknown, path: string): DialogueMedia {
         id,
         kind: 'video',
         file: readMediaFile(raw.file, `${path}.file`),
-        width: readNumber(raw.width, `${path}.width`),
-        height: readNumber(raw.height, `${path}.height`),
-        durationMs: readNumber(raw.durationMs, `${path}.durationMs`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
+        durationMs: readNonNegativeNumber(raw.durationMs, `${path}.durationMs`),
       }
 
     default:
@@ -269,8 +341,8 @@ function readPixelRect(value: unknown, path: string): PixelRect {
   return {
     x: readNumber(raw.x, `${path}.x`),
     y: readNumber(raw.y, `${path}.y`),
-    width: readNumber(raw.width, `${path}.width`),
-    height: readNumber(raw.height, `${path}.height`),
+    width: readPositiveNumber(raw.width, `${path}.width`),
+    height: readPositiveNumber(raw.height, `${path}.height`),
   }
 }
 
@@ -287,11 +359,11 @@ function readCaptureProfile(value: unknown, path: string): CaptureProfile {
   return {
     id: readCaptureProfileId(raw.id, `${path}.id`),
     name: readString(raw.name, `${path}.name`),
-    frameWidth: readNumber(raw.frameWidth, `${path}.frameWidth`),
-    frameHeight: readNumber(raw.frameHeight, `${path}.frameHeight`),
+    frameWidth: readPositiveNumber(raw.frameWidth, `${path}.frameWidth`),
+    frameHeight: readPositiveNumber(raw.frameHeight, `${path}.frameHeight`),
     screenRect: readPixelRect(raw.screenRect, `${path}.screenRect`),
-    nativeWidth: readNumber(raw.nativeWidth, `${path}.nativeWidth`),
-    nativeHeight: readNumber(raw.nativeHeight, `${path}.nativeHeight`),
+    nativeWidth: readPositiveNumber(raw.nativeWidth, `${path}.nativeWidth`),
+    nativeHeight: readPositiveNumber(raw.nativeHeight, `${path}.nativeHeight`),
     textRect: readPixelRect(raw.textRect, `${path}.textRect`),
     glyphs: readArray(raw.glyphs, `${path}.glyphs`).map((glyph, index) =>
       readGlyph(glyph, `${path}.glyphs[${index}]`),
@@ -305,8 +377,8 @@ function readGameMapV1(value: unknown, path: string): GameMapV1 {
     id: readMapId(raw.id, `${path}.id`),
     name: readString(raw.name, `${path}.name`),
     file: readMediaFile(raw.file, `${path}.file`),
-    width: readNumber(raw.width, `${path}.width`),
-    height: readNumber(raw.height, `${path}.height`),
+    width: readPositiveNumber(raw.width, `${path}.width`),
+    height: readPositiveNumber(raw.height, `${path}.height`),
   }
 }
 
@@ -315,7 +387,11 @@ function readGameMap(value: unknown, path: string): GameMap {
   return {
     ...readGameMapV1(value, path),
     origin: readPoint(raw.origin, `${path}.origin`),
-    scale: readNumber(raw.scale, `${path}.scale`),
+    // Clamped, not rejected, and through the very function the reducer uses: a hand-typed
+    // `scale: 0` makes `canvasRectToMapLocal` return an Infinity rect, which culls every pin
+    // on that map and puts every click nowhere — a dead map with no error to act on. One
+    // policy, one place, so a nudge in the UI and a hand edit cannot disagree.
+    scale: clampMapScale(readNumber(raw.scale, `${path}.scale`)),
   }
 }
 
@@ -326,7 +402,7 @@ function readZone(value: unknown, path: string): Zone {
     mapId: readMapId(raw.mapId, `${path}.mapId`),
     name: readString(raw.name, `${path}.name`),
     polygon: readPolygon(raw.polygon, `${path}.polygon`),
-    hue: readNumber(raw.hue, `${path}.hue`),
+    hue: readHue(raw.hue, `${path}.hue`),
   }
 }
 
@@ -340,7 +416,7 @@ function readDialogueCommon(
     mapId: readMapId(raw.mapId, `${path}.mapId`),
     npcName: readString(raw.npcName, `${path}.npcName`),
     position: readPoint(raw.position, `${path}.position`),
-    spokenAt: readString(raw.spokenAt, `${path}.spokenAt`),
+    spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
     relevance: readRelevance(raw.relevance, `${path}.relevance`),
   }
 }
@@ -350,10 +426,20 @@ function readDialogue(value: unknown, path: string): Dialogue {
   return {
     ...readDialogueCommon(raw, path),
     text: readString(raw.text, `${path}.text`),
-    media: readArray(raw.media, `${path}.media`).map((medium, index) =>
-      readDialogueMedia(medium, `${path}.media[${index}]`),
-    ),
+    media: readMedia(raw.media, `${path}.media`),
   }
+}
+
+/**
+ * A `MediaId` is what a remove or a reorder addresses, so two media sharing one inside a
+ * single dialogue is the same defect duplicate dialogue ids are — removing either takes both.
+ */
+function readMedia(value: unknown, path: string): DialogueMedia[] {
+  const media = readArray(value, path).map((medium, index) =>
+    readDialogueMedia(medium, `${path}[${index}]`),
+  )
+  assertUniqueIds(media, path)
+  return media
 }
 
 function readDialogueV3(value: unknown, path: string): DialogueV3 {
@@ -381,7 +467,7 @@ function readQuest(value: unknown, path: string): Quest {
   const raw = readObject(value, path)
   return {
     ...readQuestV2(value, path),
-    hue: readNumber(raw.hue, `${path}.hue`),
+    hue: readHue(raw.hue, `${path}.hue`),
   }
 }
 
@@ -402,6 +488,41 @@ function isQuestStatus(value: string): value is QuestStatus {
  */
 function readProjectFile(value: unknown): ProjectFile {
   const raw = readObject(value, 'data.json')
+  const file = readVersionedProjectFile(raw)
+  assertUniqueFileNames(file)
+  return file
+}
+
+/**
+ * Every file in `media/` is named by exactly one record. Two records naming one file makes a
+ * delete destructive: removing either dialogue takes the bytes the other still points at, and
+ * `deleteMediaFile` cannot tell the difference. Maps live in `media/` too (`map-<id>.<ext>`),
+ * so they share the namespace and are checked with it.
+ *
+ * Run on the migrated document rather than per version, which is why a V1–V3 file reports the
+ * V4 path `dialogues[i].media[0]` for what it stores as `dialogues[i].content` — the file name
+ * in the message is what identifies the line to fix either way.
+ */
+function assertUniqueFileNames(file: ProjectFile): void {
+  const seen = new Set<string>()
+  const claim = (fileName: string, path: string): void => {
+    if (seen.has(fileName)) {
+      throw new SchemaError(path, `a file no other record names, but "${fileName}" is taken`)
+    }
+    seen.add(fileName)
+  }
+  file.maps.forEach((map, index) => claim(map.file.fileName, `maps[${index}].file.fileName`))
+  file.dialogues.forEach((dialogue, dialogueIndex) => {
+    dialogue.media.forEach((medium, mediaIndex) => {
+      claim(
+        medium.file.fileName,
+        `dialogues[${dialogueIndex}].media[${mediaIndex}].file.fileName`,
+      )
+    })
+  })
+}
+
+function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
@@ -423,28 +544,24 @@ function readCommonFields(
 ): { projectName: string; savedAt: string; zones: Zone[] } {
   return {
     projectName: readString(raw.projectName, 'projectName'),
-    savedAt: readString(raw.savedAt, 'savedAt'),
-    zones: readArray(raw.zones, 'zones').map((zone, index) => readZone(zone, `zones[${index}]`)),
+    savedAt: readInstant(raw.savedAt, 'savedAt'),
+    zones: readUniqueArray(raw, 'zones', readZone),
   }
 }
 
 function readDialoguesV3(raw: Record<string, unknown>): DialogueV3[] {
-  return readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
-    readDialogueV3(dialogue, `dialogues[${index}]`),
-  )
+  return readUniqueArray(raw, 'dialogues', readDialogueV3)
 }
 
 function readQuestsV2(raw: Record<string, unknown>): QuestV2[] {
-  return readArray(raw.quests, 'quests').map((quest, index) =>
-    readQuestV2(quest, `quests[${index}]`),
-  )
+  return readUniqueArray(raw, 'quests', readQuestV2)
 }
 
 function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
   return {
     schemaVersion: 1,
     ...readCommonFields(raw),
-    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMapV1(map, `maps[${index}]`)),
+    maps: readUniqueArray(raw, 'maps', readGameMapV1),
     dialogues: readDialoguesV3(raw),
     quests: readQuestsV2(raw),
   }
@@ -454,7 +571,7 @@ function readProjectFileV2(raw: Record<string, unknown>): ProjectFileV2 {
   return {
     schemaVersion: 2,
     ...readCommonFields(raw),
-    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues: readDialoguesV3(raw),
     quests: readQuestsV2(raw),
   }
@@ -464,7 +581,7 @@ function readProjectFileV3(raw: Record<string, unknown>): ProjectFileV3 {
   return {
     schemaVersion: 3,
     ...readCommonFields(raw),
-    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues: readDialoguesV3(raw),
     quests: readQuestsV3(raw),
   }
@@ -474,19 +591,15 @@ function readProjectFileV4(raw: Record<string, unknown>): ProjectFile {
   return {
     schemaVersion: 4,
     ...readCommonFields(raw),
-    maps: readArray(raw.maps, 'maps').map((map, index) => readGameMap(map, `maps[${index}]`)),
-    dialogues: readArray(raw.dialogues, 'dialogues').map((dialogue, index) =>
-      readDialogue(dialogue, `dialogues[${index}]`),
-    ),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues: readUniqueArray(raw, 'dialogues', readDialogue),
     quests: readQuestsV3(raw),
-    captureProfiles: readArray(raw.captureProfiles, 'captureProfiles').map((profile, index) =>
-      readCaptureProfile(profile, `captureProfiles[${index}]`),
-    ),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
   }
 }
 
 function readQuestsV3(raw: Record<string, unknown>): Quest[] {
-  return readArray(raw.quests, 'quests').map((quest, index) => readQuest(quest, `quests[${index}]`))
+  return readUniqueArray(raw, 'quests', readQuest)
 }
 
 /**
@@ -533,5 +646,9 @@ function migrateV3(file: ProjectFileV3): ProjectFile {
 function migrateDialogueV3(dialogue: DialogueV3): Dialogue {
   const { content, ...rest } = dialogue
   if (content.kind === 'text') return { ...rest, text: content.text, media: [] }
-  return { ...rest, text: '', media: [{ ...content, id: newMediaId() }] }
+  // `id` first, matching the order `readDialogueMedia` builds a medium in. JSON.stringify
+  // writes keys in insertion order, so spreading `content` first would make a migrated
+  // project's first save differ from every save after it — a whole-file diff, once, for
+  // nothing. See the byte-stability test in data-file.test.ts.
+  return { ...rest, text: '', media: [{ id: newMediaId(), ...content }] }
 }

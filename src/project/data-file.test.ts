@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAP_LAYOUT_GAP } from '../map/canvas-layout.ts'
+import { MAP_LAYOUT_GAP, MAX_MAP_SCALE, MIN_MAP_SCALE } from '../map/canvas-layout.ts'
 import { QUEST_HUES } from '../quest/quest-style.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
@@ -305,8 +305,22 @@ function v1Document(): Record<string, unknown> {
   delete map.scale
   data.maps = [
     map,
-    { ...map, id: 'map-2', name: 'Caves', width: 800, height: 600 },
-    { ...map, id: 'map-3', name: 'Keep', width: 1200, height: 400 },
+    {
+      ...map,
+      id: 'map-2',
+      name: 'Caves',
+      width: 800,
+      height: 600,
+      file: { fileName: 'map-2.png', mimeType: 'image/png', byteSize: 51200 },
+    },
+    {
+      ...map,
+      id: 'map-3',
+      name: 'Keep',
+      width: 1200,
+      height: 400,
+      file: { fileName: 'map-3.png', mimeType: 'image/png', byteSize: 76800 },
+    },
   ]
   return data
 }
@@ -560,5 +574,203 @@ describe('serializeProject', () => {
     expect(written.file.savedAt).not.toBe(parsed.file.savedAt)
     // ISO 8601 sorts chronologically, so string comparison is a real time comparison.
     expect(written.file.savedAt >= before).toBe(true)
+  })
+})
+
+describe('parseProjectFile: values the app would then choke on', () => {
+  it('rejects a savedAt no browser can read, rather than throwing during render', () => {
+    const data = validDocument()
+    data.savedAt = 'yesterday'
+    expect(rejectionMessage(data)).toBe(
+      'savedAt: expected a date the browser can read, such as 2026-08-14T10:00:00.000Z',
+    )
+  })
+
+  it('rejects an unreadable spokenAt', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[1].spokenAt = '2026-13-45T99:99:99Z'
+    expect(rejectionMessage(data)).toBe(
+      'dialogues[1].spokenAt: expected a date the browser can read, such as 2026-08-14T10:00:00.000Z',
+    )
+  })
+
+  it('accepts any instant Date can read, not only the exact toISOString shape', () => {
+    const data = validDocument()
+    data.savedAt = '2026-08-14T12:00:00+02:00'
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+  })
+
+  it.each([
+    ['zero', 0, MIN_MAP_SCALE],
+    ['negative', -3, MIN_MAP_SCALE],
+    ['absurd', 5000, MAX_MAP_SCALE],
+  ])('clamps a %s map scale the way the reducer would', (_label, scale, expected) => {
+    const data = validDocument()
+    const maps = data.maps as Record<string, unknown>[]
+    maps[0].scale = scale
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.maps[0].scale).toBe(expected)
+  })
+
+  it.each([
+    ['maps[0].width', (data: Record<string, unknown>) => {
+      ;(data.maps as Record<string, unknown>[])[0].width = -2000
+    }],
+    ['maps[0].height', (data: Record<string, unknown>) => {
+      ;(data.maps as Record<string, unknown>[])[0].height = 0
+    }],
+    ['maps[0].file.byteSize', (data: Record<string, unknown>) => {
+      const [map] = data.maps as Record<string, unknown>[]
+      ;(map.file as Record<string, unknown>).byteSize = -1
+    }],
+    ['dialogues[1].media[0].width', (data: Record<string, unknown>) => {
+      const dialogues = data.dialogues as Record<string, unknown>[]
+      const media = dialogues[1].media as Record<string, unknown>[]
+      media[0].width = 0
+    }],
+  ])('rejects %s when it is zero or negative', (path, corrupt) => {
+    const data = validDocument()
+    corrupt(data)
+    expect(rejectionMessage(data)).toBe(`${path}: expected a number greater than 0`)
+  })
+
+  it('rejects a negative durationMs', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    const media = dialogues[3].media as Record<string, unknown>[]
+    media[0].durationMs = -1
+    expect(rejectionMessage(data)).toBe(
+      'dialogues[3].media[0].durationMs: expected a number of 0 or more',
+    )
+  })
+
+  it('accepts durationMs 0, which import-media writes for a clip of unknown length', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    const media = dialogues[3].media as Record<string, unknown>[]
+    media[0].durationMs = 0
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const [medium] = result.file.dialogues[3].media
+    expect(medium.kind === 'video' && medium.durationMs).toBe(0)
+  })
+
+  it('rejects two media in one dialogue sharing an id, which a remove would take both of', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    const media = dialogues[1].media as Record<string, unknown>[]
+    media[1] = { ...media[1], id: media[0].id }
+    expect(rejectionMessage(data)).toBe(
+      'dialogues[1].media[1].id: expected an id not already used, but "media-2a" is',
+    )
+  })
+
+  it('rejects a zone hue outside 0..359', () => {
+    const data = validDocument()
+    const zones = data.zones as Record<string, unknown>[]
+    zones[0].hue = 400
+    expect(rejectionMessage(data)).toBe('zones[0].hue: expected a hue in 0..359')
+  })
+
+  it('rejects a quest hue outside 0..359', () => {
+    const data = validDocument()
+    const quests = data.quests as Record<string, unknown>[]
+    quests[0].hue = -1
+    expect(rejectionMessage(data)).toBe('quests[0].hue: expected a hue in 0..359')
+  })
+})
+
+describe('parseProjectFile: identity', () => {
+  it.each([
+    ['maps', 'map-1'],
+    ['zones', 'zone-1'],
+    ['dialogues', 'dialogue-1'],
+    ['quests', 'quest-1'],
+  ])('rejects two %s sharing an id, naming the id', (key, id) => {
+    const data = validDocument()
+    const records = data[key] as Record<string, unknown>[]
+    // The duplicate is appended, so the message points at the copy rather than the original.
+    data[key] = [...records, { ...records[0] }]
+    expect(rejectionMessage(data)).toBe(
+      `${key}[${String(records.length)}].id: expected an id not already used, but "${id}" is`,
+    )
+  })
+
+  it('rejects two dialogues naming the same media file, because deleting one would take both', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    const media = dialogues[2].media as Record<string, unknown>[]
+    media[0] = {
+      ...media[0],
+      file: { fileName: 'dialogue-2-media-2a.png', mimeType: 'image/png', byteSize: 1024 },
+    }
+    expect(rejectionMessage(data)).toBe(
+      'dialogues[2].media[0].file.fileName: expected a file no other record names, ' +
+        'but "dialogue-2-media-2a.png" is taken',
+    )
+  })
+
+  it('rejects two maps sharing an image, which a map deletion would orphan for both', () => {
+    const data = validDocument()
+    const maps = data.maps as Record<string, unknown>[]
+    data.maps = [...maps, { ...maps[0], id: 'map-2', name: 'Caves' }]
+    expect(rejectionMessage(data)).toBe(
+      'maps[1].file.fileName: expected a file no other record names, but "map-1.png" is taken',
+    )
+  })
+})
+
+describe('parseProjectFile: documents that are not documents', () => {
+  it.each([
+    ['an empty file', '', 'not valid JSON'],
+    ['a null document', 'null', 'data.json: expected an object'],
+    ['an array', '[]', 'data.json: expected an object'],
+  ])('rejects %s', (_label, text, expected) => {
+    const result = parseProjectFile(text)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.message).toContain(expected)
+  })
+
+  it('names the missing field when a V2 document is hand-bumped to V3', () => {
+    // The message *is* the versioning scheme working: V2 quests carry no hue, so claiming to
+    // be V3 asks the V3 reader for a field the writer never wrote, and it says which.
+    const data = v2Document()
+    data.schemaVersion = 3
+    expect(rejectionMessage(data)).toBe('quests[0].hue: expected a finite number')
+  })
+
+  it('points at the offending vertex when a polygon holds bare numbers', () => {
+    const data = validDocument()
+    const zones = data.zones as Record<string, unknown>[]
+    zones[0].polygon = [1, 2, 3]
+    expect(rejectionMessage(data)).toBe('zones[0].polygon[0]: expected an object')
+  })
+})
+
+describe('serializeProject: a migrated document is byte-stable on its second save', () => {
+  it('writes a migrated V1 project identically the second time', () => {
+    const migrated = parseProjectFile(JSON.stringify(v1Document()))
+    expect(migrated.ok).toBe(true)
+    if (!migrated.ok) return
+
+    const firstSave = serializeProject(migrated.file)
+    const reread = parseProjectFile(firstSave)
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+
+    // `savedAt` is restamped by every write by design, so it is the one field allowed to
+    // differ — everything else, including the ids the migration minted, must survive.
+    const withoutSavedAt = (text: string): string =>
+      text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
+    expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
+    expect(reread.file.schemaVersion).toBe(4)
   })
 })

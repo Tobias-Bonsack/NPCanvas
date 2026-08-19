@@ -1,0 +1,57 @@
+.error-boundary {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+.error-boundary__title {
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+.error-boundary__lead {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.error-boundary__message {
+  margin: 0;
+  align-self: stretch;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+.error-boundary__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.error-boundary__button {
+  font: inherit;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+}
+
+.error-boundary__button:hover {
+  filter: brightness(1.1);
+}
+
+/* Reload is the last resort, so it must not compete with the picker for the first click. */
+.error-boundary__button--quiet {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text);
+}
