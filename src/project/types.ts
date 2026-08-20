@@ -259,6 +259,26 @@ export type StoredProjectFile = ProjectFileV1 | ProjectFileV2 | ProjectFileV3 | 
 /** The current shape, and the only one the store, the components, and writes ever see. */
 export type ProjectFile = ProjectFileV4
 
+/**
+ * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
+ * records: the user cannot act on the record itself — it is already gone from the document they
+ * are looking at — only on the fact that the folder held one.
+ *
+ * `none` is a distinct member rather than three zeroes so a clean load cannot be mistaken for a
+ * repair that happened to drop nothing, and so the notice has one thing to test.
+ */
+export type ProjectRepairs =
+  | { kind: 'none' }
+  | {
+      kind: 'repaired'
+      /** Dialogues whose `mapId` named no map. */
+      dialogues: number
+      /** Zones whose `mapId` named no map. */
+      zones: number
+      /** Quest references that named no dialogue, summed over every quest. */
+      questDialogueIds: number
+    }
+
 // ---- in-memory app state ----
 
 /**
@@ -291,6 +311,12 @@ export type AppState =
       kind: 'ready'
       directoryName: string
       project: ProjectFile
+      /**
+       * What the load had to drop to make the document referentially whole. Set once, by
+       * `project/loaded`, and never again — the document cannot grow a dangling reference
+       * while the app is running, because the reducer guards every edge that could add one.
+       */
+      repairs: ProjectRepairs
       save: SaveState
       selection: Selection
     }

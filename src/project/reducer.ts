@@ -17,6 +17,7 @@ import type {
   Point,
   Polygon,
   ProjectFile,
+  ProjectRepairs,
   Quest,
   QuestId,
   RelevanceTag,
@@ -34,7 +35,7 @@ export type Action =
   | { kind: 'project/pick-cancelled' }
   | { kind: 'project/reconnecting'; directoryName: string }
   | { kind: 'project/loading'; directoryName: string }
-  | { kind: 'project/loaded'; directoryName: string; project: ProjectFile }
+  | { kind: 'project/loaded'; directoryName: string; project: ProjectFile; repairs: ProjectRepairs }
   | { kind: 'project/load-failed'; directoryName: string; message: string }
   | { kind: 'save/pending' }
   | { kind: 'save/saving' }
@@ -111,6 +112,7 @@ export function reduce(state: AppState, action: Action): AppState {
         kind: 'ready',
         directoryName: action.directoryName,
         project: action.project,
+        repairs: action.repairs,
         // Freshly read from disk, so the document and the file agree as of `savedAt`.
         save: { kind: 'saved', at: action.project.savedAt },
         selection: { kind: 'none' },
@@ -145,8 +147,14 @@ export function reduce(state: AppState, action: Action): AppState {
       return { ...state, selection: action.selection }
     }
 
+    // An id already in the document would make identity ambiguous everywhere at once —
+    // `withMap` replaces by reference, a delete removes both, React renders two nodes under one
+    // key. Unreachable through the UI (ids are UUIDs), and guarded for the same reason
+    // `quest/dialogue-attached` is: parse and the reducer are the only two doors into the
+    // document, and an invariant enforced on one of them is not enforced.
     case 'map/added': {
       if (state.kind !== 'ready') return state
+      if (state.project.maps.some((map) => map.id === action.map.id)) return state
       return {
         ...state,
         project: { ...state.project, maps: [...state.project.maps, action.map] },
@@ -188,7 +196,7 @@ export function reduce(state: AppState, action: Action): AppState {
     case 'map/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
-      if (!project.maps.some((map) => map.id === action.mapId)) return state
+      if (!hasMap(project, action.mapId)) return state
 
       const removedDialogueIds = new Set<DialogueId>()
       for (const dialogue of project.dialogues) {
@@ -216,8 +224,11 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    // The map must exist, for the same reason `dialogue/added` requires one: a zone on a
+    // missing map renders nowhere, lists nowhere, and is written back on every save.
     case 'zone/added': {
       if (state.kind !== 'ready') return state
+      if (!hasMap(state.project, action.zone.mapId)) return state
       return {
         ...state,
         project: { ...state.project, zones: [...state.project.zones, action.zone] },
@@ -270,8 +281,13 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    // The map must exist. A dialogue on a missing map is invisible and undeletable:
+    // `groupByMap` drops it from the canvas, so the one place `dialogue/deleted` is dispatched
+    // from — its pin — never renders, while Insights still counts it and every save writes it
+    // back. `repairReferences` closes the same hole on the other door, at parse.
     case 'dialogue/added': {
       if (state.kind !== 'ready') return state
+      if (!hasMap(state.project, action.dialogue.mapId)) return state
       return {
         ...state,
         project: {
@@ -613,6 +629,11 @@ function withCaptureProfile(
       ),
     },
   }
+}
+
+/** The map a `dialogue/added` or `zone/added` claims to sit on has to be a real one. */
+function hasMap(project: ProjectFile, id: MapId): boolean {
+  return project.maps.some((map) => map.id === id)
 }
 
 function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {

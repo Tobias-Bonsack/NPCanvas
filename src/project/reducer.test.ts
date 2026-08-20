@@ -30,6 +30,7 @@ function ready(project: ProjectFile = createEmptyProject('Harbour')): ReadyState
     kind: 'ready',
     directoryName: 'Harbour',
     project,
+    repairs: { kind: 'none' },
     save: { kind: 'saved', at: project.savedAt },
     selection: { kind: 'none' },
   }
@@ -275,12 +276,13 @@ describe('reduce: connection actions', () => {
     const project = createEmptyProject('Harbour')
     const next = reduce(
       { kind: 'loading', directoryName: 'Harbour' },
-      { kind: 'project/loaded', directoryName: 'Harbour', project },
+      { kind: 'project/loaded', directoryName: 'Harbour', project, repairs: { kind: 'none' } },
     )
     expect(next).toEqual({
       kind: 'ready',
       directoryName: 'Harbour',
       project,
+      repairs: { kind: 'none' },
       save: { kind: 'saved', at: project.savedAt },
       selection: { kind: 'none' },
     })
@@ -292,6 +294,7 @@ describe('reduce: connection actions', () => {
       kind: 'project/loaded',
       directoryName: 'Harbour',
       project: reloaded,
+      repairs: { kind: 'none' },
     })
     expect(next.kind === 'ready' && next.project).toBe(reloaded)
   })
@@ -394,6 +397,11 @@ describe('reduce: map actions', () => {
     const map = gameMap('harbour')
     const next = reduce(ready(), { kind: 'map/added', map })
     expect(next.kind === 'ready' && next.project.maps).toEqual([map])
+  })
+
+  it('ignores a map whose id the document already holds', () => {
+    const state = ready(twoMapProject())
+    expect(reduce(state, { kind: 'map/added', map: gameMap('harbour', 'A copy') })).toBe(state)
   })
 
   it('renames a map without touching the others', () => {
@@ -572,6 +580,13 @@ describe('reduce: dialogue actions', () => {
       'dialogue-forest',
       'dialogue-new',
     ])
+  })
+
+  it('ignores a dialogue placed on a map that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, { kind: 'dialogue/added', dialogue: dialogue('dialogue-new', asMapId('nope')) }),
+    ).toBe(state)
   })
 
   it('moves a dialogue without touching the others', () => {
@@ -847,8 +862,16 @@ describe('reduce: zone actions', () => {
   }
 
   it('appends a drawn zone', () => {
-    const state = reduce(ready(), { kind: 'zone/added', zone: zone('zone-1', HARBOUR) })
+    const onHarbour = ready({ ...createEmptyProject('Harbour'), maps: [gameMap('harbour')] })
+    const state = reduce(onHarbour, { kind: 'zone/added', zone: zone('zone-1', HARBOUR) })
     expect(readyOf(state).project.zones.map((each) => each.id)).toEqual([asZoneId('zone-1')])
+  })
+
+  it('ignores a zone drawn on a map that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, { kind: 'zone/added', zone: zone('zone-new', asMapId('nope')) }),
+    ).toBe(state)
   })
 
   it('renames and recolours in place', () => {

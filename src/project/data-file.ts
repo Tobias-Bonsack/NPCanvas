@@ -29,6 +29,7 @@ import type {
   ProjectFileV1,
   ProjectFileV2,
   ProjectFileV3,
+  ProjectRepairs,
   Quest,
   QuestId,
   QuestStatus,
@@ -62,7 +63,7 @@ export function serializeProject(file: ProjectFile): string {
 }
 
 export type ParseResult =
-  | { ok: true; file: ProjectFile }
+  | { ok: true; file: ProjectFile; repairs: ProjectRepairs }
   | { ok: false; message: string }
 
 /**
@@ -86,7 +87,7 @@ export function parseProjectFile(text: string): ParseResult {
   }
 
   try {
-    return { ok: true, file: readProjectFile(raw) }
+    return { ok: true, ...readProjectFile(raw) }
   } catch (error) {
     if (error instanceof SchemaError) return { ok: false, message: error.message }
     throw error
@@ -486,11 +487,58 @@ function isQuestStatus(value: string): value is QuestStatus {
  * fourth version then adds one `migrateV3` and one `case`, instead of a new N→newest function
  * per version already on disk.
  */
-function readProjectFile(value: unknown): ProjectFile {
+function readProjectFile(value: unknown): { file: ProjectFile; repairs: ProjectRepairs } {
   const raw = readObject(value, 'data.json')
-  const file = readVersionedProjectFile(raw)
-  assertUniqueFileNames(file)
-  return file
+  const repaired = repairReferences(readVersionedProjectFile(raw))
+  // After the repair, not before: a record that is about to be dropped must not be able to
+  // reject the document it is no longer part of.
+  assertUniqueFileNames(repaired.file)
+  return repaired
+}
+
+/**
+ * The no-dangling-ids invariant every reader downstream relies on — `reducer.ts` guards the
+ * edges it owns, and this is the other way a reference could enter the document.
+ *
+ * Repair, not rejection: a project with one stray record should open minus the record, because
+ * stranding a whole folder over one bad line is the worse failure. The record is dropped rather
+ * than adopted by some other map, since there is no honest answer to which map it belonged to,
+ * and a dialogue on a map that no longer exists is already invisible and undeletable —
+ * `groupByMap` skips it while every save writes it back out.
+ *
+ * The repaired document is only in memory; it reaches `media/` and `data.json` on the next save
+ * like any other edit.
+ */
+function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: ProjectRepairs } {
+  const mapIds = new Set<MapId>(file.maps.map((map) => map.id))
+  const dialogues = file.dialogues.filter((dialogue) => mapIds.has(dialogue.mapId))
+  const zones = file.zones.filter((zone) => mapIds.has(zone.mapId))
+
+  // Against the *surviving* dialogues, so a quest reference to a dialogue dropped one line
+  // above goes with it — the two repairs are one pass, not two independent ones.
+  const dialogueIds = new Set<DialogueId>(dialogues.map((dialogue) => dialogue.id))
+  let questDialogueIds = 0
+  const quests = file.quests.map((quest) => {
+    const kept = quest.dialogueIds.filter((id) => dialogueIds.has(id))
+    if (kept.length === quest.dialogueIds.length) return quest
+    questDialogueIds += quest.dialogueIds.length - kept.length
+    return { ...quest, dialogueIds: kept }
+  })
+
+  const droppedDialogues = file.dialogues.length - dialogues.length
+  const droppedZones = file.zones.length - zones.length
+  if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0) {
+    return { file, repairs: { kind: 'none' } }
+  }
+  return {
+    file: { ...file, dialogues, zones, quests },
+    repairs: {
+      kind: 'repaired',
+      dialogues: droppedDialogues,
+      zones: droppedZones,
+      questDialogueIds,
+    },
+  }
 }
 
 /**

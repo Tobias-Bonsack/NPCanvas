@@ -4,9 +4,10 @@ import { InsightsScreen } from '../insights/InsightsScreen.tsx'
 import { MapScreen } from '../map/MapScreen.tsx'
 import { QuestBoard } from '../quest/QuestBoard.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
-import type { AppState, SaveState } from '../project/types.ts'
+import type { AppState, ProjectRepairs, SaveState } from '../project/types.ts'
 import { useAppState } from '../project/store.ts'
 import { Nav } from './Nav.tsx'
+import { RepairNotice } from './RepairNotice.tsx'
 import { SaveFailureBanner } from './SaveFailureBanner.tsx'
 import type { Route } from './route.ts'
 import { useRoute } from './route.ts'
@@ -28,6 +29,12 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
   // while restating the same one does not — no effect, and nothing to reset on the way out.
   const [dismissed, setDismissed] = useState<SaveState | null>(null)
   const failure = state.save.kind === 'failed' && state.save !== dismissed ? state.save : null
+  // Same object-identity dismissal, for the same reason: `project/loaded` builds a fresh
+  // `repairs` per load, so opening a second damaged folder reopens a notice closed for the
+  // first one, while a re-render of this one does not.
+  const [dismissedRepairs, setDismissedRepairs] = useState<ProjectRepairs | null>(null)
+  const repairs =
+    state.repairs.kind === 'repaired' && state.repairs !== dismissedRepairs ? state.repairs : null
 
   return (
     <div className="app-shell">
@@ -38,6 +45,9 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
       />
       {failure !== null && (
         <SaveFailureBanner save={failure} onDismiss={() => setDismissed(failure)} />
+      )}
+      {repairs !== null && (
+        <RepairNotice repairs={repairs} onDismiss={() => setDismissedRepairs(repairs)} />
       )}
       <ReadyView state={state} route={route} />
     </div>

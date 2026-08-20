@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { MAP_LAYOUT_GAP, MAX_MAP_SCALE, MIN_MAP_SCALE } from '../map/canvas-layout.ts'
 import { QUEST_HUES } from '../quest/quest-style.ts'
+import type { ParseResult } from './data-file.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
 // A document exercising every branch of the reader: a line with no pictures, all three media
@@ -772,5 +773,131 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
     expect(reread.file.schemaVersion).toBe(4)
+  })
+})
+
+describe('parseProjectFile: repairs dangling references rather than rejecting', () => {
+  /** Fails the test if the document is rejected, so every repair case asserts on a real file. */
+  function repaired(data: unknown): Extract<ParseResult, { ok: true }> {
+    const result = parseProjectFile(JSON.stringify(data))
+    if (!result.ok) throw new Error(`expected the document to parse, but: ${result.message}`)
+    return result
+  }
+
+  it('reports no repairs for a document whose references all resolve', () => {
+    expect(repaired(validDocument()).repairs).toEqual({ kind: 'none' })
+  })
+
+  it('drops a dialogue whose mapId names no map, and the quest links to it', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].mapId = 'map-gone'
+
+    const result = repaired(data)
+    expect(result.file.dialogues.map((dialogue) => dialogue.id)).toEqual([
+      'dialogue-2',
+      'dialogue-3',
+      'dialogue-4',
+    ])
+    // 'dialogue-1' went with the dialogue it named; 'dialogue-4' survives untouched.
+    expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-4'])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 1,
+      zones: 0,
+      questDialogueIds: 1,
+    })
+  })
+
+  it('drops a zone whose mapId names no map and leaves everything else standing', () => {
+    const data = validDocument()
+    const zones = data.zones as Record<string, unknown>[]
+    zones[0].mapId = 'map-gone'
+
+    const result = repaired(data)
+    expect(result.file.zones).toEqual([])
+    expect(result.file.dialogues).toHaveLength(4)
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 1,
+      questDialogueIds: 0,
+    })
+  })
+
+  it('drops a quest reference that names no dialogue and keeps the quest', () => {
+    const data = validDocument()
+    const quests = data.quests as Record<string, unknown>[]
+    quests[0].dialogueIds = ['dialogue-1', 'dialogue-gone', 'dialogue-4']
+
+    const result = repaired(data)
+    expect(result.file.quests).toHaveLength(1)
+    expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 0,
+      questDialogueIds: 1,
+    })
+  })
+
+  it('counts every dropped record when a whole map is missing', () => {
+    const data = validDocument()
+    // The one map the document has, gone: every zone and every dialogue dangles at once.
+    data.maps = []
+
+    const result = repaired(data)
+    expect(result.file.dialogues).toEqual([])
+    expect(result.file.zones).toEqual([])
+    expect(result.file.quests[0].dialogueIds).toEqual([])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 4,
+      zones: 1,
+      questDialogueIds: 2,
+    })
+  })
+
+  it('hands back a document that re-parses with nothing left to repair', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].mapId = 'map-gone'
+
+    const reread = parseProjectFile(serializeProject(repaired(data).file))
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+    expect(reread.repairs).toEqual({ kind: 'none' })
+  })
+
+  it('repairs a V1 document too, after the migration chain has run', () => {
+    const data = v1Document()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].mapId = 'map-gone'
+
+    const result = repaired(data)
+    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
+    expect(result.repairs.kind).toBe('repaired')
+  })
+
+  it('does not reject over a file name only a dropped record still claims', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    // A copy-pasted block, pointing at a map that is gone *and* at a file another dialogue
+    // owns. Uniqueness is checked after the repair, so the surviving document decides.
+    dialogues.push({
+      ...dialogues[2],
+      id: 'dialogue-5',
+      mapId: 'map-gone',
+    })
+
+    const result = repaired(data)
+    expect(result.file.dialogues.map((dialogue) => dialogue.id)).not.toContain('dialogue-5')
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 1,
+      zones: 0,
+      questDialogueIds: 0,
+    })
   })
 })

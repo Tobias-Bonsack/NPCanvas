@@ -13,6 +13,7 @@ function ready(project: ProjectFile, save: SaveState = { kind: 'saved', at: proj
     kind: 'ready',
     directoryName: 'Harbour',
     project,
+    repairs: { kind: 'none' },
     save,
     selection: { kind: 'none' },
   }

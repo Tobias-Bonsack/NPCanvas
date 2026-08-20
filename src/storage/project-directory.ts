@@ -1,7 +1,7 @@
 import { assertNever } from '../assert-never.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from '../project/data-file.ts'
 import { dispatch } from '../project/store.ts'
-import type { ProjectFile } from '../project/types.ts'
+import type { ProjectFile, ProjectRepairs } from '../project/types.ts'
 import {
   clearDirectoryHandle,
   readDirectoryHandle,
@@ -297,9 +297,9 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   directoryHandle = handle
   dispatch({ kind: 'project/loading', directoryName: handle.name })
 
-  let project: ProjectFile
+  let loaded: LoadedProject
   try {
-    project = await readOrCreateProjectFile(handle)
+    loaded = await readOrCreateProjectFile(handle)
   } catch (error) {
     if (isCurrentLoad(generation)) {
       dispatch({
@@ -311,7 +311,7 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
     return
   }
   if (!isCurrentLoad(generation)) return
-  dispatch({ kind: 'project/loaded', directoryName: handle.name, project })
+  dispatch({ kind: 'project/loaded', directoryName: handle.name, ...loaded })
 
   // Remembered only now, and only for the load that won: the folder a reload lands back on is
   // the one that last actually opened, never one whose `data.json` would not parse.
@@ -323,7 +323,12 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   }
 }
 
-async function readOrCreateProjectFile(handle: FileSystemDirectoryHandle): Promise<ProjectFile> {
+/** A document plus whatever `parseProjectFile` had to drop to hand it back whole. */
+type LoadedProject = { project: ProjectFile; repairs: ProjectRepairs }
+
+async function readOrCreateProjectFile(
+  handle: FileSystemDirectoryHandle,
+): Promise<LoadedProject> {
   let fileHandle: FileSystemFileHandle
   try {
     fileHandle = await handle.getFileHandle(DATA_FILE_NAME)
@@ -337,13 +342,13 @@ async function readOrCreateProjectFile(handle: FileSystemDirectoryHandle): Promi
     // would have replaced it, and this bootstrap belongs to the folder it was read from.
     const project = createEmptyProject(handle.name)
     await writeDataFile(handle, project)
-    return project
+    return { project, repairs: { kind: 'none' } }
   }
 
   const text = await (await fileHandle.getFile()).text()
   const result = parseProjectFile(text)
   if (!result.ok) throw new Error(result.message)
-  return result.file
+  return { project: result.file, repairs: result.repairs }
 }
 
 export function describeError(error: unknown): string {
