@@ -93,6 +93,10 @@ export function DialoguePanel({
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
   const [dropTarget, setDropTarget] = useState(false)
   const pickerId = useId()
+  // Filled by `DialogueForm`. The line field is a draft that only reaches the store on blur or
+  // after an idle, and a capture appends to the store's text — so Ctrl+Enter straight out of the
+  // textarea has to push the draft down first, or it appends to a line the user has moved past.
+  const flushDraft = useRef<(() => void) | null>(null)
 
   const source = useCaptureSource()
   const profile = useActiveCaptureProfile(project.captureProfiles)
@@ -175,6 +179,7 @@ export function DialoguePanel({
    */
   async function capture(): Promise<void> {
     if (busy) return
+    flushDraft.current?.()
     if (blocker !== null || profile === null) {
       setCaptureState({ kind: 'failed', message: blocker ?? 'No capture profile is active.' })
       return
@@ -200,7 +205,11 @@ export function DialoguePanel({
   ): Promise<void> {
     setCaptureState({ kind: 'capturing' })
     try {
-      const result = await captureIntoDialogue(dialogue, target, frame, transcript)
+      // The document as it stands now, not as this render saw it: the line field is a draft
+      // that `capture` only just flushed, and a learner can stand open for minutes while the
+      // panel keeps taking edits. Appending to the render's copy would undo both.
+      const into = currentDialogue(dialogueId) ?? dialogue
+      const result = await captureIntoDialogue(into, target, frame, transcript)
       setCaptureState({ kind: 'done', message: describeCapture(result) })
     } catch (error) {
       setCaptureState({ kind: 'failed', message: describeError(error) })
@@ -307,7 +316,14 @@ export function DialoguePanel({
         )}
       </p>
 
-      <DialogueForm dialogue={dialogue} npcNames={npcNames} />
+      {/* Keyed on the dialogue: switching pins must unmount the form, because unmount is what
+          flushes a half-typed line into the dialogue it was typed for. */}
+      <DialogueForm
+        key={dialogueId}
+        dialogue={dialogue}
+        npcNames={npcNames}
+        flushRef={flushDraft}
+      />
 
       <section className="dialogue-media">
         <h3 className="dialogue-form__legend">Media</h3>

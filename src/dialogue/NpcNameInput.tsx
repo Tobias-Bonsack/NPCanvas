@@ -15,12 +15,14 @@ export function NpcNameInput({
   value,
   names,
   onChange,
+  onBlur,
 }: {
   id: string
   value: string
   /** Distinct and sorted — see `npcNamesIn`. */
   names: readonly string[]
   onChange: (value: string) => void
+  onBlur: () => void
 }): ReactElement {
   const listId = useId()
 
@@ -37,6 +39,7 @@ export function NpcNameInput({
         // sites — alongside this project's, which is exactly the wrong suggestion set.
         autoComplete="off"
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
       />
       <datalist id={listId}>
         {names.map((name) => (
