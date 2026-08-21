@@ -14,11 +14,11 @@ import './DialogueForm.css'
  *
  * The two typed fields still go through `useFieldDraft` rather than dispatching per character.
  * A keystroke that reached the store would copy `project.dialogues`, and that array's identity is
- * what `PinLayer`'s `memo` guards — so writing a line would re-render every pin on the canvas,
+ * what `PinLayer`'s `memo` guards — so writing a line would re-render every pin on the canvas,
  * per character. The discrete controls below (relevance, timestamp) dispatch immediately: they
  * are single acts, and a draft would only add a way to lose one.
  *
- * Must be rendered keyed on `dialogue.id` — see `useFieldDraft`.
+ * Must be rendered keyed on `dialogue.id` — see `useFieldDraft`.
  */
 export function DialogueForm({
   dialogue,

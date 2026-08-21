@@ -34,7 +34,7 @@ type Entry = {
   revokeTimer: ReturnType<typeof setTimeout> | null
   /**
    * Which read is allowed to publish. Incremented by every `startLoad`, because the identity
-   * check in `load` compares the entry *object*, which an invalidation leaves unchanged — two
+   * check in `load` compares the entry *object*, which an invalidation leaves unchanged — two
    * reads for one entry would both pass it and the URL published first would be overwritten
    * without ever being revoked.
    */
@@ -107,7 +107,7 @@ export function invalidateMediaFile(fileName: string): void {
  *
  * Necessary precisely because entries are keyed on the file name alone while `readMediaFile`
  * resolves against whatever folder is connected *now*: a copied project folder holds the same
- * names with different bytes, so without this the new project renders the old one's pictures —
+ * names with different bytes, so without this the new project renders the old one's pictures —
  * for the length of the revoke delay, and indefinitely for any reader still mounted.
  *
  * Invalidating each entry rather than clearing the map, so a mounted reader is re-read against

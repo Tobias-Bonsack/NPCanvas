@@ -298,7 +298,7 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   directoryHandle = handle
   // After the handle, never before: the cache re-reads its live entries immediately, and they
   // must resolve against the folder being opened. Necessary at all because the cache is keyed
-  // on the file name alone — a copied project folder holds the same names with other bytes.
+  // on the file name alone — a copied project folder holds the same names with other bytes.
   clearMediaCache()
   dispatch({ kind: 'project/loading', directoryName: handle.name })
 

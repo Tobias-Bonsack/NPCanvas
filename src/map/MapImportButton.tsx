@@ -18,7 +18,7 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
   async function onFilePicked(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const input = event.target
     const file = input.files?.[0]
-    // Clearing the input is what lets the same file be picked twice in a row — otherwise
+    // Clearing the input is what lets the same file be picked twice in a row — otherwise
     // the second pick is not a change and fires no event at all.
     input.value = ''
     if (file === undefined) return
@@ -46,7 +46,7 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
       {/* A styled `<label>` driving a visually-hidden input: `<input type="file">` cannot be
           restyled, and a button would need a ref plus a synthetic click to reach it. */}
       <label className="map-import__label" htmlFor={inputId} aria-disabled={importing}>
-        {importing ? 'Importing…' : label}
+        {importing ? 'Importing…' : label}
       </label>
       <input
         id={inputId}

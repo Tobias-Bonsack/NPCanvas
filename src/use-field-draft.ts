@@ -4,13 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * A text field the store only hears about when the typing stops.
  *
  * Every keystroke into `dispatch` copies the whole `dialogues` array, and that identity is what
- * `PinLayer`'s `memo` is keyed on — so a character typed into a line used to reconcile every pin
- * on the canvas. CLAUDE.md � "Store scope" already puts form drafts in component `useState`;
+ * `PinLayer`'s `memo` is keyed on — so a character typed into a line used to reconcile every pin
+ * on the canvas. CLAUDE.md � "Store scope" already puts form drafts in component `useState`;
  * this is that place, made reusable because four fields need it.
  *
  * The draft is not a second source of truth: it yields to the document whenever the document
  * changes underneath it (a capture appending to the line), and it flushes on blur, after a short
- * idle, and on unmount — which is how closing the panel or switching pins cannot lose it. Forms
+ * idle, and on unmount — which is how closing the panel or switching pins cannot lose it. Forms
  * using this must therefore be keyed on the record they edit, so a switch unmounts rather than
  * re-props: unmount is what flushes to the *old* record before the new one is seeded.
  */
@@ -19,7 +19,7 @@ export type FieldDraft = {
   value: string
   /** Bind to `onChange`. Arms the idle flush. */
   onChange: (value: string) => void
-  /** Bind to `onBlur` — and call before anything that reads the field's value out of the store. */
+  /** Bind to `onBlur` — and call before anything that reads the field's value out of the store. */
   flush: () => void
 }
 
@@ -31,7 +31,7 @@ export function useFieldDraft(committed: string, commit: (value: string) => void
   const [draft, setDraft] = useState(committed)
   const [base, setBase] = useState(committed)
 
-  // The document moved under the field — a capture appended to the line, or an NPC was renamed
+  // The document moved under the field — a capture appended to the line, or an NPC was renamed
   // across the project. The draft describes a value that no longer exists, so it yields.
   if (committed !== base) {
     setBase(committed)

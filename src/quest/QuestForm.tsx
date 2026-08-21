@@ -5,7 +5,7 @@ import type { Quest } from '../project/types.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
 
 /**
- * Edits an existing quest's `name` and `note`. There is no Save button — the same contract
+ * Edits an existing quest's `name` and `note`. There is no Save button — the same contract
  * `DialogueForm` has, and for the same reason: persistence is autosave's job, and a Save
  * button would let the document and the folder disagree about what the user believes they
  * typed. Both fields are `useFieldDraft`s rather than per-keystroke dispatches, because a
@@ -14,7 +14,7 @@ import { useFieldDraft } from '../use-field-draft.ts'
  * Creation is therefore still not a draft this form holds. `QuestBoard` dispatches `quest/added`
  * with a placeholder name and opens this form on the result, which is also what lets #17
  * create a quest from a dialogue and land the caret in the same field. The card around this
- * form is keyed on the quest, so leaving the editor unmounts it — which is what flushes.
+ * form is keyed on the quest, so leaving the editor unmounts it — which is what flushes.
  */
 export function QuestForm({ quest, onDone }: { quest: Quest; onDone: () => void }): ReactElement {
   const fieldId = useId()
@@ -68,7 +68,7 @@ export function QuestForm({ quest, onDone }: { quest: Quest; onDone: () => void 
         />
       </div>
 
-      {/* Submit only closes the editor — leaving it flushes what is still in the fields. */}
+      {/* Submit only closes the editor — leaving it flushes what is still in the fields. */}
       <button type="submit" className="quest-board__button">
         Done
       </button>

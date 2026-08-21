@@ -46,7 +46,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
     dispatch({ kind: 'map/deleted', mapId: map.id })
     setMode({ kind: 'idle' })
 
-    // `discardMediaFile` never rejects — the document is already correct, so a file that
+    // `discardMediaFile` never rejects — the document is already correct, so a file that
     // resists deletion is dead weight in media/, not a broken project.
     await Promise.all(orphanedFiles.map(discardMediaFile))
   }
