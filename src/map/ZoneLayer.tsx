@@ -1,7 +1,9 @@
 import type { ReactElement } from 'react'
 import { memo, useMemo } from 'react'
 import type { GameMap, MapId, Point, Polygon, Zone, ZoneId } from '../project/types.ts'
-import { polygonCentroid } from './geometry.ts'
+import { canvasRectToMapLocal } from './canvas-layout.ts'
+import type { Rect } from './geometry.ts'
+import { polygonBounds, polygonCentroid, rectsOverlap } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 import { zoneHueStyle } from './zone-style.ts'
 
@@ -25,12 +27,15 @@ export const ZoneLayer = memo(function ZoneLayer({
   maps,
   zones,
   selectedId,
+  visibleRect,
 }: {
   /** Already carrying any in-progress map drag preview — see `MapScreen`. */
   maps: readonly GameMap[]
   /** Likewise carrying any in-progress zone drag preview. */
   zones: readonly Zone[]
   selectedId: ZoneId | null
+  /** Canvas space, on the same settle cycle `PinLayer` culls against — see there. */
+  visibleRect: Rect | null
 }): ReactElement {
   // Keyed on the zones alone, for the reason `PinLayer` gives: `maps` is a fresh array on
   // every frame of a map drag, and which map a zone is drawn on is written on the zone.
@@ -44,6 +49,7 @@ export const ZoneLayer = memo(function ZoneLayer({
           map={map}
           zones={byMap.get(map.id) ?? NO_ZONES}
           selectedId={selectedId}
+          visibleRect={visibleRect}
         />
       ))}
     </div>
@@ -61,11 +67,24 @@ const ZoneMapGroup = memo(function ZoneMapGroup({
   map,
   zones,
   selectedId,
+  visibleRect,
 }: {
   map: GameMap
   zones: readonly Zone[]
   selectedId: ZoneId | null
+  visibleRect: Rect | null
 }): ReactElement {
+  // Culled by bounding box rather than by polygon: a zone whose box misses the visible rect
+  // cannot have a vertex inside it, and the box is the cheap half of every other hit test
+  // here too. The selected zone stays, for the reason the selected pin does.
+  const shown = useMemo(() => {
+    if (visibleRect === null) return zones
+    const visible = canvasRectToMapLocal(map, visibleRect)
+    return zones.filter(
+      (zone) => rectsOverlap(visible, polygonBounds(zone.polygon)) || zone.id === selectedId,
+    )
+  }, [map, zones, selectedId, visibleRect])
+
   return (
     <div className="zone-layer__map" style={mapGroupStyle(map)}>
       <svg
@@ -74,7 +93,7 @@ const ZoneMapGroup = memo(function ZoneMapGroup({
         height={map.height}
         viewBox={`0 0 ${map.width} ${map.height}`}
       >
-        {zones.map((zone) => (
+        {shown.map((zone) => (
           <ZoneShape key={zone.id} zone={zone} selected={zone.id === selectedId} />
         ))}
       </svg>

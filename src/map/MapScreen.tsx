@@ -213,7 +213,12 @@ export function MapScreen({
           >
             {/* Before the pins in the DOM, and therefore beneath them: a zone is the ground a
                 dialogue was heard on, never something that can cover its pin. */}
-            <ZoneLayer maps={placedMaps} zones={drawnZones} selectedId={selectedZoneId} />
+            <ZoneLayer
+              maps={placedMaps}
+              zones={drawnZones}
+              selectedId={selectedZoneId}
+              visibleRect={visibleRect}
+            />
             <PinLayer
               maps={placedMaps}
               dialogues={project.dialogues}

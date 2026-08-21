@@ -80,7 +80,14 @@
 
 .map-canvas__image {
   display: block;
-  /* Nearest-neighbour past 1:1 keeps game-map pixel art crisp instead of smeared. */
+}
+
+/* Nearest-neighbour past 1:1 keeps game-map pixel art crisp instead of smeared. Below 1:1 it is
+   a downsample, where taking one pixel in twelve of a fitted 8192px map both loses detail and
+   shimmers as the canvas moves, so the browser's own filter wins there. `MapImage` decides
+   which side of 1:1 the map is on — CSS cannot, the scale being the product of two custom
+   properties on two different ancestors. */
+.map-canvas__image[data-crisp='true'] {
   image-rendering: pixelated;
 }
 

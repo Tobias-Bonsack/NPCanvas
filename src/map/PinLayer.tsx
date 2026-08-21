@@ -92,8 +92,10 @@ export const PinLayer = memo(function PinLayer({
    */
   questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
   /**
-   * Canvas space. Pins outside it keep their glyph instead of reading a thumbnail off disk.
-   * `null` until the container has been measured, which simply means no thumbnails yet.
+   * Canvas space, already grown by `CULL_MARGIN` — pins outside it are not rendered at all.
+   * It is republished only when the view settles, which is what keeps culling from costing a
+   * per-pin update mid-gesture. `null` until the container has been measured, which means
+   * every pin renders: "not measured yet" must not read as "nothing is visible".
    */
   visibleRect: Rect | null
 }): ReactElement {
@@ -267,11 +269,30 @@ const PinMapGroup = memo(function PinMapGroup({
   handlers: PinHandlers
 }): ReactElement {
   // Converted once per map, not once per pin: the pins are already in this space.
-  const visible = visibleRect === null ? null : canvasRectToMapLocal(map, visibleRect)
+  const visible = useMemo(
+    () => (visibleRect === null ? null : canvasRectToMapLocal(map, visibleRect)),
+    [map, visibleRect],
+  )
+
+  /**
+   * What is off screen is not in the DOM. A pin is a flex `<button>` with a border, a radius,
+   * a gradient, a counter-scale transform and a flag per quest, and every one of them is
+   * rasterised on every frame of a pan — see the measurement in `MapCanvas.css`.
+   *
+   * The selected pin is kept whatever the rect says: selection drives focus, and a focus
+   * effect on an element that only exists when the viewport happens to contain it would make
+   * `#/canvas?dialogue=<id>` land on nothing.
+   */
+  const shown = useMemo(() => {
+    if (visible === null) return dialogues
+    return dialogues.filter(
+      (dialogue) => rectContains(visible, dialogue.position) || dialogue.id === selectedId,
+    )
+  }, [dialogues, visible, selectedId])
 
   return (
     <div className="pin-layer__map" style={mapGroupStyle(map)}>
-      {dialogues.map((dialogue) => (
+      {shown.map((dialogue) => (
         <Pin
           key={dialogue.id}
           dialogue={dialogue}

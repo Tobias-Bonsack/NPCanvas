@@ -32,11 +32,12 @@ import {
 import type { DragGesture } from './drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Rect, Size } from './geometry.ts'
-import { rectToPolygon, translatePolygon } from './geometry.ts'
+import { inflate, rectBetween, rectToPolygon, translatePolygon } from './geometry.ts'
 import { MapImage } from './MapImage.tsx'
 import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
+import { normalizeDelta, wheelZoomFactor } from './wheel-zoom.ts'
 import { nextZoneName } from './zone-name.ts'
 import { nextZoneHue } from './zone-style.ts'
 import './MapCanvas.css'
@@ -353,10 +354,26 @@ export function MapCanvas({
     // check, so TypeScript refuses to narrow `element` inside it.
     const onWheel = (event: WheelEvent): void => {
       event.preventDefault()
-      // No gesture guard: a zoom during a pan or a zone draw is legitimate, and every gesture
-      // reads `viewportRef` rather than a snapshot precisely so this lands and stays.
-      const anchor = anchorOf(event, containerOrigin.current)
-      applyViewport(zoomAt(viewportRef.current, anchor, wheelZoomFactor(event)))
+      // No gesture guard: a zoom or a pan during a drag or a zone draw is legitimate, and every
+      // gesture reads `viewportRef` rather than a snapshot precisely so this lands and stays.
+      //
+      // Which gesture does which is `wheel-zoom.ts`'s doc comment: a trackpad pinch arrives
+      // with `ctrlKey` set, a two-finger scroll without it.
+      if (event.ctrlKey) {
+        const anchor = anchorOf(event, containerOrigin.current)
+        applyViewport(zoomAt(viewportRef.current, anchor, wheelZoomFactor(event)))
+        return
+      }
+
+      const delta = normalizeDelta(event)
+      const view = viewportRef.current
+      // Divided by the scale because the viewport origin is in world units: a scroll should
+      // move the content by the pixels the user asked for, whatever the canvas is zoomed to.
+      applyViewport({
+        x: view.x + delta.x / view.scale,
+        y: view.y + delta.y / view.scale,
+        scale: view.scale,
+      })
     }
 
     element.addEventListener('wheel', onWheel, { passive: false })
@@ -693,6 +710,9 @@ export function MapCanvas({
             onPointerMove={onMapPointerMove}
             onPointerUp={onMapPointerUp}
             onPointerCancel={onMapPointerCancel}
+            // Screen pixels per map pixel. A boolean rather than the number, so `MapImage`'s
+            // memo breaks on the 1:1 crossing rather than on every frame of a zoom.
+            crisp={viewport.scale * map.scale >= 1}
           />
         ))}
         {children}
@@ -760,28 +780,6 @@ function anchorOf(event: { clientX: number; clientY: number }, origin: Point): P
   return { x: event.clientX - origin.x, y: event.clientY - origin.y }
 }
 
-/** Normalized, so dragging up and to the left describes the same rectangle as down-right. */
-function rectBetween(a: Point, b: Point): Rect {
-  return {
-    x: Math.min(a.x, b.x),
-    y: Math.min(a.y, b.y),
-    width: Math.abs(a.x - b.x),
-    height: Math.abs(a.y - b.y),
-  }
-}
-
-/** Grows a rectangle by `margin` of its own size on every side. */
-function inflate(rect: Rect, margin: number): Rect {
-  const dx = rect.width * margin
-  const dy = rect.height * margin
-  return {
-    x: rect.x - dx,
-    y: rect.y - dy,
-    width: rect.width + dx * 2,
-    height: rect.height + dy * 2,
-  }
-}
-
 /**
  * `--map-zoom` is written here, once per frame, so that pins can counter-scale in CSS
  * against a single custom property instead of N per-element style updates. See #10.
@@ -833,25 +831,3 @@ function MapScaleControl({ map }: { map: GameMap }): ReactElement {
   )
 }
 
-/**
- * Exponential, so a notch zooms by the same *ratio* at every scale — linear steps crawl
- * when zoomed out and jump when zoomed in.
- */
-function wheelZoomFactor(event: WheelEvent): number {
-  // ctrlKey is a trackpad pinch, which Chromium reports as a wheel event with much smaller
-  // deltas than a mouse notch; without its own coefficient a pinch barely moves the scale.
-  const perUnit = event.ctrlKey ? 0.01 : 0.0015
-  return Math.exp(-normalizeDelta(event) * perUnit)
-}
-
-/** deltaMode 1 is lines and 2 is pages; both need converting before the delta means pixels. */
-function normalizeDelta(event: WheelEvent): number {
-  switch (event.deltaMode) {
-    case WheelEvent.DOM_DELTA_LINE:
-      return event.deltaY * 16
-    case WheelEvent.DOM_DELTA_PAGE:
-      return event.deltaY * 400
-    default:
-      return event.deltaY
-  }
-}

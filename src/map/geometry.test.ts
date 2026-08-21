@@ -1,15 +1,110 @@
 import { describe, expect, it } from 'vitest'
 import type { Polygon } from '../project/types.ts'
 import {
+  inflate,
   isSamePolygon,
   pointInPolygon,
   polygonArea,
   polygonBounds,
   polygonCentroid,
+  rectBetween,
   rectContains,
   rectToPolygon,
+  rectsOverlap,
   translatePolygon,
 } from './geometry.ts'
+
+describe('rectBetween', () => {
+  it('describes the same rectangle whichever corner the drag started from', () => {
+    const corners = [
+      [
+        { x: 10, y: 20 },
+        { x: 40, y: 60 },
+      ],
+      [
+        { x: 40, y: 60 },
+        { x: 10, y: 20 },
+      ],
+      [
+        { x: 40, y: 20 },
+        { x: 10, y: 60 },
+      ],
+      [
+        { x: 10, y: 60 },
+        { x: 40, y: 20 },
+      ],
+    ] as const
+    for (const [a, b] of corners) {
+      expect(rectBetween(a, b)).toEqual({ x: 10, y: 20, width: 30, height: 40 })
+    }
+  })
+
+  it('gives a click a rectangle of no size rather than a negative one', () => {
+    expect(rectBetween({ x: 5, y: 5 }, { x: 5, y: 5 })).toEqual({
+      x: 5,
+      y: 5,
+      width: 0,
+      height: 0,
+    })
+  })
+})
+
+describe('inflate', () => {
+  it('grows by a fraction of its own size, not by an absolute margin', () => {
+    // 10% of 100 is 10 a side; 10% of 20 is 2 a side. The same margin, two different distances.
+    expect(inflate({ x: 0, y: 0, width: 100, height: 20 }, 0.1)).toEqual({
+      x: -10,
+      y: -2,
+      width: 120,
+      height: 24,
+    })
+  })
+
+  it('keeps the centre where it was', () => {
+    const rect = { x: 30, y: 70, width: 40, height: 10 }
+    const grown = inflate(rect, 0.25)
+    expect(grown.x + grown.width / 2).toBeCloseTo(rect.x + rect.width / 2, 10)
+    expect(grown.y + grown.height / 2).toBeCloseTo(rect.y + rect.height / 2, 10)
+  })
+
+  it('is the identity at a margin of zero', () => {
+    const rect = { x: 1, y: 2, width: 3, height: 4 }
+    expect(inflate(rect, 0)).toEqual(rect)
+  })
+
+  it('shrinks on a negative margin, which is the same formula and not a special case', () => {
+    expect(inflate({ x: 0, y: 0, width: 100, height: 100 }, -0.1)).toEqual({
+      x: 10,
+      y: 10,
+      width: 80,
+      height: 80,
+    })
+  })
+})
+
+describe('rectsOverlap', () => {
+  const middle = { x: 10, y: 10, width: 20, height: 20 }
+
+  it('is true for rectangles that share area, in either argument order', () => {
+    const other = { x: 20, y: 20, width: 20, height: 20 }
+    expect(rectsOverlap(middle, other)).toBe(true)
+    expect(rectsOverlap(other, middle)).toBe(true)
+  })
+
+  it('counts a shared edge and a shared corner as overlapping', () => {
+    expect(rectsOverlap(middle, { x: 30, y: 10, width: 5, height: 5 })).toBe(true)
+    expect(rectsOverlap(middle, { x: 30, y: 30, width: 5, height: 5 })).toBe(true)
+  })
+
+  it('is false when they miss on either axis alone', () => {
+    expect(rectsOverlap(middle, { x: 31, y: 10, width: 5, height: 5 })).toBe(false)
+    expect(rectsOverlap(middle, { x: 10, y: 31, width: 5, height: 5 })).toBe(false)
+  })
+
+  it('is true for a rectangle wholly inside another', () => {
+    expect(rectsOverlap(middle, { x: 15, y: 15, width: 1, height: 1 })).toBe(true)
+  })
+})
 
 describe('rectContains', () => {
   const rect = { x: 10, y: 20, width: 30, height: 40 }

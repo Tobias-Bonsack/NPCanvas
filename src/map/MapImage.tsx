@@ -28,6 +28,7 @@ export const MapImage = memo(function MapImage({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  crisp,
 }: {
   map: GameMap
   selected: boolean
@@ -36,6 +37,13 @@ export const MapImage = memo(function MapImage({
   onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void
   onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void
+  /**
+   * Whether the map is drawn at or above 1:1. `image-rendering: pixelated` is the right filter
+   * only there — it is what keeps game-map pixel art from smearing when magnified. Below 1:1 it
+   * is a nearest-neighbour *downsample*, which drops whole rows of a fitted map and shimmers as
+   * the canvas moves; the browser's own filter is the better one for that.
+   */
+  crisp: boolean
 }): ReactElement {
   const media = useMediaUrl(map.file)
 
@@ -58,6 +66,10 @@ export const MapImage = memo(function MapImage({
           width={map.width}
           height={map.height}
           draggable={false}
+          data-crisp={crisp ? 'true' : undefined}
+          // A map image is millions of pixels; decoding it on the main thread blocks the
+          // frame that was going to draw the rest of the canvas.
+          decoding="async"
         />
       ) : (
         <div

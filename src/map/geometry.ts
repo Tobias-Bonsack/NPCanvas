@@ -105,6 +105,46 @@ export function rectToPolygon(rect: Rect): Polygon {
   ]
 }
 
+/** Normalized, so dragging up and to the left describes the same rectangle as down-right. */
+export function rectBetween(a: Point, b: Point): Rect {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    width: Math.abs(a.x - b.x),
+    height: Math.abs(a.y - b.y),
+  }
+}
+
+/**
+ * Grows a rectangle by `margin` of **its own size** on every side, not by `margin` units.
+ * A viewport twice as wide therefore grows twice as much, which is what the culling margin
+ * wants: the overscan is a fraction of what is on screen, at any zoom.
+ */
+export function inflate(rect: Rect, margin: number): Rect {
+  const dx = rect.width * margin
+  const dy = rect.height * margin
+  return {
+    x: rect.x - dx,
+    y: rect.y - dy,
+    width: rect.width + dx * 2,
+    height: rect.height + dy * 2,
+  }
+}
+
+/**
+ * Whether two rectangles share any area, edges and corners counting as shared — the same
+ * boundary-is-inside rule `rectContains` and `pointInPolygon` follow, so a zone exactly
+ * touching the edge of the visible rect is drawn rather than culled.
+ */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  return (
+    a.x <= b.x + b.width &&
+    b.x <= a.x + a.width &&
+    a.y <= b.y + b.height &&
+    b.y <= a.y + a.height
+  )
+}
+
 /**
  * The polygon shifted by `delta`, in its own space. Destructured rather than `.map()`ed
  * because `Polygon` guarantees three vertices and `map` would widen it back to `Point[]`,
