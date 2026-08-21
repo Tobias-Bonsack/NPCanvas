@@ -32,25 +32,52 @@ export const ZoneLayer = memo(function ZoneLayer({
   zones: readonly Zone[]
   selectedId: ZoneId | null
 }): ReactElement {
-  // Rebuilding this per render would hand every group a fresh array and undo the memo above.
-  const byMap = useMemo(() => groupByMap(maps, zones), [maps, zones])
+  // Keyed on the zones alone, for the reason `PinLayer` gives: `maps` is a fresh array on
+  // every frame of a map drag, and which map a zone is drawn on is written on the zone.
+  const byMap = useMemo(() => groupByMap(zones), [zones])
 
   return (
     <div className="zone-layer">
       {maps.map((map) => (
-        <div key={map.id} className="zone-layer__map" style={mapGroupStyle(map)}>
-          <svg
-            className="zone-layer__svg"
-            width={map.width}
-            height={map.height}
-            viewBox={`0 0 ${map.width} ${map.height}`}
-          >
-            {(byMap.get(map.id) ?? []).map((zone) => (
-              <ZoneShape key={zone.id} zone={zone} selected={zone.id === selectedId} />
-            ))}
-          </svg>
-        </div>
+        <ZoneMapGroup
+          key={map.id}
+          map={map}
+          zones={byMap.get(map.id) ?? NO_ZONES}
+          selectedId={selectedId}
+        />
       ))}
+    </div>
+  )
+})
+
+/** One shared empty array, so a map with no zones is handed the same reference every render. */
+const NO_ZONES: readonly Zone[] = []
+
+/**
+ * One map's zones. Memoized on the map object, so a map drag re-renders the dragged map's
+ * group alone — the mirror of `PinMapGroup`, and for the same reason.
+ */
+const ZoneMapGroup = memo(function ZoneMapGroup({
+  map,
+  zones,
+  selectedId,
+}: {
+  map: GameMap
+  zones: readonly Zone[]
+  selectedId: ZoneId | null
+}): ReactElement {
+  return (
+    <div className="zone-layer__map" style={mapGroupStyle(map)}>
+      <svg
+        className="zone-layer__svg"
+        width={map.width}
+        height={map.height}
+        viewBox={`0 0 ${map.width} ${map.height}`}
+      >
+        {zones.map((zone) => (
+          <ZoneShape key={zone.id} zone={zone} selected={zone.id === selectedId} />
+        ))}
+      </svg>
     </div>
   )
 })
@@ -101,16 +128,16 @@ function pointsAttribute(polygon: Polygon): string {
 }
 
 /**
- * Zones bucketed by map, in one pass. A zone naming a map that is not in `maps` belongs to no
- * group and is simply not rendered — the cascade in `map/deleted` means that can only be a
- * transient mid-dispatch state, never a document a user sees.
+ * Zones bucketed by map, in one pass. A zone naming a map the project does not have lands in
+ * a bucket nothing renders — the cascade in `map/deleted` means that can only be a transient
+ * mid-dispatch state, never a document a user sees.
  */
-function groupByMap(
-  maps: readonly GameMap[],
-  zones: readonly Zone[],
-): ReadonlyMap<MapId, Zone[]> {
+function groupByMap(zones: readonly Zone[]): ReadonlyMap<MapId, Zone[]> {
   const byMap = new Map<MapId, Zone[]>()
-  for (const map of maps) byMap.set(map.id, [])
-  for (const zone of zones) byMap.get(zone.mapId)?.push(zone)
+  for (const zone of zones) {
+    const bucket = byMap.get(zone.mapId)
+    if (bucket === undefined) byMap.set(zone.mapId, [zone])
+    else bucket.push(zone)
+  }
   return byMap
 }

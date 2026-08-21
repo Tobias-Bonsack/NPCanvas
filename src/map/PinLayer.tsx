@@ -24,6 +24,24 @@ import type { Rect } from './geometry.ts'
 import { rectContains } from './geometry.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 
+/**
+ * Everything a pin does back to the layer. One object rather than seven props, because they
+ * are created once and change together (never), so one reference comparison stands in for
+ * seven and both `PinMapGroup` and `Pin` keep a readable prop list.
+ */
+type PinHandlers = {
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
+  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onRequestDelete: (dialogue: Dialogue) => void
+  onCancelDelete: () => void
+  onConfirmDelete: (dialogue: Dialogue) => void
+}
+
+/** The live position of the pin being dragged, or `null` when none is. */
+type PinDrag = { id: DialogueId; position: Point }
+
 /** What a pin drag carries; `DragGesture` owns the pointer bookkeeping. */
 type PinDragGesture = {
   id: DialogueId
@@ -82,16 +100,18 @@ export const PinLayer = memo(function PinLayer({
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
   const drag = useRef<DragGesture<PinDragGesture> | null>(null)
-  const [dragged, setDragged] = useState<{ id: DialogueId; position: Point } | null>(null)
+  const [dragged, setDragged] = useState<PinDrag | null>(null)
   const [pendingDelete, setPendingDelete] = useState<DialogueId | null>(null)
 
   // A confirmation belongs to the pin that was selected when it opened; leaving that pin
   // must not leave a stray prompt hanging over the map.
   useEffect(() => setPendingDelete(null), [selectedId])
 
-  // Rebuilding this per render would hand every group a fresh array and undo the memo above,
-  // which is the whole reason panning does not touch this subtree.
-  const byMap = useMemo(() => groupByMap(maps, dialogues), [maps, dialogues])
+  // Keyed on the dialogues alone, deliberately: `maps` is a fresh array on every frame of a
+  // map drag, and bucketing against it would rebuild every group per frame because one map
+  // moved. Which map a dialogue belongs to is written on the dialogue, so the maps are not
+  // needed to answer it — a bucket for a map that no longer exists is simply never read.
+  const byMap = useMemo(() => groupByMap(dialogues), [dialogues])
 
   // Every handler handed to a pin is stable for the life of the layer, which is what makes
   // `memo(Pin)` hold: one fresh arrow per render would fail the prop comparison whatever else
@@ -178,39 +198,94 @@ export const PinLayer = memo(function PinLayer({
     for (const medium of dialogue.media) await discardMediaFile(medium.file.fileName)
   }
 
+  const handlers = useMemo<PinHandlers>(
+    () => ({
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onRequestDelete,
+      onCancelDelete,
+      onConfirmDelete,
+    }),
+    [
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel,
+      onRequestDelete,
+      onCancelDelete,
+      onConfirmDelete,
+    ],
+  )
+
   return (
     <div className="pin-layer">
-      {maps.map((map) => {
-        // Converted once per map, not once per pin: the pins are already in this space.
-        const visible = visibleRect === null ? null : canvasRectToMapLocal(map, visibleRect)
-        return (
-          <div key={map.id} className="pin-layer__map" style={mapGroupStyle(map)}>
-            {(byMap.get(map.id) ?? []).map((dialogue) => (
-              <Pin
-                key={dialogue.id}
-                dialogue={dialogue}
-                position={
-                  dragged !== null && dragged.id === dialogue.id
-                    ? dragged.position
-                    : dialogue.position
-                }
-                onScreen={visible !== null && rectContains(visible, dialogue.position)}
-                dimmed={highlighted !== null && !highlighted.has(dialogue.id)}
-                quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
-                selected={dialogue.id === selectedId}
-                confirmingDelete={pendingDelete === dialogue.id}
-                onPointerDown={onPointerDown}
-                onPointerMove={onPointerMove}
-                onPointerUp={onPointerUp}
-                onPointerCancel={onPointerCancel}
-                onRequestDelete={onRequestDelete}
-                onCancelDelete={onCancelDelete}
-                onConfirmDelete={onConfirmDelete}
-              />
-            ))}
-          </div>
-        )
-      })}
+      {maps.map((map) => (
+        <PinMapGroup
+          key={map.id}
+          map={map}
+          dialogues={byMap.get(map.id) ?? NO_DIALOGUES}
+          selectedId={selectedId}
+          highlighted={highlighted}
+          questsByDialogue={questsByDialogue}
+          visibleRect={visibleRect}
+          dragged={dragged}
+          pendingDelete={pendingDelete}
+          handlers={handlers}
+        />
+      ))}
+    </div>
+  )
+})
+
+/**
+ * One map's pins, in that map's own coordinates. Memoized on the map object, which is what
+ * makes a map drag cost one group: `MapScreen` hands down a fresh `maps` array on every frame
+ * of one, but only the dragged map's object inside it is new, so every other group bails.
+ */
+const PinMapGroup = memo(function PinMapGroup({
+  map,
+  dialogues,
+  selectedId,
+  highlighted,
+  questsByDialogue,
+  visibleRect,
+  dragged,
+  pendingDelete,
+  handlers,
+}: {
+  map: GameMap
+  /** This map's dialogues, in document order. */
+  dialogues: readonly Dialogue[]
+  selectedId: DialogueId | null
+  highlighted: ReadonlySet<DialogueId> | null
+  questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
+  visibleRect: Rect | null
+  dragged: PinDrag | null
+  pendingDelete: DialogueId | null
+  handlers: PinHandlers
+}): ReactElement {
+  // Converted once per map, not once per pin: the pins are already in this space.
+  const visible = visibleRect === null ? null : canvasRectToMapLocal(map, visibleRect)
+
+  return (
+    <div className="pin-layer__map" style={mapGroupStyle(map)}>
+      {dialogues.map((dialogue) => (
+        <Pin
+          key={dialogue.id}
+          dialogue={dialogue}
+          position={
+            dragged !== null && dragged.id === dialogue.id ? dragged.position : dialogue.position
+          }
+          onScreen={visible !== null && rectContains(visible, dialogue.position)}
+          dimmed={highlighted !== null && !highlighted.has(dialogue.id)}
+          quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
+          selected={dialogue.id === selectedId}
+          confirmingDelete={pendingDelete === dialogue.id}
+          handlers={handlers}
+        />
+      ))}
     </div>
   )
 })
@@ -227,18 +302,21 @@ function select(id: DialogueId): void {
 /** One shared empty array, so a pin in no quest is handed the same reference every render. */
 const NO_QUESTS: readonly Quest[] = []
 
+/** Likewise for a map that carries no dialogue yet. */
+const NO_DIALOGUES: readonly Dialogue[] = []
+
 /**
- * Dialogues bucketed by map, in one pass. A dialogue naming a map that is not in `maps`
- * belongs to no group and is simply not rendered — the cascade in `map/deleted` means that
- * can only be a transient mid-dispatch state, never a document a user sees.
+ * Dialogues bucketed by map, in one pass. A dialogue naming a map the project does not have
+ * lands in a bucket nothing renders — the cascade in `map/deleted` means that can only be a
+ * transient mid-dispatch state, never a document a user sees.
  */
-function groupByMap(
-  maps: readonly GameMap[],
-  dialogues: readonly Dialogue[],
-): ReadonlyMap<MapId, Dialogue[]> {
+function groupByMap(dialogues: readonly Dialogue[]): ReadonlyMap<MapId, Dialogue[]> {
   const byMap = new Map<MapId, Dialogue[]>()
-  for (const map of maps) byMap.set(map.id, [])
-  for (const dialogue of dialogues) byMap.get(dialogue.mapId)?.push(dialogue)
+  for (const dialogue of dialogues) {
+    const bucket = byMap.get(dialogue.mapId)
+    if (bucket === undefined) byMap.set(dialogue.mapId, [dialogue])
+    else bucket.push(dialogue)
+  }
   return byMap
 }
 
@@ -256,13 +334,7 @@ const Pin = memo(function Pin({
   quests,
   selected,
   confirmingDelete,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-  onRequestDelete,
-  onCancelDelete,
-  onConfirmDelete,
+  handlers,
 }: {
   dialogue: Dialogue
   position: Point
@@ -275,13 +347,7 @@ const Pin = memo(function Pin({
   quests: readonly Quest[]
   selected: boolean
   confirmingDelete: boolean
-  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue) => void
-  onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onRequestDelete: (dialogue: Dialogue) => void
-  onCancelDelete: () => void
-  onConfirmDelete: (dialogue: Dialogue) => void
+  handlers: PinHandlers
 }): ReactElement {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const name = pinName(dialogue)
@@ -311,15 +377,15 @@ const Pin = memo(function Pin({
         aria-current={selected ? 'true' : undefined}
         style={{ background: relevancePinBackground(dialogue.relevance) }}
         title={pinTitle(name, quests)}
-        onPointerDown={(event) => onPointerDown(event, dialogue)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
+        onPointerDown={(event) => handlers.onPointerDown(event, dialogue)}
+        onPointerMove={handlers.onPointerMove}
+        onPointerUp={handlers.onPointerUp}
+        onPointerCancel={handlers.onPointerCancel}
         onKeyDown={(event) => {
           if (event.key !== 'Delete' && event.key !== 'Backspace') return
           // Backspace is "go back" in a browser until something claims it.
           event.preventDefault()
-          onRequestDelete(dialogue)
+          handlers.onRequestDelete(dialogue)
         }}
       >
         {/* The face is transparent, so the relevance bands behind it run the full width of
@@ -357,7 +423,7 @@ const Pin = memo(function Pin({
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return
             event.stopPropagation()
-            onCancelDelete()
+            handlers.onCancelDelete()
           }}
         >
           <span>Delete this dialogue?</span>
@@ -365,11 +431,11 @@ const Pin = memo(function Pin({
             type="button"
             className="pin__button pin__button--danger"
             autoFocus
-            onClick={() => onConfirmDelete(dialogue)}
+            onClick={() => handlers.onConfirmDelete(dialogue)}
           >
             Delete
           </button>
-          <button type="button" className="pin__button" onClick={onCancelDelete}>
+          <button type="button" className="pin__button" onClick={handlers.onCancelDelete}>
             Cancel
           </button>
         </div>

@@ -42,6 +42,87 @@ export function indexDialoguesByZone(
 }
 
 /**
+ * The index again, with one zone's membership re-tested and nothing else touched.
+ *
+ * A zone drag rebuilds the index on every frame, and a full build is O(dialogues x zones) with
+ * a ray cast per candidate. Only one polygon moved, so only one question changed: is this
+ * dialogue inside *that* zone now. Every other zone's answer for that dialogue is the one the
+ * previous index already holds, and dialogues on other maps could never have been affected.
+ *
+ * The result is identical to `indexDialoguesByZone(dialogues, zones)` for the same input, which
+ * `zone-index.test.ts` pins — an optimisation that may silently disagree with the definition is
+ * worse than the cost it saves. It returns `previous` itself when no membership changed, so a
+ * zone dragged through empty space costs the callers downstream nothing at all.
+ *
+ * Falls back to a full build when `previous` cannot be trusted to describe the same input: a
+ * zone id that names nothing, or a dialogue the previous index never saw.
+ */
+export function reindexMovedZone(
+  previous: ReadonlyMap<DialogueId, ZoneId[]>,
+  dialogues: readonly Dialogue[],
+  zones: readonly Zone[],
+  movedId: ZoneId,
+): ReadonlyMap<DialogueId, ZoneId[]> {
+  const moved = zones.find((zone) => zone.id === movedId)
+  if (moved === undefined) return indexDialoguesByZone(dialogues, zones)
+
+  const bounds = polygonBounds(moved.polygon)
+  // Rank by ascending area, so an id that has to go back into a list lands where a full build
+  // would have put it. Computed from `zones` rather than carried on the index, because the
+  // ordering rule lives in one place and this has to obey the same one.
+  const rank = areaRank(zones)
+
+  const next = new Map<DialogueId, ZoneId[]>()
+  let changed = false
+
+  for (const dialogue of dialogues) {
+    const before = previous.get(dialogue.id)
+    if (before === undefined) return indexDialoguesByZone(dialogues, zones)
+
+    if (dialogue.mapId !== moved.mapId) {
+      next.set(dialogue.id, before)
+      continue
+    }
+
+    const inside =
+      rectContains(bounds, dialogue.position) && pointInPolygon(dialogue.position, moved.polygon)
+    const was = before.includes(movedId)
+    if (inside === was) {
+      next.set(dialogue.id, before)
+      continue
+    }
+
+    changed = true
+    next.set(dialogue.id, inside ? withZone(before, movedId, rank) : without(before, movedId))
+  }
+
+  return changed ? next : previous
+}
+
+/** Each zone's position in ascending-area order — the same order a full build sorts into. */
+function areaRank(zones: readonly Zone[]): ReadonlyMap<ZoneId, number> {
+  const byArea = [...zones].sort((a, b) => polygonArea(a.polygon) - polygonArea(b.polygon))
+  return new Map(byArea.map((zone, index) => [zone.id, index]))
+}
+
+/** The list with `zoneId` inserted where its area puts it, leaving the rest in place. */
+function withZone(
+  zoneIds: readonly ZoneId[],
+  zoneId: ZoneId,
+  rank: ReadonlyMap<ZoneId, number>,
+): ZoneId[] {
+  const mine = rank.get(zoneId) ?? 0
+  const at = zoneIds.findIndex((other) => (rank.get(other) ?? 0) > mine)
+  const next = [...zoneIds]
+  next.splice(at === -1 ? next.length : at, 0, zoneId)
+  return next
+}
+
+function without(zoneIds: readonly ZoneId[], zoneId: ZoneId): ZoneId[] {
+  return zoneIds.filter((other) => other !== zoneId)
+}
+
+/**
  * How many dialogues each zone contains. A dialogue inside two overlapping zones counts for
  * both — "dialogues in this zone" is the question a count answers, not "dialogues this zone
  * owns", which nothing does.

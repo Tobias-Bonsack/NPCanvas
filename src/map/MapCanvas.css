@@ -27,8 +27,9 @@
   cursor: crosshair;
 }
 
-/* Promotes the world to its own composited layer, so a pan is a compositor translate rather
-   than a re-raster of everything in it. Measured with 500 pins on one map, half of them
+/* Promotes the world to its own composited layer, so a gesture that moves what is inside it
+   — a pan, a map drag, a zone drag — is a compositor job rather than a re-raster of everything.
+   Named for the pan because that is the gesture it was measured on. Measured with 500 pins on one map, half of them
    showing thumbnails: ~27 ms per frame without it, a locked 16.7 ms with. The pins are the
    cost — React does not re-render them while panning (PinLayer is memo'd and
    viewport-independent), but re-rasterising 500 rounded, bordered boxes each frame is real

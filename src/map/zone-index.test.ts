@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId, asZoneId } from '../project/ids.ts'
 import type { Dialogue, MapId, Point, Zone } from '../project/types.ts'
 import type { Rect } from './geometry.ts'
-import { rectToPolygon } from './geometry.ts'
-import { countDialoguesByZone, dialoguesInZone, indexDialoguesByZone } from './zone-index.ts'
+import { rectToPolygon, translatePolygon } from './geometry.ts'
+import {
+  countDialoguesByZone,
+  dialoguesInZone,
+  indexDialoguesByZone,
+  reindexMovedZone,
+} from './zone-index.ts'
 
 const HARBOUR = asMapId('harbour')
 const CAVES = asMapId('caves')
@@ -77,6 +82,80 @@ describe('indexDialoguesByZone', () => {
     const pin = dialogue('d1', HARBOUR, { x: 20, y: 20 })
     const moved: Zone = { ...SHOP, polygon: rectToPolygon({ x: 60, y: 60, width: 20, height: 20 }) }
     expect(indexDialoguesByZone([pin], [TOWN, moved]).get(pin.id)).toEqual([TOWN.id])
+  })
+})
+
+/**
+ * The incremental path exists only to be indistinguishable from the definition it replaces, so
+ * every case here compares it against a full build of the same input rather than against a
+ * hand-written expectation.
+ */
+describe('reindexMovedZone', () => {
+  const CAVE = zone('cave', CAVES, { x: 0, y: 0, width: 100, height: 100 })
+  const ZONES = [TOWN, SHOP, CAVE]
+  const DIALOGUES = [
+    dialogue('in-shop', HARBOUR, { x: 20, y: 20 }),
+    dialogue('in-town', HARBOUR, { x: 90, y: 90 }),
+    dialogue('outside', HARBOUR, { x: 500, y: 500 }),
+    dialogue('in-cave', CAVES, { x: 50, y: 50 }),
+  ]
+
+  function shopAt(by: Point): Zone[] {
+    return ZONES.map((each) =>
+      each.id === SHOP.id ? { ...SHOP, polygon: translatePolygon(SHOP.polygon, by) } : each,
+    )
+  }
+
+  it('agrees with a full rebuild wherever the zone is dragged to', () => {
+    const previous = indexDialoguesByZone(DIALOGUES, ZONES)
+    const offsets: Point[] = [
+      { x: 0, y: 0 },
+      { x: 5, y: 5 },
+      { x: 70, y: 70 },
+      { x: -40, y: -40 },
+      { x: 480, y: 480 },
+      { x: 9000, y: 9000 },
+    ]
+    for (const by of offsets) {
+      const drawn = shopAt(by)
+      expect([...reindexMovedZone(previous, DIALOGUES, drawn, SHOP.id)]).toEqual([
+        ...indexDialoguesByZone(DIALOGUES, drawn),
+      ])
+    }
+  })
+
+  it('re-inserts the zone where its area puts it, not wherever it left from', () => {
+    const previous = indexDialoguesByZone(DIALOGUES, ZONES)
+    // Out of the pin, then back onto it: the small zone has to come first again.
+    const away = reindexMovedZone(previous, DIALOGUES, shopAt({ x: 60, y: 60 }), SHOP.id)
+    expect(away.get(DIALOGUES[0].id)).toEqual([TOWN.id])
+    const back = reindexMovedZone(away, DIALOGUES, shopAt({ x: 0, y: 0 }), SHOP.id)
+    expect(back.get(DIALOGUES[0].id)).toEqual([SHOP.id, TOWN.id])
+  })
+
+  it('returns the previous index itself when the move changed no membership', () => {
+    const previous = indexDialoguesByZone(DIALOGUES, ZONES)
+    // A pixel of travel, with every pin far from the edge it would cross.
+    expect(reindexMovedZone(previous, DIALOGUES, shopAt({ x: 1, y: 1 }), SHOP.id)).toBe(previous)
+  })
+
+  it('leaves the entries of dialogues on other maps untouched, by reference', () => {
+    const previous = indexDialoguesByZone(DIALOGUES, ZONES)
+    const next = reindexMovedZone(previous, DIALOGUES, shopAt({ x: 60, y: 60 }), SHOP.id)
+    expect(next.get(DIALOGUES[3].id)).toBe(previous.get(DIALOGUES[3].id))
+  })
+
+  it('falls back to a full build when the moved id names no zone', () => {
+    expect([...reindexMovedZone(new Map(), DIALOGUES, ZONES, asZoneId('deleted'))]).toEqual([
+      ...indexDialoguesByZone(DIALOGUES, ZONES),
+    ])
+  })
+
+  it('falls back to a full build when the previous index never saw a dialogue', () => {
+    const stale = indexDialoguesByZone([DIALOGUES[0]], ZONES)
+    expect([...reindexMovedZone(stale, DIALOGUES, ZONES, SHOP.id)]).toEqual([
+      ...indexDialoguesByZone(DIALOGUES, ZONES),
+    ])
   })
 })
 

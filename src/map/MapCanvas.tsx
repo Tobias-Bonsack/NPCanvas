@@ -215,8 +215,13 @@ export function MapCanvas({
    * being restyled per frame.
    */
   const containerOrigin = useRef<Point>({ x: 0, y: 0 })
-  // Drives `will-change` on the world element for the duration of a pan only — see the
-  // comment on `.map-canvas[data-panning]`. Two renders per gesture, not one per frame.
+  // Drives `will-change` on the world element for the duration of a gesture that repaints
+  // the world every frame — a pan, a map drag, a zone drag — and for no longer. See the comment
+  // on `.map-canvas[data-panning]`. Two renders per gesture, not one per frame.
+  //
+  // The map drag needs saying explicitly: it `stopPropagation()`s so the canvas underneath does
+  // not also start panning, which means the container's own pointerdown never runs and the
+  // promotion would otherwise be off during the one gesture that repaints the most.
   const [panning, setPanning] = useState(false)
   // A gesture that refused to commit, saying why. Nonced rather than compared by text, so the
   // same rejection twice restarts the timer instead of expiring on the first one's clock.
@@ -430,6 +435,7 @@ export function MapCanvas({
     if (cancelDrag(zone, event)) {
       setDraft(null)
       onZoneDrag(null)
+      setPanning(false)
     }
   }
 
@@ -467,6 +473,9 @@ export function MapCanvas({
     // appears once the press is a drag rather than flashing under a click that wobbled.
     const move = moveDrag(zone, event)
     if (move === null) return
+    // Guarded on the transition, as the pan is: both variants redraw the world every frame,
+    // the draft rectangle as much as the zone being moved.
+    if (move.started) setPanning(true)
     const gesture = move.data
     // Both variants want the pointer in the gesture's map-local space, through the viewport
     // as it is now — a delta divided by a scale snapshotted at pointerdown would jump the
@@ -494,6 +503,7 @@ export function MapCanvas({
   function onZonePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
     const end = commitDrag(zone, event)
     if (end === null) return
+    setPanning(false)
     const gesture = end.data
 
     if (gesture.kind === 'move') {
@@ -566,6 +576,9 @@ export function MapCanvas({
   ): void {
     const move = moveDrag(mapDrag, event)
     if (move === null) return
+    // Guarded on the transition, as the pan is: a press that only selects a map must not
+    // promote a layer, and setting it every move would re-render on every frame.
+    if (move.started) setPanning(true)
 
     const at = screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current))
     const origin: Point = {
@@ -586,6 +599,7 @@ export function MapCanvas({
 
     const final = end.data.latest
     onMapDrag(null)
+    setPanning(false)
     if (end.moved && final !== null) {
       dispatch({ kind: 'map/moved', mapId: end.data.id, origin: final })
     }
@@ -595,7 +609,10 @@ export function MapCanvas({
   const onMapPointerCancel = useCallback(function onMapPointerCancel(
     event: ReactPointerEvent<HTMLDivElement>,
   ): void {
-    if (cancelDrag(mapDrag, event)) onMapDrag(null)
+    if (cancelDrag(mapDrag, event)) {
+      onMapDrag(null)
+      setPanning(false)
+    }
   }, [onMapDrag])
 
   /** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures above. */

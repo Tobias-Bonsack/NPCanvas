@@ -22,7 +22,12 @@ import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import { ZoneLayer } from './ZoneLayer.tsx'
 import { ZoneList } from './ZoneList.tsx'
-import { countDialoguesByZone, dialoguesInZone, indexDialoguesByZone } from './zone-index.ts'
+import {
+  countDialoguesByZone,
+  dialoguesInZone,
+  indexDialoguesByZone,
+  reindexMovedZone,
+} from './zone-index.ts'
 import './MapScreen.css'
 
 type CanvasRoute = Extract<Route, { kind: 'canvas' }>
@@ -86,12 +91,23 @@ export function MapScreen({
     navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
   }, [dialogueId, dialogues])
 
-  // The derived locations, computed once per state change rather than per render — and keyed
-  // on the *previewed* zones, so a zone being dragged reclassifies its dialogues live, with
-  // no write to any of them. This is the whole payoff of never storing a zoneId.
+  // The derived locations, computed once per state change rather than per render. Built from
+  // the document's own zones, so a zone drag leaves it untouched for the whole gesture.
+  const documentIndex = useMemo(
+    () => indexDialoguesByZone(dialogues, project.zones),
+    [dialogues, project.zones],
+  )
+
+  // A zone being dragged still reclassifies its dialogues live, with no write to any of them —
+  // that is the whole payoff of never storing a zoneId. What changed is the cost: one zone's
+  // membership re-tested against its own map's dialogues, applied to the index above, instead
+  // of an O(dialogues x zones) rebuild on every frame.
   const zoneIndex = useMemo(
-    () => indexDialoguesByZone(dialogues, drawnZones),
-    [dialogues, drawnZones],
+    () =>
+      zoneDrag === null
+        ? documentIndex
+        : reindexMovedZone(documentIndex, dialogues, drawnZones, zoneDrag.id),
+    [documentIndex, dialogues, drawnZones, zoneDrag],
   )
   const zoneCounts = useMemo(() => countDialoguesByZone(zoneIndex), [zoneIndex])
 
