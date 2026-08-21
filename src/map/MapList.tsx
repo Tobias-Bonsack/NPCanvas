@@ -4,7 +4,7 @@ import { navigate } from '../app/route.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
-import { deleteMediaFile } from '../storage/project-directory.ts'
+import { discardMediaFile } from '../media/discard-media.ts'
 import { MapImportButton } from './MapImportButton.tsx'
 import type { RowTrigger } from './row-focus.ts'
 import { useRowFocus } from './row-focus.ts'
@@ -46,12 +46,9 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
     dispatch({ kind: 'map/deleted', mapId: map.id })
     setMode({ kind: 'idle' })
 
-    // The document is already correct, so a file that resists deletion is dead weight in
-    // media/, not a broken project. Reported, not surfaced as app state.
-    const results = await Promise.allSettled(orphanedFiles.map(deleteMediaFile))
-    for (const result of results) {
-      if (result.status === 'rejected') console.error('Could not delete media file', result.reason)
-    }
+    // `discardMediaFile` never rejects — the document is already correct, so a file that
+    // resists deletion is dead weight in media/, not a broken project.
+    await Promise.all(orphanedFiles.map(discardMediaFile))
   }
 
   return (
@@ -73,7 +70,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
           </li>
         ))}
       </ul>
-      <MapImportButton label="Import map" maps={project.maps} />
+      <MapImportButton label="Import map" />
     </div>
   )
 }

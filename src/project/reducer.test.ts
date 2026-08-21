@@ -779,6 +779,19 @@ describe('reduce: dialogue field edits', () => {
     ).toBe(state)
   })
 
+  // The media actions are the ones dispatched *after* an await: the file is written, and only
+  // then does the reducer see the dialogue. A pin deleted in between makes every one of these a
+  // no-op, which is what the import path has to detect to clean up the file it just wrote.
+  it('ignores every media action naming a dialogue that does not exist', () => {
+    const state = ready(projectWithMedia(['a']))
+    const gone = asDialogueId('nope')
+    const actions: readonly Action[] = [
+      { kind: 'dialogue/media-added', dialogueId: gone, media: medium('b') },
+      { kind: 'dialogue/media-removed', dialogueId: gone, mediaId: asMediaId('a') },
+      { kind: 'dialogue/media-reordered', dialogueId: gone, mediaId: asMediaId('a'), toIndex: 0 },
+    ]
+    for (const action of actions) expect(reduce(state, action)).toBe(state)
+  })
   function projectWithMedia(mediaIds: string[]): ProjectFile {
     const project = twoMapProject()
     return {

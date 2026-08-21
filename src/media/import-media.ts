@@ -6,7 +6,6 @@ import type {
   GameMap,
   MediaFile,
   MediaId,
-  Point,
 } from '../project/types.ts'
 import { writeMediaFile } from '../storage/project-directory.ts'
 import { invalidateMediaFile } from './media-url-cache.ts'
@@ -19,7 +18,7 @@ import { invalidateMediaFile } from './media-url-cache.ts'
  * The value type carries `| undefined` because `noUncheckedIndexedAccess` is off — without
  * it, a miss types as `string` and the guard below is a compile error rather than a check.
  */
-const IMAGE_EXTENSIONS: Readonly<Record<string, string | undefined>> = {
+const MAP_IMAGE_EXTENSIONS: Readonly<Record<string, string | undefined>> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
@@ -27,20 +26,28 @@ const IMAGE_EXTENSIONS: Readonly<Record<string, string | undefined>> = {
   'image/avif': 'avif',
 }
 
+/** The `accept` attribute for any control that takes a map image, from the table above. */
+export const MAP_IMAGE_ACCEPT = Object.keys(MAP_IMAGE_EXTENSIONS).join(',')
+
+/** Everything an imported map is, except where on the canvas it goes. */
+export type ImportedMap = Omit<GameMap, 'origin'>
+
 /**
  * Copies a picked image into `media/`, probes its natural size, and returns the `GameMap`
  * for the caller to dispatch. The natural size **is** the map-local coordinate system, so it
  * is measured once here rather than read off a rendered `<img>` that may not have loaded yet.
  *
- * `origin` is supplied by the caller rather than computed here, so canvas placement policy
- * stays in `canvas-layout.ts` and the media layer never has to know what else is on screen.
+ * The origin is deliberately not part of this: canvas placement policy stays in
+ * `canvas-layout.ts`, and the copy and decode below take long enough that a second import can
+ * land while they run. Placing this map only once it exists is what keeps two quick imports off
+ * the same origin.
  */
-export async function importMapImage(file: File, origin: Point): Promise<GameMap> {
-  const extension = IMAGE_EXTENSIONS[file.type]
+export async function importMapImage(file: File): Promise<ImportedMap> {
+  const extension = MAP_IMAGE_EXTENSIONS[file.type]
   if (extension === undefined) {
     const supplied = file.type === '' ? 'an unrecognised file type' : file.type
     throw new Error(
-      `${supplied} cannot be used as a map. Supported: ${Object.keys(IMAGE_EXTENSIONS).join(', ')}.`,
+      `${supplied} cannot be used as a map. Supported: ${Object.keys(MAP_IMAGE_EXTENSIONS).join(', ')}.`,
     )
   }
 
@@ -55,7 +62,6 @@ export async function importMapImage(file: File, origin: Point): Promise<GameMap
     file: { fileName, mimeType: file.type, byteSize: file.size },
     width,
     height,
-    origin,
     scale: 1,
   }
 }
@@ -218,14 +224,21 @@ async function probeVideoSize(
     video.preload = 'metadata'
     video.src = url
 
-    await new Promise<void>((resolve, reject) => {
-      const fail = (): void => {
-        reject(new Error(`${file.name} could not be decoded as a video.`))
-      }
-      video.addEventListener('loadedmetadata', () => resolve(), { once: true })
-      video.addEventListener('error', fail, { once: true })
-      setTimeout(fail, VIDEO_PROBE_TIMEOUT_MS)
-    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const fail = (): void => {
+          reject(new Error(`${file.name} could not be decoded as a video.`))
+        }
+        video.addEventListener('loadedmetadata', () => resolve(), { once: true })
+        video.addEventListener('error', fail, { once: true })
+        timer = setTimeout(fail, VIDEO_PROBE_TIMEOUT_MS)
+      })
+    } finally {
+      // A settled promise ignores the late rejection, but the pending timer keeps this closure
+      // and its element alive for the full ten seconds after every single successful import.
+      clearTimeout(timer)
+    }
 
     // A container Chromium can open but that holds no decodable video track — an audio-only
     // `.webm`, a `.mp4` whose video codec it ignores — fires `loadedmetadata` like any other

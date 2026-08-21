@@ -16,7 +16,7 @@ import type {
 } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
-import { deleteMediaFile } from '../storage/project-directory.ts'
+import { discardMediaFile } from '../media/discard-media.ts'
 import { canvasRectToMapLocal } from './canvas-layout.ts'
 import type { DragGesture } from './drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
@@ -158,13 +158,7 @@ export const PinLayer = memo(function PinLayer({
 
     // Every file the dialogue owned, not just the first: nothing names them once the dialogue
     // is gone, and an orphan in media/ is invisible from inside the app.
-    for (const medium of dialogue.media) {
-      try {
-        await deleteMediaFile(medium.file.fileName)
-      } catch (error) {
-        console.error('Could not delete media file', error)
-      }
-    }
+    for (const medium of dialogue.media) await discardMediaFile(medium.file.fileName)
   }
 
   return (

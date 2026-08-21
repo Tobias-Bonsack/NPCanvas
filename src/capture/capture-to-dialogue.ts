@@ -1,6 +1,7 @@
 import { assertNever } from '../assert-never.ts'
+import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
-import { dispatch } from '../project/store.ts'
+import { currentDialogue, dispatch } from '../project/store.ts'
 import type { CaptureProfile, Dialogue } from '../project/types.ts'
 import { appendWithoutOverlap } from './append-overlap.ts'
 import { profileApplies } from './capture-profile.ts'
@@ -136,6 +137,16 @@ export async function captureIntoDialogue(
 ): Promise<CaptureResult> {
   const { media } = await importDialogueMedia(dialogue.id, await screenPng(frame, profile))
   dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
+
+  // A capture is a write to media/ followed by a dispatch, so it has the panel's import hole
+  // too: delete the pin while the frame is being encoded and the dispatch is a silent no-op,
+  // leaving a file nothing in the document names. The cascade that deleted the dialogue ran
+  // before this file existed, so this is the only place that can still remove it.
+  if (currentDialogue(dialogue.id) === null) {
+    await discardMediaFile(media.file.fileName)
+    throw new Error('The dialogue was deleted while capturing. Nothing was kept.')
+  }
+
   const picture = dialogue.media.length + 1
 
   if (transcript === null) return { text: 'not-transcribed', picture }

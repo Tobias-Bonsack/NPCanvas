@@ -1,4 +1,5 @@
 import { assertNever } from '../assert-never.ts'
+import { clearMediaCache } from '../media/media-url-cache.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from '../project/data-file.ts'
 import { dispatch } from '../project/store.ts'
 import type { ProjectFile, ProjectRepairs } from '../project/types.ts'
@@ -295,6 +296,10 @@ async function getMediaDirectory(options: {
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   const generation = beginLoad()
   directoryHandle = handle
+  // After the handle, never before: the cache re-reads its live entries immediately, and they
+  // must resolve against the folder being opened. Necessary at all because the cache is keyed
+  // on the file name alone — a copied project folder holds the same names with other bytes.
+  clearMediaCache()
   dispatch({ kind: 'project/loading', directoryName: handle.name })
 
   let loaded: LoadedProject

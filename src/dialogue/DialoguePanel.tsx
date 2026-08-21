@@ -13,12 +13,20 @@ import { GlyphLearner } from '../capture/GlyphLearner.tsx'
 import type { UnknownTile } from '../capture/glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
+import { discardMediaFile } from '../media/discard-media.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
-import { dispatch } from '../project/store.ts'
+import { currentDialogue, dispatch } from '../project/store.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
-import type { CaptureProfile, Dialogue, DialogueMedia, Glyph, ProjectFile, Zone } from '../project/types.ts'
-import { deleteMediaFile, describeError } from '../storage/project-directory.ts'
+import type {
+  CaptureProfile,
+  Dialogue,
+  DialogueMedia,
+  Glyph,
+  ProjectFile,
+  Zone,
+} from '../project/types.ts'
+import { describeError } from '../storage/project-directory.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import './DialoguePanel.css'
 
@@ -127,15 +135,32 @@ export function DialoguePanel({
     if (files.length === 0) return
     const failures: string[] = []
     const warnings: string[] = []
+    // Every file this batch has already put in media/. Nothing else would name them again if
+    // the dialogue is deleted mid-import, and the cascade that deleted it only knew about the
+    // media the document held at the time.
+    const written: string[] = []
 
     for (const [index, file] of files.entries()) {
       setImportState({ kind: 'importing', done: index, total: files.length })
       try {
         const { media, warning } = await importDialogueMedia(dialogue.id, file)
+        written.push(media.file.fileName)
         dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
         if (warning !== null) warnings.push(`${file.name}: ${warning}`)
       } catch (error) {
         failures.push(`${file.name}: ${describeError(error)}`)
+      }
+      // The dispatch above is a no-op once the dialogue is gone: deleted from the canvas, or
+      // cascaded away with its map, while "Importing..." was up. The reducer returning the same
+      // state is silent, so without this check the panel reports success for a document that
+      // never took the media, and the files sit in media/ forever, invisible from inside the app.
+      if (currentDialogue(dialogue.id) === null) {
+        for (const fileName of written) await discardMediaFile(fileName)
+        setImportState({
+          kind: 'failed',
+          message: 'The dialogue was deleted while importing. Nothing was kept.',
+        })
+        return
       }
     }
 
@@ -219,13 +244,8 @@ export function DialoguePanel({
     dispatch({ kind: 'dialogue/media-removed', dialogueId: dialogue.id, mediaId: medium.id })
     setImportState({ kind: 'idle' })
     // After the dispatch nothing in the document names the file, so it would sit in media/
-    // forever, invisible from inside the app. A file that resists deletion is dead weight
-    // there, not a broken project — reported, never surfaced as app state.
-    try {
-      await deleteMediaFile(medium.file.fileName)
-    } catch (error) {
-      console.error('Could not delete media file', error)
-    }
+    // forever, invisible from inside the app.
+    await discardMediaFile(medium.file.fileName)
   }
 
   function moveMedium(medium: DialogueMedia, toIndex: number): void {

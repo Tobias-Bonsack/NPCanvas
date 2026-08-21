@@ -32,6 +32,13 @@ type Entry = {
   state: MediaUrl
   listeners: Set<() => void>
   revokeTimer: ReturnType<typeof setTimeout> | null
+  /**
+   * Which read is allowed to publish. Incremented by every `startLoad`, because the identity
+   * check in `load` compares the entry *object*, which an invalidation leaves unchanged — two
+   * reads for one entry would both pass it and the URL published first would be overwritten
+   * without ever being revoked.
+   */
+  load: number
 }
 
 // Keyed on the file name alone: `media/<id>.<ext>` is content-stable by construction, so a
@@ -73,23 +80,41 @@ export function useMediaUrl(file: MediaFile): MediaUrl {
  * Drops the cached bytes for a file whose contents just changed on disk.
  *
  * Necessary because the cache key is the file name and a re-import writes the *same* name —
- * `media/<dialogueId>.<ext>` is derived from the id, not from the upload. Without this, every
+ * `media/<dialogueId>-<mediaId>.<ext>` is derived from ids, not from the upload. Without this,
+ * every
  * reader would keep showing the previous picture until its refcount happened to expire.
  */
 export function invalidateMediaFile(fileName: string): void {
   const entry = entries.get(fileName)
   if (entry === undefined) return
 
-  revokeUrl(entry)
   if (entry.refs === 0) {
     // Nothing is watching, so there is no one to re-read for. The scheduled revoke would
     // only free an already-revoked URL, and the next acquire must start clean.
+    revokeUrl(entry)
     cancelRevoke(entry)
     entries.delete(fileName)
     return
   }
+  // `setState` revokes what it replaces, so the previous URL is freed here rather than left
+  // to the read that is about to supersede it.
   setState(entry, LOADING)
-  void load(fileName, entry)
+  startLoad(fileName, entry)
+}
+
+/**
+ * Drops every cached URL, for a switch to a different project folder.
+ *
+ * Necessary precisely because entries are keyed on the file name alone while `readMediaFile`
+ * resolves against whatever folder is connected *now*: a copied project folder holds the same
+ * names with different bytes, so without this the new project renders the old one's pictures —
+ * for the length of the revoke delay, and indefinitely for any reader still mounted.
+ *
+ * Invalidating each entry rather than clearing the map, so a mounted reader is re-read against
+ * the new folder instead of being stranded on a `loading` snapshot nothing will ever update.
+ */
+export function clearMediaCache(): void {
+  for (const fileName of [...entries.keys()]) invalidateMediaFile(fileName)
 }
 
 function acquire(fileName: string): Entry {
@@ -102,9 +127,15 @@ function acquire(fileName: string): Entry {
     return existing
   }
 
-  const entry: Entry = { refs: 1, state: LOADING, listeners: new Set(), revokeTimer: null }
+  const entry: Entry = {
+    refs: 1,
+    state: LOADING,
+    listeners: new Set(),
+    revokeTimer: null,
+    load: 0,
+  }
   entries.set(fileName, entry)
-  void load(fileName, entry)
+  startLoad(fileName, entry)
   return entry
 }
 
@@ -123,20 +154,33 @@ function release(fileName: string): void {
   }, REVOKE_DELAY_MS)
 }
 
-async function load(fileName: string, entry: Entry): Promise<void> {
+/** The only way to start a read: the token is what stops a superseded one from publishing. */
+function startLoad(fileName: string, entry: Entry): void {
+  entry.load += 1
+  void load(fileName, entry, entry.load)
+}
+
+async function load(fileName: string, entry: Entry, token: number): Promise<void> {
   try {
     const found = await readMediaFile(fileName)
-    // The entry may have been invalidated or expired while the read was in flight; creating
-    // a URL for it then would leak one nothing holds a reference to.
-    if (entries.get(fileName) !== entry) return
+    // The entry may have expired, or a newer read superseded this one, while the read was in
+    // flight; creating a URL then would leak one nothing holds a reference to.
+    if (isStale(fileName, entry, token)) return
     setState(entry, found === null ? { kind: 'missing' } : { kind: 'ready', url: URL.createObjectURL(found) })
   } catch (error) {
-    if (entries.get(fileName) !== entry) return
+    if (isStale(fileName, entry, token)) return
     setState(entry, { kind: 'failed', message: describeError(error) })
   }
 }
 
+function isStale(fileName: string, entry: Entry, token: number): boolean {
+  return entries.get(fileName) !== entry || entry.load !== token
+}
+
 function setState(entry: Entry, state: MediaUrl): void {
+  // Revoked here rather than at the call sites: this is the only place a `ready` state is ever
+  // replaced, and a URL nothing holds pins its file's bytes for the life of the tab.
+  revokeUrl(entry)
   entry.state = state
   for (const listener of entry.listeners) listener()
 }
