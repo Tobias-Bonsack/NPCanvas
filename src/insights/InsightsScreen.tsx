@@ -21,7 +21,8 @@ import './InsightsScreen.css'
 export function InsightsScreen({ project }: { project: ProjectFile }): ReactElement {
   const [filter, setFilter] = useState<DialogueFilter>(EMPTY_FILTER)
 
-  // Locations are derived here exactly as the canvas and the board derive them.
+  // Locations are derived here exactly as the canvas and the board derive them — and through
+  // the same cached index, so arriving on this screen rebuilds nothing.
   const zoneIndex = useMemo(
     () => indexDialoguesByZone(project.dialogues, project.zones),
     [project.dialogues, project.zones],

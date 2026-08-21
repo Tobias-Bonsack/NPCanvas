@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { assertNever } from '../assert-never.ts'
 import type { SaveState } from '../project/types.ts'
+import { useSaveState } from '../project/store.ts'
 import { saveNow } from '../storage/autosave.ts'
 import { connectToNewDirectory } from '../storage/project-directory.ts'
 import type { Route } from './route.ts'
@@ -16,11 +17,9 @@ const NAV_ITEMS: readonly { label: string; route: Route }[] = [
 ]
 
 export function Nav({
-  save,
   directoryName,
   onReviewSaveFailure,
 }: {
-  save: SaveState
   /** The connected folder, named here because it is the only place the app says which project
    * is open — and the switch below is the only way to open a different one. */
   directoryName: string
@@ -29,6 +28,9 @@ export function Nav({
   onReviewSaveFailure: () => void
 }): ReactElement {
   const active = useRoute()
+  // Its own subscription, not a prop: a save cycle then re-renders this indicator and nothing
+  // else. `App` deliberately subscribes to the state *without* `save` for the same reason.
+  const save = useSaveState()
   return (
     <nav className="nav" aria-label="Views">
       <span className="nav__brand">NPCanvas</span>
@@ -50,7 +52,7 @@ export function Nav({
           announces what changes *inside* it — mounting one that already holds the new text says
           nothing at all, which is what a per-state `role="status"` would have done. */}
       <div className="nav__save-region" role="status">
-        <SaveIndicator save={save} onReview={onReviewSaveFailure} />
+        {save !== null && <SaveIndicator save={save} onReview={onReviewSaveFailure} />}
       </div>
     </nav>
   )

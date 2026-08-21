@@ -90,6 +90,37 @@ describe('indexDialoguesByZone', () => {
  * every case here compares it against a full build of the same input rather than against a
  * hand-written expectation.
  */
+/**
+ * Three screens ask the same question of the same two arrays, and `App` unmounts the view on
+ * every route change — so the cache is what makes navigating between them free. Identity in,
+ * identity out; anything else recomputes.
+ */
+describe('indexDialoguesByZone: caching', () => {
+  const ZONES = [TOWN, SHOP]
+  const DIALOGUES = [dialogue('d1', HARBOUR, { x: 20, y: 20 })]
+
+  it('returns the identical index for the identical arrays', () => {
+    const first = indexDialoguesByZone(DIALOGUES, ZONES)
+    expect(indexDialoguesByZone(DIALOGUES, ZONES)).toBe(first)
+  })
+
+  it('recomputes when either array is a different reference, however equal it looks', () => {
+    const first = indexDialoguesByZone(DIALOGUES, ZONES)
+    expect(indexDialoguesByZone([...DIALOGUES], ZONES)).not.toBe(first)
+    expect(indexDialoguesByZone(DIALOGUES, [...ZONES])).not.toBe(first)
+  })
+
+  it('serves the same answer it computed, not merely an equal one', () => {
+    const other = [dialogue('d2', HARBOUR, { x: 90, y: 90 })]
+    const first = indexDialoguesByZone(DIALOGUES, ZONES)
+    // A different question in between: the one slot now describes that one instead.
+    indexDialoguesByZone(other, ZONES)
+    const again = indexDialoguesByZone(DIALOGUES, ZONES)
+    expect(again).not.toBe(first)
+    expect([...again]).toEqual([...first])
+  })
+})
+
 describe('reindexMovedZone', () => {
   const CAVE = zone('cave', CAVES, { x: 0, y: 0, width: 100, height: 100 })
   const ZONES = [TOWN, SHOP, CAVE]

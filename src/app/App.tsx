@@ -5,7 +5,7 @@ import { MapScreen } from '../map/MapScreen.tsx'
 import { QuestBoard } from '../quest/QuestBoard.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
 import type { AppState, ProjectRepairs, SaveState } from '../project/types.ts'
-import { useAppState } from '../project/store.ts'
+import { useAppStateExceptSave } from '../project/store.ts'
 import { Nav } from './Nav.tsx'
 import { RepairNotice } from './RepairNotice.tsx'
 import { SaveFailureBanner } from './SaveFailureBanner.tsx'
@@ -17,7 +17,9 @@ type ReadyState = Extract<AppState, { kind: 'ready' }>
 
 /** Everything before a project exists belongs to `ConnectScreen`, which is exhaustive over it. */
 export default function App(): ReactElement {
-  const state = useAppState()
+  // Not `useAppState`: a save cycle is three states in under a second, and none of them change
+  // anything below this line. `Nav` and the banner subscribe to `save` themselves.
+  const state = useAppStateExceptSave()
   if (state.kind !== 'ready') return <ConnectScreen state={state} />
   return <ReadyScreen state={state} />
 }
@@ -28,7 +30,6 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
   // new `failed` one per failed write. So a *later* failure reopens a banner the user closed,
   // while restating the same one does not — no effect, and nothing to reset on the way out.
   const [dismissed, setDismissed] = useState<SaveState | null>(null)
-  const failure = state.save.kind === 'failed' && state.save !== dismissed ? state.save : null
   // Same object-identity dismissal, for the same reason: `project/loaded` builds a fresh
   // `repairs` per load, so opening a second damaged folder reopens a notice closed for the
   // first one, while a re-render of this one does not.
@@ -38,14 +39,8 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
 
   return (
     <div className="app-shell">
-      <Nav
-        save={state.save}
-        directoryName={state.directoryName}
-        onReviewSaveFailure={() => setDismissed(null)}
-      />
-      {failure !== null && (
-        <SaveFailureBanner save={failure} onDismiss={() => setDismissed(failure)} />
-      )}
+      <Nav directoryName={state.directoryName} onReviewSaveFailure={() => setDismissed(null)} />
+      <SaveFailureBanner dismissed={dismissed} onDismiss={setDismissed} />
       {repairs !== null && (
         <RepairNotice repairs={repairs} onDismiss={() => setDismissedRepairs(repairs)} />
       )}

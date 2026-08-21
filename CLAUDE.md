@@ -88,14 +88,27 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   Transient UI — canvas viewport, active tool, form drafts, filter bar — stays in component
   `useState`. Do not migrate it into the store, and do not replace the store with context.
 - **`useSyncExternalStore` contract.** Pass `getState` by reference. A snapshot function that builds
-  a new object on each call is an infinite render loop.
+  a new object on each call is an infinite render loop. A *selector* over the state is therefore
+  only ever allowed to return something already stable: a field of `AppState` (`useSaveState`), or a
+  previously returned `AppState` (`useAppStateExceptSave`, which hands back the last state whenever
+  `save` is the only field that moved, so a save cycle re-renders the Nav and not the canvas). Never
+  build the return value.
+- **`dispatch` is never nested.** Autosave's listener dispatches `save/pending` synchronously, so a
+  dispatch arriving during a notify pass is *queued* and run after it, and each pass iterates a
+  snapshot of the listener set. Without both, listeners registered before and after autosave would
+  see different states for one change. Do not "simplify" either back.
 - **Async IO never enters the reducer.** `src/storage/project-directory.ts` awaits IO and dispatches
   a plain action per step. No thunks, no middleware.
 - **Exhaustiveness uses `assertNever(value: never): never`**, not `const _never: never = x` —
   `noUnusedLocals` fails the latter.
 - **Location is derived, never stored.** `Dialogue` carries no `zoneId`; `src/map/zone-index.ts`
   computes membership by point-in-polygon, returning zone ids ordered by ascending area so the most
-  specific overlapping zone comes first. A cached FK would silently go stale when a zone moves. If an
+  specific overlapping zone comes first. Derived, but not recomputed blindly: the index and its
+  area-sorted candidate list are cached at module level on the *identity* of `(dialogues, zones)`,
+  which is what makes the canvas, the quest board and the insights screen share one build across a
+  route change; and a zone drag goes through `reindexMovedZone`, which re-tests only the dragged
+  zone against its own map's dialogues. Both are caches on identity, never on value, and neither
+  may disagree with a full build — `zone-index.test.ts` pins that. A cached FK would silently go stale when a zone moves. If an
   explicit override is ever needed, add `locationOverride: ZoneId | null` — never a cache.
 - **Zones are polygons only.** Rectangles are 4-point polygons. Do not introduce a shape union.
 - **A dialogue is a line and its pictures.** `Dialogue.text` and `Dialogue.media: DialogueMedia[]`

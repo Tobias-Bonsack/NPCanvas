@@ -23,6 +23,36 @@ export function indexDialoguesByZone(
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
 ): ReadonlyMap<DialogueId, ZoneId[]> {
+  if (cached !== null && cached.dialogues === dialogues && cached.zones === zones) {
+    return cached.index
+  }
+  const index = buildIndex(dialogues, zones)
+  cached = { dialogues, zones, index }
+  return index
+}
+
+/**
+ * The last index built and what it was built from.
+ *
+ * The canvas, the quest board and the insights screen all ask the same question of the same two
+ * arrays, and `App` unmounts the view on every route change — so without this, navigating
+ * Canvas → Insights → Canvas rebuilds an O(dialogues x zones) index from scratch, three times,
+ * for a document that never changed. One slot rather than a keyed cache: the question is always
+ * "the document as it is now", and a second entry could only ever describe one already gone.
+ *
+ * Identity, never value: the reducer returns the same array reference for an edit that changed
+ * nothing, and builds a new one for every edit that did. That is exactly the test wanted here.
+ */
+let cached: {
+  dialogues: readonly Dialogue[]
+  zones: readonly Zone[]
+  index: ReadonlyMap<DialogueId, ZoneId[]>
+} | null = null
+
+function buildIndex(
+  dialogues: readonly Dialogue[],
+  zones: readonly Zone[],
+): ReadonlyMap<DialogueId, ZoneId[]> {
   const byMap = groupZonesByMap(zones)
   const index = new Map<DialogueId, ZoneId[]>()
 
@@ -66,11 +96,15 @@ export function reindexMovedZone(
   const moved = zones.find((zone) => zone.id === movedId)
   if (moved === undefined) return indexDialoguesByZone(dialogues, zones)
 
-  const bounds = polygonBounds(moved.polygon)
-  // Rank by ascending area, so an id that has to go back into a list lands where a full build
-  // would have put it. Computed from `zones` rather than carried on the index, because the
-  // ordering rule lives in one place and this has to obey the same one.
-  const rank = areaRank(zones)
+  // The map's own candidates, already area-sorted and already carrying their bounds, from the
+  // same cache a full build reads. A zone's position in that list *is* its rank, so an id that
+  // has to go back into a dialogue's list lands where a full build would have put it — the
+  // ordering rule stays in one place and this obeys the same one.
+  const candidates = groupZonesByMap(zones).get(moved.mapId) ?? []
+  const rank = new Map(candidates.map((candidate, index) => [candidate.zone.id, index]))
+  const bounds =
+    candidates.find((candidate) => candidate.zone.id === movedId)?.bounds ??
+    polygonBounds(moved.polygon)
 
   const next = new Map<DialogueId, ZoneId[]>()
   let changed = false
@@ -97,12 +131,6 @@ export function reindexMovedZone(
   }
 
   return changed ? next : previous
-}
-
-/** Each zone's position in ascending-area order — the same order a full build sorts into. */
-function areaRank(zones: readonly Zone[]): ReadonlyMap<ZoneId, number> {
-  const byArea = [...zones].sort((a, b) => polygonArea(a.polygon) - polygonArea(b.polygon))
-  return new Map(byArea.map((zone, index) => [zone.id, index]))
 }
 
 /** The list with `zoneId` inserted where its area puts it, leaving the rest in place. */
@@ -160,6 +188,20 @@ type ZoneCandidate = { zone: Zone; bounds: ReturnType<typeof polygonBounds> }
  * a polygon is the same whichever dialogue is being tested against it.
  */
 function groupZonesByMap(zones: readonly Zone[]): ReadonlyMap<MapId, ZoneCandidate[]> {
+  if (cachedCandidates !== null && cachedCandidates.zones === zones) return cachedCandidates.byMap
+  const byMap = buildCandidates(zones)
+  cachedCandidates = { zones, byMap }
+  return byMap
+}
+
+/**
+ * The sort, kept for as long as the zones are the same array. Sorting is the expensive half of
+ * a build for an unchanged zone set, and a zone drag asks for the same set once per frame.
+ */
+let cachedCandidates: { zones: readonly Zone[]; byMap: ReadonlyMap<MapId, ZoneCandidate[]> } | null =
+  null
+
+function buildCandidates(zones: readonly Zone[]): ReadonlyMap<MapId, ZoneCandidate[]> {
   const byArea = [...zones].sort((a, b) => polygonArea(a.polygon) - polygonArea(b.polygon))
   const byMap = new Map<MapId, ZoneCandidate[]>()
   for (const zone of byArea) {

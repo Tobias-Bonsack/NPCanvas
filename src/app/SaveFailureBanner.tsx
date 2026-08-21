@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { useSaveState } from '../project/store.ts'
 import type { SaveState } from '../project/types.ts'
 import { retrySave } from '../storage/autosave.ts'
 import './SaveFailureBanner.css'
@@ -14,6 +15,25 @@ type FailedSave = Extract<SaveState, { kind: 'failed' }>
  * `role="alert"` rather than `status`: this interrupts on purpose.
  */
 export function SaveFailureBanner({
+  dismissed,
+  onDismiss,
+}: {
+  /**
+   * The failure the user closed, by identity. The reducer builds a new `failed` state per
+   * failed write, so a *later* failure reopens a banner that was closed while restating the
+   * same one does not — no effect, and nothing to reset on the way out.
+   */
+  dismissed: SaveState | null
+  onDismiss: (save: SaveState) => void
+}): ReactElement | null {
+  // Subscribed here rather than passed down, so a save cycle does not re-render the canvas
+  // on its way to deciding this banner is still not needed.
+  const state = useSaveState()
+  if (state === null || state.kind !== 'failed' || state === dismissed) return null
+  return <FailedBanner save={state} onDismiss={() => onDismiss(state)} />
+}
+
+function FailedBanner({
   save,
   onDismiss,
 }: {
