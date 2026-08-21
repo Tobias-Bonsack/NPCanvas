@@ -1,5 +1,5 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { relevancePinBackground } from '../dialogue/relevance.ts'
@@ -93,12 +93,15 @@ export const PinLayer = memo(function PinLayer({
   // which is the whole reason panning does not touch this subtree.
   const byMap = useMemo(() => groupByMap(maps, dialogues), [maps, dialogues])
 
-  function select(id: DialogueId): void {
-    dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-    navigate({ kind: 'canvas', dialogueId: id, focusMapId: null })
-  }
-
-  function onPointerDown(event: ReactPointerEvent<HTMLButtonElement>, dialogue: Dialogue): void {
+  // Every handler handed to a pin is stable for the life of the layer, which is what makes
+  // `memo(Pin)` hold: one fresh arrow per render would fail the prop comparison whatever else
+  // matched, and a single pin's drag or delete prompt would reconcile the whole list again.
+  // None of them close over props or state — the drag ref and the setters are all they need,
+  // and the pin they act on arrives as an argument.
+  const onPointerDown = useCallback(function onPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    dialogue: Dialogue,
+  ): void {
     if (event.button !== 0) return
     // Without this the canvas underneath would start panning at the same time.
     event.stopPropagation()
@@ -107,9 +110,11 @@ export const PinLayer = memo(function PinLayer({
       position: dialogue.position,
       client: { x: event.clientX, y: event.clientY },
     })
-  }
+  }, [])
 
-  function onPointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
+  const onPointerMove = useCallback(function onPointerMove(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
     const move = moveDrag(drag, event)
     if (move === null) return
 
@@ -123,9 +128,11 @@ export const PinLayer = memo(function PinLayer({
     move.data.position = position
     move.data.client = { x: event.clientX, y: event.clientY }
     setDragged({ id: move.data.id, position })
-  }
+  }, [])
 
-  function onPointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+  const onPointerUp = useCallback(function onPointerUp(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
     // The released button, not the held one: a right-button release during a held left-press
     // must not select the pin or commit its position.
     if (event.button !== 0) return
@@ -141,15 +148,25 @@ export const PinLayer = memo(function PinLayer({
     }
 
     dispatch({ kind: 'dialogue/moved', dialogueId: end.data.id, position: end.data.position })
-  }
+  }, [])
 
   /**
    * The platform withdrew the gesture, so the pin snaps back to where the document says it is
    * and nothing is dispatched — a cancel is not a shorter pointerup.
    */
-  function onPointerCancel(event: ReactPointerEvent<HTMLButtonElement>): void {
+  const onPointerCancel = useCallback(function onPointerCancel(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ): void {
     if (cancelDrag(drag, event)) setDragged(null)
-  }
+  }, [])
+
+  // The pin comes back as an argument rather than being closed over, which is the whole reason
+  // these three can be stable at all.
+  const onRequestDelete = useCallback((dialogue: Dialogue) => setPendingDelete(dialogue.id), [])
+  const onCancelDelete = useCallback(() => setPendingDelete(null), [])
+  const onConfirmDelete = useCallback((dialogue: Dialogue) => {
+    void onDeleteConfirmed(dialogue)
+  }, [])
 
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
     setPendingDelete(null)
@@ -186,9 +203,9 @@ export const PinLayer = memo(function PinLayer({
                 onPointerMove={onPointerMove}
                 onPointerUp={onPointerUp}
                 onPointerCancel={onPointerCancel}
-                onRequestDelete={() => setPendingDelete(dialogue.id)}
-                onCancelDelete={() => setPendingDelete(null)}
-                onConfirmDelete={() => void onDeleteConfirmed(dialogue)}
+                onRequestDelete={onRequestDelete}
+                onCancelDelete={onCancelDelete}
+                onConfirmDelete={onConfirmDelete}
               />
             ))}
           </div>
@@ -197,6 +214,15 @@ export const PinLayer = memo(function PinLayer({
     </div>
   )
 })
+
+/**
+ * Module scope, not a closure: it reads nothing from the layer, and `onPointerUp` is a
+ * `useCallback` whose dependency list must stay empty for `memo(Pin)` to hold.
+ */
+function select(id: DialogueId): void {
+  dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
+  navigate({ kind: 'canvas', dialogueId: id, focusMapId: null })
+}
 
 /** One shared empty array, so a pin in no quest is handed the same reference every render. */
 const NO_QUESTS: readonly Quest[] = []
@@ -216,7 +242,13 @@ function groupByMap(
   return byMap
 }
 
-function Pin({
+/**
+ * One pin. Memoized, because the layer above re-renders on every `pointermove` of a pin drag
+ * and on every delete prompt: without this, moving one pin reconciles all N. Every prop is
+ * either a primitive, a document object, or one of the layer's stable handlers — `position`
+ * is the only one that changes per frame, and only for the pin being dragged.
+ */
+const Pin = memo(function Pin({
   dialogue,
   position,
   onScreen,
@@ -247,9 +279,9 @@ function Pin({
   onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onRequestDelete: () => void
+  onRequestDelete: (dialogue: Dialogue) => void
   onCancelDelete: () => void
-  onConfirmDelete: () => void
+  onConfirmDelete: (dialogue: Dialogue) => void
 }): ReactElement {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const name = pinName(dialogue)
@@ -287,7 +319,7 @@ function Pin({
           if (event.key !== 'Delete' && event.key !== 'Backspace') return
           // Backspace is "go back" in a browser until something claims it.
           event.preventDefault()
-          onRequestDelete()
+          onRequestDelete(dialogue)
         }}
       >
         {/* The face is transparent, so the relevance bands behind it run the full width of
@@ -329,7 +361,12 @@ function Pin({
           }}
         >
           <span>Delete this dialogue?</span>
-          <button type="button" className="pin__button pin__button--danger" autoFocus onClick={onConfirmDelete}>
+          <button
+            type="button"
+            className="pin__button pin__button--danger"
+            autoFocus
+            onClick={() => onConfirmDelete(dialogue)}
+          >
             Delete
           </button>
           <button type="button" className="pin__button" onClick={onCancelDelete}>
@@ -339,7 +376,7 @@ function Pin({
       )}
     </div>
   )
-}
+})
 
 /**
  * A pennant on a pole, filled for the same reason `ContentGlyph` is: at this size a stroke

@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
-import type { GameMap, ProjectFile, Zone, ZoneId } from '../project/types.ts'
+import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import type { RowTrigger } from './row-focus.ts'
 import { useRowFocus } from './row-focus.ts'
 import { ZONE_HUES, zoneHueStyle } from './zone-style.ts'
@@ -38,6 +38,13 @@ export function ZoneList({
 }): ReactElement {
   const [mode, setMode] = useState<ZoneListMode>({ kind: 'idle' })
 
+  // One pass instead of one filter per map: a scan per group is O(maps × zones), and this
+  // list re-renders whenever the zone counts do, which is every frame of a zone drag.
+  const byMap = useMemo(
+    () => groupByMap(project.maps, project.zones),
+    [project.maps, project.zones],
+  )
+
   function onRenameSubmit(id: ZoneId, draft: string): void {
     const name = draft.trim()
     if (name !== '') dispatch({ kind: 'zone/renamed', zoneId: id, name })
@@ -57,7 +64,7 @@ export function ZoneList({
           <ZoneGroup
             key={map.id}
             map={map}
-            zones={project.zones.filter((zone) => zone.mapId === map.id)}
+            zones={byMap.get(map.id) ?? NO_ZONES}
             selectedId={selectedId}
             counts={counts}
             mode={mode}
@@ -68,6 +75,17 @@ export function ZoneList({
       )}
     </div>
   )
+}
+
+/** One shared empty array, so a map with no zones is handed the same reference every render. */
+const NO_ZONES: readonly Zone[] = []
+
+/** Zones bucketed by map, in one pass — the same shape `ZoneLayer` builds, for the same reason. */
+function groupByMap(maps: readonly GameMap[], zones: readonly Zone[]): ReadonlyMap<MapId, Zone[]> {
+  const byMap = new Map<MapId, Zone[]>()
+  for (const map of maps) byMap.set(map.id, [])
+  for (const zone of zones) byMap.get(zone.mapId)?.push(zone)
+  return byMap
 }
 
 /** Renders nothing at all for a map with no zones — an empty heading is noise in a sidebar. */

@@ -55,8 +55,19 @@ export const ZoneLayer = memo(function ZoneLayer({
   )
 })
 
-function ZoneShape({ zone, selected }: { zone: Zone; selected: boolean }): ReactElement {
-  const label = polygonCentroid(zone.polygon)
+/**
+ * `memo` plus a memoized centroid, so dragging one zone re-renders and re-measures that zone
+ * alone. The layer above re-renders whenever any zone moves — every other shape's polygon is
+ * the same object it was, and a centroid is a walk of every vertex.
+ */
+const ZoneShape = memo(function ZoneShape({
+  zone,
+  selected,
+}: {
+  zone: Zone
+  selected: boolean
+}): ReactElement {
+  const label = useMemo(() => polygonCentroid(zone.polygon), [zone.polygon])
   return (
     <g style={zoneHueStyle(zone.hue)}>
       {/* `vector-effect` is what keeps the outline a constant width at any zoom without a
@@ -82,7 +93,7 @@ function ZoneShape({ zone, selected }: { zone: Zone; selected: boolean }): React
       </text>
     </g>
   )
-}
+})
 
 /** SVG's own vertex list format: "x,y x,y …". */
 function pointsAttribute(polygon: Polygon): string {

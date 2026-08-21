@@ -4,10 +4,8 @@ import type {
   ReactElement,
   ReactNode,
 } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
-import type { MediaUrl } from '../media/media-url-cache.ts'
-import { useMediaUrl } from '../media/media-url-cache.ts'
 import { newDialogueId, newZoneId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -35,6 +33,7 @@ import type { DragGesture } from './drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Rect, Size } from './geometry.ts'
 import { rectToPolygon, translatePolygon } from './geometry.ts'
+import { MapImage } from './MapImage.tsx'
 import { mapGroupStyle } from './map-group-style.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
@@ -223,7 +222,12 @@ export function MapCanvas({
   // same rejection twice restarts the timer instead of expiring on the first one's clock.
   const [notice, setNotice] = useState<{ nonce: number; text: string } | null>(null)
   const nextNotice = useRef(0)
-  const selectedMap = maps.find((map) => map.id === selectedMapId) ?? null
+  // Once per change, not once per pan frame: this component re-renders on every pointermove
+  // of a pan, and the scan is over every map in the project.
+  const selectedMap = useMemo(
+    () => maps.find((map) => map.id === selectedMapId) ?? null,
+    [maps, selectedMapId],
+  )
 
   const applyViewport = useCallback((next: Viewport): void => {
     viewportRef.current = next
@@ -535,7 +539,13 @@ export function MapCanvas({
   // trails — so zooming mid-gesture moves the map with the cursor rather than jumping it.
   const mapDrag = useRef<DragGesture<MapDragGesture> | null>(null)
 
-  function onMapPointerDown(event: ReactPointerEvent<HTMLDivElement>, map: GameMap): void {
+  // The four below are `useCallback`s because `MapImage` is memoized and they are its props:
+  // a fresh arrow per render would re-run `useMediaUrl` and rebuild `mapGroupStyle` for every
+  // map on every frame of a pan, which is exactly what the memo is there to prevent.
+  const onMapPointerDown = useCallback(function onMapPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+    map: GameMap,
+  ): void {
     if (event.button !== 0 || tool.kind !== 'move-map') return
     // Without this the canvas underneath would start panning at the same time.
     event.stopPropagation()
@@ -549,9 +559,11 @@ export function MapCanvas({
     })
     if (!began) return
     dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
-  }
+  }, [tool])
 
-  function onMapPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+  const onMapPointerMove = useCallback(function onMapPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
     const move = moveDrag(mapDrag, event)
     if (move === null) return
 
@@ -562,9 +574,11 @@ export function MapCanvas({
     }
     move.data.latest = origin
     onMapDrag({ id: move.data.id, origin })
-  }
+  }, [onMapDrag])
 
-  function onMapPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+  const onMapPointerUp = useCallback(function onMapPointerUp(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
     if (event.button !== 0) return
     const end = commitDrag(mapDrag, event)
     if (end === null) return
@@ -575,12 +589,14 @@ export function MapCanvas({
     if (end.moved && final !== null) {
       dispatch({ kind: 'map/moved', mapId: end.data.id, origin: final })
     }
-  }
+  }, [onMapDrag])
 
   /** Drops the preview and dispatches nothing — see `onPointerCancel`. */
-  function onMapPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
+  const onMapPointerCancel = useCallback(function onMapPointerCancel(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
     if (cancelDrag(mapDrag, event)) onMapDrag(null)
-  }
+  }, [onMapDrag])
 
   /** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures above. */
   function onCanvasClick(anchor: Point, at: Viewport): void {
@@ -766,64 +782,6 @@ function worldStyle(viewport: Viewport): CSSProperties & Record<'--map-zoom', st
 }
 
 /**
- * The map image, or a footprint-sized placeholder while it loads or if it has gone missing.
- * A placeholder rather than an overlay notice: with every map on screen at once, the message
- * has to say *which* map it is about, and occupying the map's own rectangle says it best.
- */
-function MapImage({
-  map,
-  selected,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-}: {
-  map: GameMap
-  selected: boolean
-  /** `null` under every tool but `move-map`, which is what makes maps immovable there. */
-  onPointerDown: ((event: ReactPointerEvent<HTMLDivElement>, map: GameMap) => void) | null
-  onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void
-  onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void
-  onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void
-}): ReactElement {
-  const media = useMediaUrl(map.file)
-
-  return (
-    <div
-      className="map-canvas__map"
-      data-selected={selected ? 'true' : undefined}
-      data-draggable={onPointerDown === null ? undefined : 'true'}
-      style={mapGroupStyle(map)}
-      onPointerDown={onPointerDown === null ? undefined : (event) => onPointerDown(event, map)}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-    >
-      {media.kind === 'ready' ? (
-        <img
-          className="map-canvas__image"
-          src={media.url}
-          alt={map.name}
-          width={map.width}
-          height={map.height}
-          draggable={false}
-        />
-      ) : (
-        <div
-          className="map-canvas__placeholder"
-          style={{ width: `${map.width}px`, height: `${map.height}px` }}
-        >
-          {/* Counter-scaled in CSS, so the message stays legible however small the map is. */}
-          <p className="map-canvas__notice" role={media.kind === 'loading' ? undefined : 'alert'}>
-            <MediaNotice map={map} media={media} />
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/**
  * Ratio steps rather than a slider: each press is one `map/scaled` dispatch, so the document
  * changes once per interaction. `map/scaled` moves the origin to keep the map's centre fixed,
  * which is what makes a nudge read as adjustment rather than as the map drifting away.
@@ -856,30 +814,6 @@ function MapScaleControl({ map }: { map: GameMap }): ReactElement {
       </button>
     </div>
   )
-}
-
-/** Exhaustive over the non-ready `MediaUrl` variants; `ready` renders the image instead. */
-function MediaNotice({ map, media }: { map: GameMap; media: MediaUrl }): ReactElement | null {
-  switch (media.kind) {
-    case 'ready':
-      return null
-
-    case 'loading':
-      return <>Loading {map.name}…</>
-
-    case 'missing':
-      return <>{map.file.fileName} is no longer in the project’s media folder.</>
-
-    case 'failed':
-      return (
-        <>
-          {map.name} could not be read: {media.message}
-        </>
-      )
-
-    default:
-      return assertNever(media)
-  }
 }
 
 /**
