@@ -131,6 +131,12 @@
   cursor: default;
 }
 
+.filter-bar__error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #ff8f8f;
+}
+
 .filter-bar__chips {
   display: flex;
   align-items: center;

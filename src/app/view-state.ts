@@ -26,7 +26,7 @@ export type InsightsViewState = {
   filter: DialogueFilter
   /** The dossier's selected NPC key — `null` defers to its own top-of-list fallback. */
   dossierKey: string | null
-  /** The timeline's open bucket index — `null` shows no detail. */
+  /** The open bucket's `start` instant (ms) — not an index, see `Timeline` — `null` shows no detail. */
   timelineActive: number | null
 }
 

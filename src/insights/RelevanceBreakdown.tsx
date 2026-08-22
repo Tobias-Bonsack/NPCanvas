@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
+import { useChartWidth } from './chart-width.ts'
 import type { DialogueFilter, ZoneScope } from './filters.ts'
 import { NO_ZONE, npcKey, npcLabel } from './filters.ts'
 import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
@@ -83,14 +84,16 @@ export function RelevanceBreakdown({
   )
 }
 
-// One coordinate system for both charts, in viewBox units. The svg is width:100% / height:auto,
-// so these are proportions the browser scales — never device pixels.
-const WIDTH = 720
+// One coordinate system for both charts, in viewBox units — and, since `useChartWidth` feeds
+// the SVG's own measured width back in as its viewBox width, one viewBox unit *is* one real
+// CSS pixel: the scale factor a `width: 100%` svg would otherwise apply to its viewBox is
+// pinned at 1, so `.insights__row-label`'s `font-size` paints at its literal size no matter how
+// the two-column layout in InsightsScreen.css squeezes the container.
+const DEFAULT_WIDTH = 720
 const LABEL_WIDTH = 168
 const TOTAL_WIDTH = 44
 const GAP = 10
 const BAR_X = LABEL_WIDTH + GAP
-const BAR_WIDTH = WIDTH - BAR_X - TOTAL_WIDTH - GAP
 const ROW_HEIGHT = 22
 const ROW_PITCH = 30
 /** Below this a count label does not fit inside its segment and is left to the tooltip. */
@@ -107,7 +110,9 @@ function BreakdownChart({
   rows: readonly BreakdownRow[]
   onSelect: (target: RowTarget, segment: SegmentKey) => void
 }): ReactElement {
+  const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const height = Math.max(rows.length * ROW_PITCH, ROW_PITCH)
+  const barWidth = Math.max(width - BAR_X - TOTAL_WIDTH - GAP, 0)
   // A single row must still fill the bar rather than being drawn as a sliver of an imagined
   // larger maximum, so the scale is the largest row, never a fixed ceiling.
   const widest = rows.reduce((max, row) => Math.max(max, totalOf(row.counts)), 0)
@@ -119,8 +124,9 @@ function BreakdownChart({
         <p className="insights__empty">No dialogues to break down.</p>
       ) : (
         <svg
+          ref={svgRef}
           className="insights__svg"
-          viewBox={`0 0 ${WIDTH} ${height}`}
+          viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label={title}
         >
@@ -131,7 +137,9 @@ function BreakdownChart({
               idPrefix={idPrefix}
               row={row}
               y={index * ROW_PITCH}
-              scale={widest === 0 ? 0 : BAR_WIDTH / widest}
+              width={width}
+              barWidth={barWidth}
+              scale={widest === 0 ? 0 : barWidth / widest}
               onSelect={onSelect}
             />
           ))}
@@ -145,12 +153,17 @@ function BreakdownBar({
   idPrefix,
   row,
   y,
+  width,
+  barWidth,
   scale,
   onSelect,
 }: {
   idPrefix: string
   row: BreakdownRow
   y: number
+  /** The chart's own measured width — where the row's total count is printed. */
+  width: number
+  barWidth: number
   scale: number
   onSelect: (target: RowTarget, segment: SegmentKey) => void
 }): ReactElement {
@@ -159,23 +172,14 @@ function BreakdownBar({
 
   return (
     <g>
-      <text className="insights__row-label" x={LABEL_WIDTH} y={middle} textAnchor="end">
-        {truncate(row.label, 26)}
-      </text>
-      <rect
-        className="insights__track"
-        x={BAR_X}
-        y={y}
-        width={BAR_WIDTH}
-        height={ROW_HEIGHT}
-        rx="3"
-      />
+      <ClippedLabel text={row.label} maxWidth={LABEL_WIDTH} x={LABEL_WIDTH} y={middle} />
+      <rect className="insights__track" x={BAR_X} y={y} width={barWidth} height={ROW_HEIGHT} rx="3" />
       {SEGMENT_KEYS.map((segment) => {
         const count = row.counts[segment]
         if (count === 0) return null
-        const width = count * scale
+        const segmentWidth = count * scale
         const left = x
-        x += width
+        x += segmentWidth
         const label = `${row.label}, ${SEGMENT_LABEL[segment]}: ${count}`
         return (
           <g
@@ -183,7 +187,6 @@ function BreakdownBar({
             className="insights__segment"
             role="button"
             tabIndex={0}
-            aria-label={label}
             onClick={() => onSelect(row.target, segment)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' && event.key !== ' ') return
@@ -191,19 +194,30 @@ function BreakdownBar({
               onSelect(row.target, segment)
             }}
           >
+            {/* The sole source of the accessible name — an SVG `<title>` as the first child of a
+                graphics element with an interactive role is enough on its own; pairing it with
+                an identical `aria-label` was two copies of the same string to keep in sync for
+                nothing, since `aria-label` would have won the name computation anyway. Kept
+                specifically for the native hover tooltip, which nothing else here provides. */}
             <title>{label}</title>
-            <rect x={left} y={y} width={width} height={ROW_HEIGHT} fill={SEGMENT_COLOR[segment]} />
             <rect
               x={left}
               y={y}
-              width={width}
+              width={segmentWidth}
+              height={ROW_HEIGHT}
+              fill={SEGMENT_COLOR[segment]}
+            />
+            <rect
+              x={left}
+              y={y}
+              width={segmentWidth}
               height={ROW_HEIGHT}
               fill={`url(#${idPrefix}-${segment})`}
             />
-            {width >= LABEL_MIN_SEGMENT && (
+            {segmentWidth >= LABEL_MIN_SEGMENT && (
               <text
                 className="insights__segment-count"
-                x={left + width / 2}
+                x={left + segmentWidth / 2}
                 y={middle}
                 textAnchor="middle"
               >
@@ -213,10 +227,62 @@ function BreakdownBar({
           </g>
         )
       })}
-      <text className="insights__row-total" x={WIDTH} y={middle} textAnchor="end">
+      <text className="insights__row-total" x={width} y={middle} textAnchor="end">
         {row.dialogues}
       </text>
     </g>
+  )
+}
+
+/**
+ * A row label clipped to fit `maxWidth`, by actually measuring the rendered glyphs
+ * (`getComputedTextLength`) rather than guessing from a character count — a wide capital in a
+ * fifteen-character name and fifteen narrow lowercase letters do not take the same room, and the
+ * old `truncate(label, 26)` treated them identically. Renders the full text first and corrects
+ * it in `useLayoutEffect`, before the browser paints, so nothing overflowing is ever visible.
+ */
+function ClippedLabel({
+  text,
+  maxWidth,
+  x,
+  y,
+}: {
+  text: string
+  maxWidth: number
+  x: number
+  y: number
+}): ReactElement {
+  const ref = useRef<SVGTextElement>(null)
+  const [display, setDisplay] = useState(text)
+
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (element === null || text === '') {
+      setDisplay(text)
+      return
+    }
+    element.textContent = text
+    if (element.getComputedTextLength() <= maxWidth) {
+      setDisplay(text)
+      return
+    }
+    // The longest prefix (plus an ellipsis) that still fits, found by measuring the real
+    // rendered length rather than assuming a width per character.
+    let fits = 0
+    let doesNotFit = text.length
+    while (fits < doesNotFit) {
+      const mid = Math.ceil((fits + doesNotFit) / 2)
+      element.textContent = `${text.slice(0, mid)}…`
+      if (element.getComputedTextLength() <= maxWidth) fits = mid
+      else doesNotFit = mid - 1
+    }
+    setDisplay(fits === 0 ? '…' : `${text.slice(0, fits)}…`)
+  }, [text, maxWidth])
+
+  return (
+    <text ref={ref} className="insights__row-label" x={x} y={y} textAnchor="end">
+      {display}
+    </text>
   )
 }
 
@@ -313,9 +379,4 @@ function npcKeysOf(target: RowTarget): readonly string[] {
 /** Descending by line count, then by label, so equal bars keep a stable order across renders. */
 function sortByDialogues(rows: BreakdownRow[]): BreakdownRow[] {
   return rows.sort((a, b) => b.dialogues - a.dialogues || a.label.localeCompare(b.label))
-}
-
-/** SVG text has no ellipsis, so the row label is cut in JS or it overruns into the bars. */
-function truncate(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`
 }

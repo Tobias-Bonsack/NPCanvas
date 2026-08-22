@@ -53,6 +53,11 @@ export function FilterBar({
     zoneOptions.push({ value: NO_ZONE, label: 'Outside any zone' })
   }
 
+  const invertedRange =
+    filter.from !== null &&
+    filter.to !== null &&
+    Date.parse(filter.from) > Date.parse(filter.to)
+
   return (
     <section className="filter-bar" aria-label="Filter dialogues">
       <div className="filter-bar__row">
@@ -69,6 +74,10 @@ export function FilterBar({
           <input
             type="date"
             value={toDateInputValue(filter.from)}
+            // Caps the picker at "To" — the browser refuses to open on a later date, though a
+            // typed-in one still reaches `onChange`, which is why `invertedRange` also says so
+            // below rather than trusting the picker alone.
+            max={toDateInputValue(filter.to)}
             onChange={(event) =>
               onChange({ ...filter, from: fromDateInputValue(event.target.value, 'start') })
             }
@@ -79,6 +88,7 @@ export function FilterBar({
           <input
             type="date"
             value={toDateInputValue(filter.to)}
+            min={toDateInputValue(filter.from)}
             onChange={(event) =>
               onChange({ ...filter, to: fromDateInputValue(event.target.value, 'end') })
             }
@@ -93,6 +103,12 @@ export function FilterBar({
           Clear filters
         </button>
       </div>
+
+      {invertedRange && (
+        <p className="filter-bar__error" role="alert">
+          "From" is after "To" — no dialogue can be spoken in a range that ends before it starts.
+        </p>
+      )}
 
       <div className="filter-bar__row">
         <div className="filter-bar__chips" role="group" aria-label="Relevance">
@@ -197,14 +213,23 @@ export function FilterBar({
   )
 }
 
+/** Marks a real option's DOM value, so it can never collide with the placeholder's `""` — an
+ *  NPC's `npcKey` is `''` for "unnamed", which is a legitimate value this field must offer. */
+const OPTION_PREFIX = 'v:'
+
 /**
  * A select that never holds a selection: picking an option appends it to an OR-field and the
  * control snaps back to its own name. A stateful `<select>` would have to show one of several
  * chosen values, which is the thing this field cannot express.
  *
- * The option values are *indices*, not the ids themselves. A DOM value is a string, so carrying
- * an id through one would mean re-branding a raw string on the way back — and `ids.ts` owns
- * every such cast. An index round-trips through the list instead.
+ * The option values are `String(value)`, not a position in the list — `options` is rebuilt from
+ * the live document on every render, so resolving a choice by index trusted that the list would
+ * not reorder between the render that drew it and the change event picking from it. The DOM
+ * value still has to be a string, so this is the same stable string `key` already gives every
+ * `<option>`, reused for its actual purpose (prefixed, so it never collides with the placeholder
+ * — see `OPTION_PREFIX`). Not the id itself — an id is only ever produced by `ids.ts`'s own
+ * casts, and `T` here is generic, so nothing re-brands one from this string; the option is
+ * looked up by matching it back against the same list instead.
  */
 function AddSelect<T>({
   label,
@@ -222,14 +247,17 @@ function AddSelect<T>({
       aria-label={`Add ${label.toLowerCase()} filter`}
       disabled={options.length === 0}
       onChange={(event) => {
-        const option = options[Number(event.target.value)]
+        const raw = event.target.value
+        if (!raw.startsWith(OPTION_PREFIX)) return
+        const key = raw.slice(OPTION_PREFIX.length)
+        const option = options.find((candidate) => String(candidate.value) === key)
         if (option === undefined) return
         onAdd(option.value)
       }}
     >
       <option value="">{options.length === 0 ? `${label}: none left` : `${label}…`}</option>
-      {options.map((option, index) => (
-        <option key={String(option.value)} value={index}>
+      {options.map((option) => (
+        <option key={String(option.value)} value={`${OPTION_PREFIX}${String(option.value)}`}>
           {option.label}
         </option>
       ))}

@@ -1,5 +1,6 @@
-import type { PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
-import { useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useChartWidth } from './chart-width.ts'
 import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
 import { DialogueRow } from './DialogueRow.tsx'
 import { SegmentDefs } from './SegmentLegend.tsx'
@@ -10,10 +11,10 @@ import { SEGMENT_COLOR, SEGMENT_KEYS, tallyOf, totalOf } from './relevance-segme
 import type { BucketUnit, TimeBucket } from './timeline-buckets.ts'
 import { bucketDialogues, describeBucket, formatBucketStart } from './timeline-buckets.ts'
 
-// viewBox units, scaled by the browser — the svg is width:100% / height:auto.
-const WIDTH = 720
+// viewBox units — and, since `useChartWidth` feeds the svg's own measured width back in as its
+// viewBox width, one viewBox unit *is* one real CSS pixel. See the comment on `chart-width.ts`.
+const DEFAULT_WIDTH = 720
 const PLOT_X = 30
-const PLOT_WIDTH = WIDTH - PLOT_X - 8
 const PLOT_TOP = 10
 const PLOT_HEIGHT = 120
 const AXIS_Y = PLOT_TOP + PLOT_HEIGHT
@@ -48,20 +49,51 @@ export function Timeline({
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
   filter: DialogueFilter
   onChange: (filter: DialogueFilter) => void
-  /** The open bucket's index — lifted to `App` so it survives a switch away and back. */
+  /**
+   * The open bucket's `start` instant, not an index — lifted to `App` so it survives a switch
+   * away and back. Keyed on the instant rather than a position in `buckets` because that array
+   * is rebuilt from `dialogues` on every filter change other than the date range (see the note
+   * above): an index surviving that rebuild would silently point at a different bucket than the
+   * one the user actually opened.
+   */
   active: number | null
   onActiveChange: (active: number | null) => void
 }): ReactElement {
+  const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const { unit, buckets } = useMemo(() => bucketDialogues(dialogues), [dialogues])
   // A brush in flight cannot outlive the pointer gesture that draws it, so unlike `active` it
   // stays local — there is nothing to restore across a view switch.
   const [brush, setBrush] = useState<Brush | null>(null)
+  // A keyboard-drawn range in progress — the Shift+arrow equivalent of `brush`. Also local: it
+  // is exactly as ephemeral, just built one bucket at a time instead of one pointermove at a
+  // time. `null` means no range is being built, whether or not a bucket is merely focused.
+  const [rangeAnchor, setRangeAnchor] = useState<number | null>(null)
 
+  const plotWidth = Math.max(width - PLOT_X - 8, 0)
   const hasRange = filter.from !== null || filter.to !== null
+  const activeIndex = active === null ? -1 : buckets.findIndex((bucket) => bucket.start === active)
+  // Tab reaches exactly one bucket — whichever is open, or the first if none is yet. Moving the
+  // roving position (below) is what "focus follows the active bucket" already gets for free.
+  const rovingIndex = activeIndex === -1 ? 0 : activeIndex
 
   function clearRange(): void {
     onChange({ ...filter, from: null, to: null })
   }
+
+  // Escape aborts a pointer-drawn brush in progress. Bound while brushing rather than always,
+  // and keyed on whether a brush exists rather than the brush itself, so this does not
+  // resubscribe on every pointermove of the drag it is watching for the end of.
+  const brushing = brush !== null
+  useEffect(() => {
+    if (!brushing) return
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return
+      event.stopPropagation()
+      setBrush(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [brushing])
 
   if (buckets.length === 0) {
     return (
@@ -78,17 +110,24 @@ export function Timeline({
   }
 
   // A bucket's height is its tag occurrences, exactly as the breakdown's bars are, so the two
-  // panels are the same measurement seen along two different axes.
+  // panels are the same measurement seen along two different axes — and every label below says
+  // so, rather than mixing in a count of *dialogues*, which a doubly tagged line would disagree
+  // with.
   const tallies = buckets.map((bucket) => tallyOf(bucket.dialogues))
   const tallest = tallies.reduce((max, each) => Math.max(max, totalOf(each.counts)), 0)
   const scale = tallest === 0 ? 0 : PLOT_HEIGHT / tallest
-  const slot = PLOT_WIDTH / buckets.length
+  const slot = plotWidth / buckets.length
   const from = filter.from === null ? null : Date.parse(filter.from)
   const to = filter.to === null ? null : Date.parse(filter.to)
+  // The pointer brush and a keyboard-drawn range are the same kind of thing to draw — whichever
+  // is in progress (never both) is what the highlight rect below shows.
+  const keyboardRange: Brush | null =
+    rangeAnchor === null ? null : { from: rangeAnchor, to: rovingIndex }
+  const visibleBrush = brush ?? keyboardRange
   const brushed =
-    brush === null
+    visibleBrush === null
       ? null
-      : { lo: Math.min(brush.from, brush.to), hi: Math.max(brush.from, brush.to) }
+      : { lo: Math.min(visibleBrush.from, visibleBrush.to), hi: Math.max(visibleBrush.from, visibleBrush.to) }
 
   function indexAt(event: ReactPointerEvent<SVGRectElement>): number {
     const box = event.currentTarget.getBoundingClientRect()
@@ -109,15 +148,38 @@ export function Timeline({
     })
   }
 
-  const activeBucket = active === null ? null : buckets[active]
+  function onBucketKeyDown(event: ReactKeyboardEvent<SVGGElement>, index: number): void {
+    if (event.key === 'Escape' && rangeAnchor !== null) {
+      event.stopPropagation()
+      setRangeAnchor(null)
+      return
+    }
+    const step = arrowStep(event.key)
+    if (step !== null) {
+      event.preventDefault()
+      const next = Math.min(Math.max(index + step, 0), buckets.length - 1)
+      setRangeAnchor(event.shiftKey ? (rangeAnchor ?? index) : null)
+      onActiveChange(buckets[next].start)
+      document.getElementById(bucketElementId(buckets[next]))?.focus()
+      return
+    }
+    if (event.key === 'Enter' && rangeAnchor !== null) {
+      event.preventDefault()
+      commit({ from: rangeAnchor, to: index })
+      setRangeAnchor(null)
+    }
+  }
+
+  const activeBucket = activeIndex === -1 ? null : buckets[activeIndex]
 
   return (
     <TimelinePanel unit={unit} hasRange={hasRange} onClearRange={clearRange}>
       <svg
+        ref={svgRef}
         className="insights__svg timeline__svg"
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        viewBox={`0 0 ${width} ${HEIGHT}`}
         role="img"
-        aria-label={`Dialogues per ${unit}`}
+        aria-label={`Tag occurrences per ${unit}`}
       >
         <SegmentDefs idPrefix="timeline" />
 
@@ -127,13 +189,7 @@ export function Timeline({
         <text className="insights__row-label" x={PLOT_X - 6} y={AXIS_Y} textAnchor="end">
           0
         </text>
-        <line
-          className="timeline__axis"
-          x1={PLOT_X}
-          y1={AXIS_Y}
-          x2={PLOT_X + PLOT_WIDTH}
-          y2={AXIS_Y}
-        />
+        <line className="timeline__axis" x1={PLOT_X} y1={AXIS_Y} x2={PLOT_X + plotWidth} y2={AXIS_Y} />
 
         {brushed !== null && (
           <rect
@@ -155,7 +211,9 @@ export function Timeline({
             width={slot}
             scale={scale}
             outside={hasRange && !intersectsRange(bucket, from, to)}
-            onOpen={() => onActiveChange(index)}
+            roving={index === rovingIndex}
+            onOpen={() => onActiveChange(bucket.start)}
+            onKeyDown={(event) => onBucketKeyDown(event, index)}
           />
         ))}
 
@@ -177,13 +235,13 @@ export function Timeline({
           className="timeline__surface"
           x={PLOT_X}
           y={PLOT_TOP}
-          width={PLOT_WIDTH}
+          width={plotWidth}
           height={PLOT_HEIGHT}
           onPointerDown={(event) => {
             const index = indexAt(event)
             event.currentTarget.setPointerCapture(event.pointerId)
             setBrush({ from: index, to: index })
-            onActiveChange(index)
+            onActiveChange(buckets[index].start)
           }}
           onPointerMove={(event) => {
             const index = indexAt(event)
@@ -191,12 +249,16 @@ export function Timeline({
             // call — see `InsightsScreen`'s `setTimelineActive` — so calling it unconditionally
             // on every pointermove re-renders the detail pane, and re-announces its live region,
             // for every pixel crossed inside the bucket already open.
-            if (index !== active) onActiveChange(index)
+            if (buckets[index].start !== active) onActiveChange(buckets[index].start)
             setBrush((current) => (current === null ? null : { ...current, to: index }))
           }}
           onPointerUp={(event) => {
             event.currentTarget.releasePointerCapture(event.pointerId)
-            if (brush !== null) commit(brush)
+            // A press and release with no movement is a click — it has already inspected the
+            // bucket above, through the same `onActiveChange` a hover would trigger, and must
+            // not *also* narrow the date filter. Only an actual drag, spanning more than one
+            // bucket, commits a range.
+            if (brush !== null && brush.from !== brush.to) commit(brush)
             setBrush(null)
           }}
           onPointerLeave={() => {
@@ -206,7 +268,7 @@ export function Timeline({
       </svg>
 
       <BucketDetail
-        bucket={activeBucket ?? null}
+        bucket={activeBucket}
         unit={unit}
         zonesById={zonesById}
         zoneIndex={zoneIndex}
@@ -239,8 +301,10 @@ function TimelinePanel({
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Timeline</h2>
         <p className="insights__panel-note">
-          {UNIT_NOTE[unit]} Drag across the bars to filter to that stretch of time; hover or focus
-          one to see what was said.
+          {UNIT_NOTE[unit]} A bar's height is tag occurrences, so a doubly tagged line counts
+          twice — exactly as in the Relevance panel below. Click a bar to inspect it; drag across
+          several, or focus one and press Shift+arrow then Enter, to filter to that stretch of
+          time.
         </p>
         <button
           type="button"
@@ -264,7 +328,9 @@ function TimelineBar({
   width,
   scale,
   outside,
+  roving,
   onOpen,
+  onKeyDown,
 }: {
   bucket: TimeBucket
   unit: BucketUnit
@@ -273,7 +339,10 @@ function TimelineBar({
   width: number
   scale: number
   outside: boolean
+  /** Whether this is the one bucket Tab reaches — see `rovingIndex`. */
+  roving: boolean
   onOpen: () => void
+  onKeyDown: (event: ReactKeyboardEvent<SVGGElement>) => void
 }): ReactElement {
   // A gap only where there is room for one; below that the bars merge into a continuous band,
   // which is the honest reading of "more buckets than pixels". Capped and centred in its slot at
@@ -281,23 +350,24 @@ function TimelineBar({
   // rather than as a single measurement.
   const barWidth = Math.min(Math.max(width - (width > 4 ? 1.5 : 0), 0.5), MAX_BAR_WIDTH)
   const left = x + (width - barWidth) / 2
-  const label = `${describeBucket(bucket, unit)}: ${bucket.dialogues.length}`
+  const label = `${describeBucket(bucket, unit)}: ${totalOf(counts)}`
   let y = PLOT_TOP + PLOT_HEIGHT
 
   return (
     <g
+      id={bucketElementId(bucket)}
       className="timeline__bucket"
       data-outside={outside ? '' : undefined}
       role="button"
-      tabIndex={0}
-      aria-label={label}
+      // One tab stop for the whole set of buckets — see `rovingIndex` — with the arrow keys
+      // moving both the roving position and the visible focus together, the same pattern
+      // `MapScreen`'s `ToolPicker` uses for its radiogroup.
+      tabIndex={roving ? 0 : -1}
       onFocus={onOpen}
-      onKeyDown={(event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return
-        event.preventDefault()
-        onOpen()
-      }}
+      onKeyDown={onKeyDown}
     >
+      {/* The sole source of this bucket's accessible name — see the identical note in
+          RelevanceBreakdown.tsx. An `aria-label` here would have said the same thing twice. */}
       <title>{label}</title>
       {SEGMENT_KEYS.map((segment) => {
         const count = counts[segment]
@@ -403,4 +473,19 @@ function axisTicks(count: number): number[] {
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** `ArrowRight` moves forward, `ArrowLeft` back; anything else is `null` — see `MapScreen`'s
+ *  identical `arrowStep` for the tool picker's radiogroup. Up/Down are left alone: the timeline
+ *  is a one-dimensional axis, and claiming the vertical arrows would fight the page's own
+ *  scrolling. */
+function arrowStep(key: string): number | null {
+  if (key === 'ArrowRight') return 1
+  if (key === 'ArrowLeft') return -1
+  return null
+}
+
+/** The DOM id a bucket's `<g>` is found by when an arrow key moves the roving focus onto it. */
+function bucketElementId(bucket: TimeBucket): string {
+  return `timeline-bucket-${bucket.start}`
 }
