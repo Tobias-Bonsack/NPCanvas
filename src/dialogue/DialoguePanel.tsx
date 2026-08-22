@@ -24,6 +24,7 @@ import type {
   DialogueMedia,
   Glyph,
   ProjectFile,
+  RelevanceTag,
   Zone,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
@@ -78,6 +79,8 @@ export function DialoguePanel({
   dialogue,
   locations,
   onClose,
+  autoFocusNpc,
+  onAutoFocusConsumed,
 }: {
   project: ProjectFile
   dialogue: Dialogue
@@ -88,6 +91,9 @@ export function DialoguePanel({
   locations: readonly Zone[]
   /** Must be stable — the Escape listener below depends on it. */
   onClose: () => void
+  /** This dialogue was just placed, and its NPC field — not its pin — is owed the focus. */
+  autoFocusNpc: boolean
+  onAutoFocusConsumed: () => void
 }): ReactElement {
   const [importState, setImportState] = useState<ImportState>({ kind: 'idle' })
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
@@ -128,6 +134,13 @@ export function DialoguePanel({
 
   const npcNames = useMemo(() => npcNamesIn(project.dialogues), [project.dialogues])
   const map = project.maps.find((candidate) => candidate.id === dialogue.mapId) ?? null
+  // What the *previous* line was tagged, offered as a one-click carry-over on a freshly placed
+  // dialogue — most projects talk to the same NPC, in the same relevance, for several lines in
+  // a row. `spokenAt` is the only ordering a dialogue carries; see `previousRelevanceFor`.
+  const previousRelevance = useMemo(
+    () => previousRelevanceFor(project.dialogues, dialogue.id),
+    [project.dialogues, dialogue.id],
+  )
 
   /**
    * One file after the next rather than in parallel: the list order *is* the drop order, and
@@ -323,6 +336,9 @@ export function DialoguePanel({
         dialogue={dialogue}
         npcNames={npcNames}
         flushRef={flushDraft}
+        autoFocusNpc={autoFocusNpc}
+        onAutoFocusConsumed={onAutoFocusConsumed}
+        previousRelevance={previousRelevance}
       />
 
       <section className="dialogue-media">
@@ -494,12 +510,41 @@ function batchOutcome(
   return { kind: 'idle' }
 }
 
-/** Every NPC name in the project, deduplicated, blanks dropped, in locale order. */
+/** How many of the most-recently-spoken NPCs lead the list before it falls back to alphabetical. */
+const RECENT_NPC_LIMIT = 5
+
+/**
+ * Every NPC name in the project, deduplicated and blanks dropped — the most recently spoken
+ * `RECENT_NPC_LIMIT` first, in that order, then everyone else in locale order. While playing,
+ * the next line is usually one of the last few people talked to; alphabetical order made every
+ * one of them equally far from the top.
+ */
 function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
-  const names = new Set<string>()
-  for (const dialogue of dialogues) {
+  const byRecency = [...dialogues].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const dialogue of byRecency) {
     const trimmed = dialogue.npcName.trim()
-    if (trimmed !== '') names.add(trimmed)
+    if (trimmed === '' || seen.has(trimmed)) continue
+    seen.add(trimmed)
+    ordered.push(trimmed)
   }
-  return [...names].sort((a, b) => a.localeCompare(b))
+  const recent = ordered.slice(0, RECENT_NPC_LIMIT)
+  const rest = ordered.slice(RECENT_NPC_LIMIT).sort((a, b) => a.localeCompare(b))
+  return [...recent, ...rest]
+}
+
+/**
+ * The relevance tags of the most recently spoken line other than `excludeId` — the "previous
+ * line" a freshly placed dialogue offers to copy. `[]` when there is no other line, or the one
+ * found carries no tags to offer.
+ */
+function previousRelevanceFor(
+  dialogues: readonly Dialogue[],
+  excludeId: Dialogue['id'],
+): readonly RelevanceTag[] {
+  const previous = dialogues
+    .filter((candidate) => candidate.id !== excludeId)
+    .sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))[0]
+  return previous?.relevance ?? []
 }

@@ -268,8 +268,11 @@ function QuestCard({
 
       {linked.length === 0 ? (
         <p className="quest-card__empty">
-          Nothing attached yet. Use <strong>Attach dialogue</strong>, or start a quest from the
-          dialogue panel on the canvas.
+          Nothing attached yet. Use <strong>Attach dialogue</strong>, or start a quest from{' '}
+          <a href={formatRoute({ kind: 'canvas', dialogueId: null, focus: null })}>
+            the dialogue panel on the canvas
+          </a>
+          .
         </p>
       ) : (
         <ol className="quest-card__dialogues">

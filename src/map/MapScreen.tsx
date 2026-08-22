@@ -66,6 +66,24 @@ export function MapScreen({
     [onViewStateChange],
   )
 
+  // The dialogue a `place-dialogue` click just created, until its form has claimed the focus it
+  // is owed. Distinguishes "selected because it was just placed" from every other way a
+  // dialogue gets selected (a pin click, a link, the search palette) — those still want the pin
+  // itself focused, which is `PinLayer`'s own effect and stays untouched. Component state, not
+  // the store: it is exactly as transient as `tool`, and neither belongs in `data.json`.
+  const [autoFocusDialogueId, setAutoFocusDialogueId] = useState<DialogueId | null>(null)
+  const onDialoguePlaced = useCallback(
+    (dialogueId: DialogueId) => {
+      setAutoFocusDialogueId(dialogueId)
+      // A stray next click must not create a second empty record.
+      setTool({ kind: 'inspect' })
+    },
+    [setTool],
+  )
+  // Called once the form's autofocus has actually run — see `DialogueForm`. Clearing it is what
+  // stops a *later* reselection of the same dialogue from re-stealing focus from its pin.
+  const onAutoFocusConsumed = useCallback(() => setAutoFocusDialogueId(null), [])
+
   // A map drag in progress. It lives here, above both world-space layers, because the image
   // and its pins have to move together in the same frame — and it stays out of the store,
   // which would push a document-shaped update through autosave on every pointermove.
@@ -249,6 +267,7 @@ export function MapScreen({
             onMapDrag={setMapDrag}
             onZoneDrag={setZoneDrag}
             onVisibleRectChange={setVisibleRect}
+            onDialoguePlaced={onDialoguePlaced}
             initialViewport={viewport}
             onViewportChange={setViewport}
           >
@@ -267,6 +286,7 @@ export function MapScreen({
               highlighted={highlighted}
               questsByDialogue={questIndex}
               visibleRect={visibleRect}
+              suppressFocusId={autoFocusDialogueId}
             />
           </MapCanvas>
         </div>
@@ -276,6 +296,8 @@ export function MapScreen({
             dialogue={selectedDialogue}
             locations={selectedLocations}
             onClose={onCloseDialogue}
+            autoFocusNpc={autoFocusDialogueId === selectedDialogue.id}
+            onAutoFocusConsumed={onAutoFocusConsumed}
           />
         )}
       </div>

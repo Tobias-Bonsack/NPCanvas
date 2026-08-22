@@ -73,6 +73,7 @@ export const PinLayer = memo(function PinLayer({
   highlighted,
   questsByDialogue,
   visibleRect,
+  suppressFocusId,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
@@ -98,6 +99,13 @@ export const PinLayer = memo(function PinLayer({
    * every pin renders: "not measured yet" must not read as "nothing is visible".
    */
   visibleRect: Rect | null
+  /**
+   * A dialogue that was just placed and whose form, not its pin, is owed the initial focus —
+   * see #45 and `MapScreen`'s `onDialoguePlaced`. `null` for every ordinary selection, which is
+   * what leaves the pin's own focus-follow effect untouched for a click, a link, or the search
+   * palette.
+   */
+  suppressFocusId: DialogueId | null
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
@@ -234,6 +242,7 @@ export const PinLayer = memo(function PinLayer({
           visibleRect={visibleRect}
           dragged={dragged}
           pendingDelete={pendingDelete}
+          suppressFocusId={suppressFocusId}
           handlers={handlers}
         />
       ))}
@@ -255,6 +264,7 @@ const PinMapGroup = memo(function PinMapGroup({
   visibleRect,
   dragged,
   pendingDelete,
+  suppressFocusId,
   handlers,
 }: {
   map: GameMap
@@ -266,6 +276,7 @@ const PinMapGroup = memo(function PinMapGroup({
   visibleRect: Rect | null
   dragged: PinDrag | null
   pendingDelete: DialogueId | null
+  suppressFocusId: DialogueId | null
   handlers: PinHandlers
 }): ReactElement {
   // Converted once per map, not once per pin: the pins are already in this space.
@@ -304,6 +315,7 @@ const PinMapGroup = memo(function PinMapGroup({
           quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
           selected={dialogue.id === selectedId}
           confirmingDelete={pendingDelete === dialogue.id}
+          suppressFocus={dialogue.id === suppressFocusId}
           handlers={handlers}
         />
       ))}
@@ -357,6 +369,7 @@ const Pin = memo(function Pin({
   quests,
   selected,
   confirmingDelete,
+  suppressFocus,
   handlers,
 }: {
   dialogue: Dialogue
@@ -370,13 +383,30 @@ const Pin = memo(function Pin({
   quests: readonly Quest[]
   selected: boolean
   confirmingDelete: boolean
+  /** This pin was just placed, so its dialogue's own NPC field is claiming focus instead — see
+   *  `MapScreen`'s `onDialoguePlaced`. */
+  suppressFocus: boolean
   handlers: PinHandlers
 }): ReactElement {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const name = pinName(dialogue)
 
+  // Read inside the effect below without being one of its dependencies — see there for why.
+  const suppressFocusRef = useRef(suppressFocus)
+  useEffect(() => {
+    suppressFocusRef.current = suppressFocus
+  })
+
   // Selection is reachable from the canvas, the URL, and later the quest board, so focus
-  // follows it rather than being set at the click site.
+  // follows it rather than being set at the click site — except right after a placement, where
+  // the dialogue's own form claims it instead of the pin.
+  //
+  // `suppressFocus` deliberately is not in this effect's own dependency array: `MapScreen`
+  // clears it one render after a placement (once the form has consumed it), and a dependency
+  // list that included it would re-run this effect on that *second* render with the guard now
+  // open — stealing focus right back from the field that just claimed it. Reading the ref
+  // instead means only a real transition of `selected`/`confirmingDelete` is ever a decision
+  // point; the suppression is only ever consulted at the moment selection actually happens.
   //
   // `preventScroll` is load-bearing, not a nicety: the pin sits inside `.map-canvas`, which is
   // `overflow: hidden` and therefore still *scrollable*. Focusing a pin outside the visible
@@ -384,7 +414,9 @@ const Pin = memo(function Pin({
   // otherwise make the browser scroll the container, and every coordinate conversion after
   // that is off by the offset. See the scroll guard in `MapCanvas`.
   useEffect(() => {
-    if (selected && !confirmingDelete) buttonRef.current?.focus({ preventScroll: true })
+    if (selected && !confirmingDelete && !suppressFocusRef.current) {
+      buttonRef.current?.focus({ preventScroll: true })
+    }
   }, [selected, confirmingDelete])
 
   return (

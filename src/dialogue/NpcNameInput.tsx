@@ -16,13 +16,16 @@ export function NpcNameInput({
   names,
   onChange,
   onBlur,
+  autoFocus,
 }: {
   id: string
   value: string
-  /** Distinct and sorted — see `npcNamesIn`. */
+  /** Recently spoken first, then the rest alphabetically — see `npcNamesIn`. */
   names: readonly string[]
   onChange: (value: string) => void
   onBlur: () => void
+  /** React's own mount-time focus, not an effect — see `DialogueForm`'s `key`ed remount. */
+  autoFocus?: boolean
 }): ReactElement {
   const listId = useId()
 
@@ -38,6 +41,7 @@ export function NpcNameInput({
         // The browser's own form history would offer names from other projects — and other
         // sites — alongside this project's, which is exactly the wrong suggestion set.
         autoComplete="off"
+        autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         onBlur={onBlur}
       />

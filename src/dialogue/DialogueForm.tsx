@@ -1,8 +1,9 @@
 import type { ReactElement, RefObject } from 'react'
-import { useId } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue } from '../project/types.ts'
+import type { Dialogue, RelevanceTag } from '../project/types.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
+import { RELEVANCE_STYLE } from './relevance.ts'
 import { fromLocalDateTimeValue, toLocalDateTimeValue } from './local-datetime.ts'
 import { NpcNameInput } from './NpcNameInput.tsx'
 import { RelevancePicker } from './RelevancePicker.tsx'
@@ -24,6 +25,9 @@ export function DialogueForm({
   dialogue,
   npcNames,
   flushRef,
+  autoFocusNpc,
+  onAutoFocusConsumed,
+  previousRelevance,
 }: {
   dialogue: Dialogue
   npcNames: readonly string[]
@@ -33,11 +37,27 @@ export function DialogueForm({
    * Ctrl+Enter shortcut never blurs the field that is ahead of the store.
    */
   flushRef: RefObject<(() => void) | null>
+  /** This dialogue was just placed, so the NPC field claims the initial focus instead of the pin. */
+  autoFocusNpc: boolean
+  /** Called once the autofocus above has actually happened — see the effect below. */
+  onAutoFocusConsumed: () => void
+  /** The previous line's tags, offered as a one-click carry-over — see `RelevanceCarryOver`. */
+  previousRelevance: readonly RelevanceTag[]
 }): ReactElement {
   // One base id per form instance; each control suffixes it, so a second panel could never
   // collide and every label targets exactly its own control.
   const fieldId = useId()
   const dialogueId = dialogue.id
+
+  // `DialogueForm` is remounted per `dialogue.id` (see the `key` at its call site), so this
+  // guard is only ever about a *second* run of this same mount's effect — never about a later
+  // reselection of the same dialogue, which is a fresh mount with a fresh ref.
+  const consumedAutoFocus = useRef(false)
+  useEffect(() => {
+    if (!autoFocusNpc || consumedAutoFocus.current) return
+    consumedAutoFocus.current = true
+    onAutoFocusConsumed()
+  }, [autoFocusNpc, onAutoFocusConsumed])
 
   const npcDraft = useFieldDraft(dialogue.npcName, (npcName) =>
     dispatch({ kind: 'dialogue/npc-named', dialogueId, npcName }),
@@ -62,6 +82,7 @@ export function DialogueForm({
           names={npcNames}
           onChange={npcDraft.onChange}
           onBlur={npcDraft.flush}
+          autoFocus={autoFocusNpc}
         />
       </div>
 
@@ -89,6 +110,22 @@ export function DialogueForm({
         onChange={(relevance) => dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance })}
       />
 
+      {/* Offered, not applied silently — see #45. Only for a record nothing has touched yet: a
+          dialogue that already carries a line, a picture, or its own tags has moved past the
+          moment this is useful, and the button would just be an easy way to overwrite a choice
+          already made. */}
+      {isUntouched(dialogue) && previousRelevance.length > 0 && (
+        <button
+          type="button"
+          className="dialogue-form__carry-over"
+          onClick={() =>
+            dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance: [...previousRelevance] })
+          }
+        >
+          Same as the last line: {previousRelevance.map((tag) => RELEVANCE_STYLE[tag].label).join(', ')}
+        </button>
+      )}
+
       {/* Always shown, including for a dialogue that carries pictures: the line and the frames
           proving it are separate fields, and a captured screenshot is transcribed into this one. */}
       <div className="dialogue-form__field dialogue-form__field--grow">
@@ -107,4 +144,9 @@ export function DialogueForm({
       </div>
     </div>
   )
+}
+
+/** No line, no picture, no tags yet — exactly what a `place-dialogue` click leaves behind. */
+function isUntouched(dialogue: Dialogue): boolean {
+  return dialogue.text.trim() === '' && dialogue.media.length === 0 && dialogue.relevance.length === 0
 }

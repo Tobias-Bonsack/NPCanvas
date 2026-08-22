@@ -99,3 +99,21 @@
   accent-color: hsl(var(--relevance-hue) 70% 60%);
   margin: 0;
 }
+
+/* An offer, not a control that belongs in the picker itself — accented so it reads as a
+   suggestion worth noticing, distinct from the neutral tags above it. */
+.dialogue-form__carry-over {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--accent);
+  background: transparent;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.dialogue-form__carry-over:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useMemo } from 'react'
+import { formatRoute } from '../app/route.ts'
 import type { InsightsViewState } from '../app/view-state.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
 import type { ProjectFile, Zone, ZoneId } from '../project/types.ts'
@@ -66,15 +67,17 @@ export function InsightsScreen({
         </p>
       </header>
 
-      <FilterBar project={project} filter={filter} onChange={setFilter} />
-
       {project.dialogues.length === 0 ? (
+        // The full FilterBar over zero dialogues is a large control surface with nothing to
+        // control — see #45 — so it waits for the first dialogue along with everything else here.
         <p className="insights__empty">
-          Nothing logged yet. Pin a dialogue on the canvas and it will show up here — by
-          relevance, by where it was heard, and by who said it.
+          Nothing logged yet. Pin a dialogue on the{' '}
+          <a href={formatRoute({ kind: 'canvas', dialogueId: null, focus: null })}>canvas</a> and
+          it will show up here — by relevance, by where it was heard, and by who said it.
         </p>
       ) : (
         <>
+          <FilterBar project={project} filter={filter} onChange={setFilter} />
           <Timeline
             dialogues={undated}
             zonesById={zonesById}

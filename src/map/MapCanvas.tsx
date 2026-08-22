@@ -12,6 +12,7 @@ import { dispatch } from '../project/store.ts'
 import type {
   CanvasTool,
   Dialogue,
+  DialogueId,
   GameMap,
   MapId,
   Point,
@@ -188,6 +189,7 @@ export function MapCanvas({
   onMapDrag,
   onZoneDrag,
   onVisibleRectChange,
+  onDialoguePlaced,
   initialViewport,
   onViewportChange,
   children,
@@ -221,6 +223,13 @@ export function MapCanvas({
    * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
    */
   onVisibleRectChange: (rect: Rect) => void
+  /**
+   * Fires once a placement lands, so `MapScreen` can move focus into the new dialogue's NPC
+   * field instead of onto its pin, offer the previous line's relevance tags, and return the
+   * tool to `inspect` — see #45. The pin's own focus-follow effect is suppressed for this same
+   * id, which is what keeps the two paths from fighting over focus in the same commit.
+   */
+  onDialoguePlaced: (dialogueId: DialogueId) => void
   /**
    * The last viewport this canvas settled on, persisted one level up so a switch away and back
    * lands where the user left it — see CLAUDE.md's view-state note. `null` on a project's very
@@ -706,8 +715,12 @@ export function MapCanvas({
         const canvasPoint = screenToWorld(at, anchor)
         const map = mapAtCanvasPoint(maps, canvasPoint)
         // A Dialogue requires a real mapId, so a click on bare canvas places nothing rather
-        // than inventing an association.
-        if (map === null) return
+        // than inventing an association — said here rather than left silent, since the draft
+        // rectangle case a few lines up already sets the precedent for a rejected gesture.
+        if (map === null) {
+          showNotice('No map there — place a dialogue on top of a map.')
+          return
+        }
 
         const dialogue: Dialogue = {
           id: newDialogueId(),
@@ -722,6 +735,7 @@ export function MapCanvas({
         dispatch({ kind: 'dialogue/added', dialogue })
         dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
         navigate({ kind: 'canvas', dialogueId: dialogue.id, focus: null }, { replace: true })
+        onDialoguePlaced(dialogue.id)
         return
       }
 

@@ -40,6 +40,15 @@
   color: var(--text-muted);
 }
 
+.insights__empty a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.insights__empty a:hover {
+  text-decoration: underline;
+}
+
 /* ---- filter bar ---- */
 
 .filter-bar {

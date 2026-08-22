@@ -95,6 +95,13 @@ export function DialogueQuestLinks({
             type="button"
             className="dialogue-panel__button"
             disabled={quests.length === linked.length}
+            title={
+              quests.length === 0
+                ? 'No quests exist yet — create one below'
+                : quests.length === linked.length
+                  ? 'Already attached to every quest in the project'
+                  : 'Attach this dialogue to a quest that already exists'
+            }
             onClick={() => setMode({ kind: 'attaching' })}
           >
             Attach to existing quest

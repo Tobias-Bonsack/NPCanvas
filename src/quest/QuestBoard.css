@@ -208,6 +208,15 @@
   color: var(--text-muted);
 }
 
+.quest-card__empty a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.quest-card__empty a:hover {
+  text-decoration: underline;
+}
+
 .quest-card__dialogues {
   margin: 0;
   padding: 0;
