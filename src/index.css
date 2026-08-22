@@ -269,3 +269,8 @@ body {
   border: 1px solid hsl(var(--quest-hue) var(--hue-chip-border));
   background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }
+
+.hue-chip[style*='--relevance-hue'] {
+  border: 1px solid hsl(var(--relevance-hue) var(--hue-chip-border));
+  background: hsl(var(--relevance-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
+}

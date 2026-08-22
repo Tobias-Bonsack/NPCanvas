@@ -7,6 +7,7 @@ import type { ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import { FilterBar } from './FilterBar.tsx'
 import { NpcDossier } from './NpcDossier.tsx'
 import { RelevanceBreakdown } from './RelevanceBreakdown.tsx'
+import { RelevanceTagList } from './RelevanceTagList.tsx'
 import { Timeline } from './Timeline.tsx'
 import { applyFilter, isEmptyFilter } from './filters.ts'
 import './InsightsScreen.css'
@@ -66,6 +67,13 @@ export function InsightsScreen({
           {isEmptyFilter(filter) ? '' : ' match the filter'}
         </p>
       </header>
+
+      <RelevanceTagList
+        relevanceTags={project.relevanceTags}
+        dialogues={project.dialogues}
+        filter={filter}
+        onFilterChange={setFilter}
+      />
 
       {project.dialogues.length === 0 ? (
         // The full FilterBar over zero dialogues is a large control surface with nothing to

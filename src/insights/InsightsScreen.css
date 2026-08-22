@@ -187,6 +187,77 @@
   color: var(--text);
 }
 
+/* ---- relevance tag list ---- */
+
+.relevance-tag-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.relevance-tag-list__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* The row's primary label — a `hue-chip` (index.css) is the same pill a filter's active zone
+   or quest chip already uses, keyed off `--relevance-hue` the same way. */
+.relevance-tag-list__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relevance-tag-list__form,
+.relevance-tag-list__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+}
+
+.relevance-tag-list__input {
+  flex: 1;
+  min-width: 6rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+.relevance-tag-list__palette {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+.relevance-tag-list__swatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: hsl(var(--relevance-hue) var(--relevance-sl));
+  cursor: pointer;
+}
+
+.relevance-tag-list__swatch[aria-pressed='true'] {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
 /* ---- panels and charts ---- */
 
 .insights__panel {
