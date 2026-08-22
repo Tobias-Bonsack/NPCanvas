@@ -32,12 +32,12 @@
 
 .capture-calibration__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 
 .capture-calibration__step {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -123,7 +123,7 @@
 
 .capture-calibration__legend {
   padding: 0 var(--space-2) 0 0;
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -139,31 +139,16 @@
 .capture-calibration__tile-size {
   margin: 0 0 var(--space-1) 0;
   align-self: flex-end;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.capture-calibration__toggle {
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
+/* The unpressed look is `.button` (index.css); this only adds what a toggle needs on top. */
 .capture-calibration__toggle[aria-pressed='true'] {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
-}
-
-.capture-calibration__toggle:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* The action among the toggles, so it does not read as another mode that is currently off. */
@@ -175,15 +160,15 @@
 
 .capture-calibration__warning {
   margin: 0;
-  font-size: 0.75rem;
-  color: #ff8f8f;
+  font-size: var(--text-2xs);
+  color: var(--danger);
 }
 
 .capture-calibration__field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -195,7 +180,7 @@
 
 .capture-calibration__input {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   text-transform: none;
   letter-spacing: normal;
   color: var(--text);
@@ -218,7 +203,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -230,7 +215,7 @@
 
 .capture-calibration__button {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--surface-2);
   border: 1px solid var(--border);

@@ -1,6 +1,8 @@
 /* A sibling of the canvas, not an overlay on it: the map has to stay visible and pannable
    while a line is being written. Fixed width for the same reason the map sidebar has one —
-   the canvas is what should absorb a window resize. */
+   the canvas is what should absorb a window resize — but that width gives ground at the two
+   breakpoints below rather than eating the canvas down to nothing; see the note on
+   `.map-screen__sidebar` in MapScreen.css, which the same problem was named after. */
 .dialogue-panel {
   width: 22rem;
   flex: none;
@@ -12,6 +14,18 @@
   padding: var(--space-4);
   border-left: 1px solid var(--border);
   background: var(--surface-1);
+}
+
+@media (max-width: 72rem) {
+  .dialogue-panel {
+    width: 18rem;
+  }
+}
+
+@media (max-width: 40rem) {
+  .dialogue-panel {
+    width: 14rem;
+  }
 }
 
 /* Nothing in the column may shrink. A flex child compressed below its content does not scroll,
@@ -37,12 +51,12 @@
 
 .dialogue-panel__title {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 
 .dialogue-panel__button {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   align-self: flex-start;
   color: var(--text-muted);
   background: var(--surface-2);
@@ -64,7 +78,7 @@
 
 .dialogue-panel__map {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -74,7 +88,7 @@
   align-items: center;
   gap: var(--space-1);
   flex-wrap: wrap;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
 }
 
 /* Coloured to match the zone on the canvas, so the panel and the map name the same region
@@ -143,7 +157,7 @@
 
 .dialogue-media__position {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -168,36 +182,16 @@
   gap: var(--space-2);
 }
 
-.dialogue-media__label {
-  font-size: 0.8125rem;
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-}
-
 .dialogue-media__label[data-importing] {
   opacity: 0.6;
   cursor: progress;
 }
 
-/* Visually hidden but still focusable and still the label's target, so keyboard users tab to
-   a real file input rather than to a label that does nothing on Enter. */
-.dialogue-media__input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
+/* The input itself is `.visually-hidden` (index.css) — still focusable and still the label's
+   target, so keyboard users tab to a real file input rather than to a label that does nothing
+   on Enter. */
 .dialogue-media:has(.dialogue-media__input:focus-visible) .dialogue-media__label {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -205,7 +199,7 @@
    and two solid accent blocks side by side would say nothing about which to press first. */
 .dialogue-media__capture {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--accent);
@@ -230,7 +224,7 @@
 .dialogue-media__error,
 .dialogue-media__capture-note {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
 }
 
 /* What the last capture did. Not muted like a hint: it is the only confirmation that a press
@@ -244,9 +238,9 @@
 }
 
 .dialogue-media__warning {
-  color: #ffcf8f;
+  color: var(--warning);
 }
 
 .dialogue-media__error {
-  color: #ff8f8f;
+  color: var(--danger);
 }

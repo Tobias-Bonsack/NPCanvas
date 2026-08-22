@@ -172,7 +172,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
             </p>
             <button
               type="button"
-              className="capture-bar__button"
+              className="button"
               onClick={() => disconnectCaptureSource()}
             >
               Disconnect
@@ -204,10 +204,10 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
               if (event.key === 'Escape') setMode({ kind: 'idle' })
             }}
           />
-          <button type="submit" className="capture-bar__button">
+          <button type="submit" className="button">
             Save
           </button>
-          <button type="button" className="capture-bar__button" onClick={() => setMode({ kind: 'idle' })}>
+          <button type="button" className="button" onClick={() => setMode({ kind: 'idle' })}>
             Cancel
           </button>
         </form>
@@ -222,12 +222,12 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
           </span>
           <button
             type="button"
-            className="capture-bar__button capture-bar__button--danger"
+            className="button button--danger"
             onClick={() => onDeleteConfirmed(active)}
           >
             Delete
           </button>
-          <button type="button" className="capture-bar__button" onClick={() => setMode({ kind: 'idle' })}>
+          <button type="button" className="button" onClick={() => setMode({ kind: 'idle' })}>
             Cancel
           </button>
         </div>
@@ -256,7 +256,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
         )}
         <button
           type="button"
-          className="capture-bar__button"
+          className="button"
           disabled={source.kind !== 'live' || calibration.kind === 'freezing'}
           title={source.kind === 'live' ? undefined : 'Connect a source first — calibration needs a frame.'}
           onClick={() => void openCalibration(null)}
@@ -267,7 +267,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
           <>
             <button
               type="button"
-              className="capture-bar__button"
+              className="button"
               disabled={source.kind !== 'live' || calibration.kind === 'freezing'}
               title={source.kind === 'live' ? undefined : 'Connect a source first — calibration needs a frame.'}
               onClick={() => void openCalibration(active)}
@@ -276,14 +276,14 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
             </button>
             <button
               type="button"
-              className="capture-bar__button"
+              className="button"
               onClick={() => setMode({ kind: 'renaming', draft: active.name })}
             >
               Rename
             </button>
             <button
               type="button"
-              className="capture-bar__button"
+              className="button"
               onClick={() => setMode({ kind: 'confirming-delete' })}
             >
               Delete
@@ -296,7 +296,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
 
   return (
     <section className="capture-bar" aria-label="Screen capture">
-      <h3 className="capture-bar__title">Capture source</h3>
+      <h3 className="micro-label">Capture source</h3>
       <div className="capture-bar__row">{connectionRow()}</div>
       <p className="capture-bar__hint">
         A capture connection cannot be stored the way the project folder can, so it ends with the
@@ -313,7 +313,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
         </p>
       )}
 
-      <h3 className="capture-bar__title">Capture profile</h3>
+      <h3 className="micro-label">Capture profile</h3>
       <div className="capture-bar__row capture-bar__row--actions">{profileRow()}</div>
       {profiles.length === 0 && (
         <p className="capture-bar__hint">
@@ -325,11 +325,11 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
 
       {active !== null && (
         <>
-          <h3 className="capture-bar__title">Text box</h3>
+          <h3 className="micro-label">Text box</h3>
           <div className="capture-bar__row capture-bar__row--actions">
             <button
               type="button"
-              className="capture-bar__button"
+              className="button"
               disabled={!readable || read.kind === 'reading'}
               title={readable ? undefined : 'Connect the source this profile was calibrated against.'}
               onClick={() => void readTheBox(active)}

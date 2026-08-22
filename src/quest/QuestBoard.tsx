@@ -4,17 +4,17 @@ import type { Route } from '../app/route.ts'
 import { formatRoute, navigate } from '../app/route.ts'
 import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
-import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
+import { DialogueRow, DialogueRowContent } from '../dialogue-row/DialogueRow.tsx'
+import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.ts'
+import { npcKey, npcLabel } from '../insights/filters.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
-import { zoneHueStyle } from '../map/zone-style.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 import type {
   Dialogue,
   DialogueId,
-  DialogueMedia,
   ProjectFile,
   Quest,
   QuestId,
@@ -22,7 +22,7 @@ import type {
   Zone,
   ZoneId,
 } from '../project/types.ts'
-import { QUEST_STATUSES, dialogueContentKind } from '../project/types.ts'
+import { QUEST_STATUSES } from '../project/types.ts'
 import { QuestForm } from './QuestForm.tsx'
 import { QUEST_HUES, nextQuestHue, questAccentStyle, questHueStyle } from './quest-style.ts'
 import './QuestBoard.css'
@@ -114,7 +114,7 @@ export function QuestBoard({
     <section className="quest-board">
       <header className="quest-board__bar">
         <h1 className="quest-board__title">Quest board</h1>
-        <button type="button" className="quest-board__new" onClick={createQuest}>
+        <button type="button" className="button--primary" onClick={createQuest}>
           New quest
         </button>
       </header>
@@ -168,7 +168,7 @@ function QuestGroup({
     <section className="quest-board__group" aria-label={`${STATUS_LABEL[status]} quests`}>
       <h2 className="quest-board__group-heading">
         {STATUS_LABEL[status]}
-        <span className="quest-board__count">{quests.length}</span>
+        <span className="count-pill">{quests.length}</span>
       </h2>
       {quests.length === 0 ? (
         <p className="quest-board__group-empty">Nothing here.</p>
@@ -237,7 +237,7 @@ function QuestCard({
         </span>
         <button
           type="button"
-          className="quest-board__button"
+          className="button"
           aria-label={`${toggle.label}: ${name}`}
           onClick={() => dispatch({ kind: 'quest/status-set', questId: quest.id, status: toggle.to })}
         >
@@ -245,7 +245,7 @@ function QuestCard({
         </button>
         <button
           type="button"
-          className="quest-board__button"
+          className="button"
           aria-label={`Edit ${name}`}
           onClick={() => onSetMode({ kind: 'editing', id: quest.id })}
         >
@@ -253,7 +253,7 @@ function QuestCard({
         </button>
         <button
           type="button"
-          className="quest-board__button"
+          className="button"
           aria-label={`Change the colour of ${name}`}
           onClick={() => onSetMode({ kind: 'recolouring', id: quest.id })}
         >
@@ -261,7 +261,7 @@ function QuestCard({
         </button>
         <button
           type="button"
-          className="quest-board__button"
+          className="button"
           aria-label={`Delete ${name}`}
           onClick={() => onSetMode({ kind: 'confirming-delete', id: quest.id })}
         >
@@ -290,14 +290,11 @@ function QuestCard({
         <ol className="quest-card__dialogues">
           {linked.map((dialogue) => (
             <li key={dialogue.id} className="quest-card__dialogue">
-              <LinkedDialogue
-                dialogue={dialogue}
-                zones={locationsOf(dialogue.id, zoneIndex, zonesById)}
-              />
+              <DialogueRow dialogue={dialogue} zones={resolveZones(dialogue.id, zoneIndex, zonesById)} />
               <button
                 type="button"
-                className="quest-board__button"
-                aria-label={`Detach ${npcNameOf(dialogue)}: ${snippetOf(dialogue)} from ${name}`}
+                className="button"
+                aria-label={`Detach ${npcLabel(npcKey(dialogue))}: ${dialogueSnippet(dialogue)} from ${name}`}
                 onClick={() =>
                   dispatch({
                     kind: 'quest/dialogue-detached',
@@ -336,7 +333,7 @@ function QuestCardMode({
           {quest.note.trim() !== '' && <p className="quest-card__note">{quest.note}</p>}
           <button
             type="button"
-            className="quest-board__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'attaching', id: quest.id })}
           >
             Attach dialogue
@@ -368,7 +365,7 @@ function QuestCardMode({
           ))}
           <button
             type="button"
-            className="quest-board__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -436,12 +433,12 @@ function QuestDeleteConfirm({
       <span>Delete this quest? Its dialogues stay exactly where they are.</span>
       <button
         type="button"
-        className="quest-board__button quest-board__button--danger"
+        className="button button--danger"
         onClick={onConfirm}
       >
         Delete
       </button>
-      <button type="button" className="quest-board__button" onClick={onCancel}>
+      <button type="button" className="button" onClick={onCancel}>
         Cancel
       </button>
     </div>
@@ -499,7 +496,7 @@ function DialoguePicker({
             if (event.key === 'Escape') onClose()
           }}
         />
-        <button type="button" className="quest-board__button" onClick={onClose}>
+        <button type="button" className="button" onClick={onClose}>
           Close
         </button>
       </div>
@@ -514,14 +511,10 @@ function DialoguePicker({
         <ul className="quest-picker__list">
           {matches.slice(0, PICKER_LIMIT).map((dialogue) => (
             <li key={dialogue.id}>
-              <button
-                type="button"
-                className="quest-picker__option"
-                onClick={() => onPick(dialogue.id)}
-              >
-                <DialogueSummary
+              <button type="button" className="dialogue-row" onClick={() => onPick(dialogue.id)}>
+                <DialogueRowContent
                   dialogue={dialogue}
-                  zones={locationsOf(dialogue.id, zoneIndex, zonesById)}
+                  zones={resolveZones(dialogue.id, zoneIndex, zonesById)}
                 />
               </button>
             </li>
@@ -539,63 +532,6 @@ function DialoguePicker({
 }
 
 /**
- * A linked line, as an anchor rather than a button: the hash *is* the navigation mechanism, so
- * middle-click and bookmarking work with no handler of ours. `focus` carries the map because a
- * pin on a distant map would otherwise be selected somewhere off screen.
- */
-function LinkedDialogue({
-  dialogue,
-  zones,
-}: {
-  dialogue: Dialogue
-  zones: readonly Zone[]
-}): ReactElement {
-  return (
-    <a
-      className="quest-card__link"
-      href={formatRoute({
-        kind: 'canvas',
-        dialogueId: dialogue.id,
-        focus: { kind: 'map', id: dialogue.mapId },
-      })}
-    >
-      <DialogueSummary dialogue={dialogue} zones={zones} />
-    </a>
-  )
-}
-
-/** The one-line identity of a dialogue, shared by the linked list and the attach picker. */
-function DialogueSummary({
-  dialogue,
-  zones,
-}: {
-  dialogue: Dialogue
-  zones: readonly Zone[]
-}): ReactElement {
-  return (
-    <>
-      <ContentGlyph kind={dialogueContentKind(dialogue)} />
-      <span className="quest-card__npc">{npcNameOf(dialogue)}</span>
-      <span className="quest-card__snippet">{snippetOf(dialogue)}</span>
-      <span className="quest-card__where">
-        {zones.length === 0 ? (
-          <span className="quest-card__nowhere">Outside any zone</span>
-        ) : (
-          zones.map((zone) => (
-            <span key={zone.id} className="quest-card__zone" style={zoneHueStyle(zone.hue)}>
-              {zone.name}
-            </span>
-          ))
-        )}
-      </span>
-      <time className="quest-card__when" dateTime={dialogue.spokenAt}>
-        {formatSpokenAt(dialogue.spokenAt)}
-      </time>
-    </>
-  )
-}
-
-/**
  * Keyed by an id, for the O(1) lookups a card of linked ids needs. `T['id']` rather than a
  * second type parameter: a key parameter is only inferable from the constraint, which lands
  * as `unknown` and throws away the brand.
@@ -604,19 +540,6 @@ function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T
   const map = new Map<T['id'], T>()
   for (const item of items) map.set(item.id, item)
   return map
-}
-
-/** The zones a dialogue sits in, most specific first — the order `zone-index.ts` returns. */
-function locationsOf(
-  dialogueId: DialogueId,
-  zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>,
-  zonesById: ReadonlyMap<ZoneId, Zone>,
-): Zone[] {
-  const zoneIds = zoneIndex.get(dialogueId) ?? []
-  return zoneIds.flatMap((id) => {
-    const zone = zonesById.get(id)
-    return zone === undefined ? [] : [zone]
-  })
 }
 
 /** The DOM id a quest's card is scrolled to when `?edit=<id>` names it. */
@@ -630,44 +553,3 @@ function questName(quest: Quest): string {
   return trimmed === '' ? 'Untitled quest' : trimmed
 }
 
-function npcNameOf(dialogue: Dialogue): string {
-  const trimmed = dialogue.npcName.trim()
-  return trimmed === '' ? 'Unnamed NPC' : trimmed
-}
-
-/**
- * A `Record`, not a lookup function, so a fifth media kind is a compile error here rather than
- * a row that silently says nothing about its content.
- */
-const MEDIA_SNIPPET: Record<DialogueMedia['kind'], string> = {
-  image: 'Image',
-  gif: 'GIF',
-  video: 'Video clip',
-}
-
-/**
- * The line if there is one, and what the pictures are otherwise — a dialogue can now carry both,
- * and the words are what identifies it.
- *
- * Whitespace is collapsed rather than truncated at a character count: the row is one line with
- * a CSS ellipsis, so the browser cuts it exactly where the column runs out — but a newline
- * would otherwise render as a space of unpredictable width in the middle of it.
- */
-function snippetOf(dialogue: Dialogue): string {
-  const collapsed = dialogue.text.replace(/\s+/g, ' ').trim()
-  if (collapsed !== '') return collapsed
-  if (dialogue.media.length === 0) return 'No text yet'
-  return MEDIA_SNIPPET[dialogue.media[0].kind]
-}
-
-// Intl rather than a date library — see CLAUDE.md § Dependencies.
-const SPOKEN_AT_FORMAT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
-
-/** An unparseable instant is shown verbatim: a hand-edited data.json is the user's to fix. */
-function formatSpokenAt(iso: string): string {
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : SPOKEN_AT_FORMAT.format(date)
-}

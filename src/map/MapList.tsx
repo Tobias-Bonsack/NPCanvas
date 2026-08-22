@@ -117,12 +117,12 @@ function MapRow({
               if (event.key === 'Escape') onSetMode({ kind: 'idle' })
             }}
           />
-          <button type="submit" className="map-list__button">
+          <button type="submit" className="button">
             Save
           </button>
           <button
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -141,14 +141,14 @@ function MapRow({
           </span>
           <button
             type="button"
-            className="map-list__button map-list__button--danger"
+            className="button button--danger"
             onClick={onDeleteConfirmed}
           >
             Delete
           </button>
           <button
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -171,7 +171,7 @@ function MapRow({
           <button
             ref={triggerRef.rename}
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'renaming', id: map.id, draft: map.name })}
           >
             Rename
@@ -179,7 +179,7 @@ function MapRow({
           <button
             ref={triggerRef.delete}
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'confirming-delete', id: map.id })}
           >
             Delete

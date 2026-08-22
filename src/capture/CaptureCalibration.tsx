@@ -236,7 +236,7 @@ export function CaptureCalibration({
             <legend className="capture-calibration__legend">Measure</legend>
             <button
               type="button"
-              className="capture-calibration__toggle capture-calibration__toggle--action"
+              className="button capture-calibration__toggle capture-calibration__toggle--action"
               onClick={measure}
             >
               Measure it
@@ -247,7 +247,7 @@ export function CaptureCalibration({
             <legend className="capture-calibration__legend">Step</legend>
             <button
               type="button"
-              className="capture-calibration__toggle"
+              className="button capture-calibration__toggle"
               aria-pressed={step === 'screen'}
               onClick={() => setStep('screen')}
             >
@@ -255,7 +255,7 @@ export function CaptureCalibration({
             </button>
             <button
               type="button"
-              className="capture-calibration__toggle"
+              className="button capture-calibration__toggle"
               aria-pressed={step === 'text'}
               disabled={screenRect === null}
               onClick={() => setStep('text')}
@@ -270,7 +270,7 @@ export function CaptureCalibration({
               <button
                 key={String(option)}
                 type="button"
-                className="capture-calibration__toggle"
+                className="button capture-calibration__toggle"
                 aria-pressed={zoom === option}
                 onClick={() => setZoom(option)}
               >

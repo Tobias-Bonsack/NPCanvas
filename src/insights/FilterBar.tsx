@@ -96,7 +96,7 @@ export function FilterBar({
         </label>
         <button
           type="button"
-          className="filter-bar__clear"
+          className="button"
           disabled={isEmptyFilter(filter)}
           onClick={() => onChange(EMPTY_FILTER)}
         >
@@ -280,7 +280,7 @@ function ActiveChip({
       <span className="filter-bar__remove" aria-hidden="true">
         ×
       </span>
-      <span className="filter-bar__sr">Remove filter</span>
+      <span className="visually-hidden">Remove filter</span>
     </button>
   )
 }

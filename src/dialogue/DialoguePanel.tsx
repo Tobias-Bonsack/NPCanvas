@@ -349,7 +349,7 @@ export function DialoguePanel({
     >
       <header className="dialogue-panel__header">
         <h2 className="dialogue-panel__title">Dialogue</h2>
-        <button type="button" className="dialogue-panel__button" onClick={onClose}>
+        <button type="button" className="button" onClick={onClose}>
           Close
         </button>
       </header>
@@ -364,7 +364,7 @@ export function DialoguePanel({
           <span className="dialogue-panel__nowhere">Outside any zone</span>
         ) : (
           locations.map((zone) => (
-            <span key={zone.id} className="dialogue-panel__zone" style={zoneHueStyle(zone.hue)}>
+            <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
               {zone.name}
             </span>
           ))
@@ -384,7 +384,7 @@ export function DialoguePanel({
       />
 
       <section className="dialogue-media">
-        <h3 className="dialogue-form__legend">Media</h3>
+        <h3 className="micro-label">Media</h3>
 
         {/* An ordered list because the order is the content: the first entry is what the pin
             wears. Position is moved one step at a time rather than dragged — a drag inside a
@@ -400,7 +400,7 @@ export function DialoguePanel({
                 <div className="dialogue-media__controls">
                   <button
                     type="button"
-                    className="dialogue-panel__button"
+                    className="button"
                     disabled={index === 0}
                     onClick={() => moveMedium(medium, index - 1)}
                   >
@@ -408,7 +408,7 @@ export function DialoguePanel({
                   </button>
                   <button
                     type="button"
-                    className="dialogue-panel__button"
+                    className="button"
                     disabled={index === dialogue.media.length - 1}
                     onClick={() => moveMedium(medium, index + 1)}
                   >
@@ -416,7 +416,7 @@ export function DialoguePanel({
                   </button>
                   <button
                     type="button"
-                    className="dialogue-panel__button"
+                    className="button"
                     onClick={() => void removeMedium(medium)}
                   >
                     Remove
@@ -431,7 +431,7 @@ export function DialoguePanel({
           {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
               cannot be restyled, and a button would need a ref plus a synthetic click. */}
           <label
-            className="dialogue-media__label"
+            className="button--primary dialogue-media__label"
             htmlFor={pickerId}
             // Not `aria-disabled`: that attribute means something on a widget with a role, and
             // a `<label>` has none — it conveys nothing to assistive tech and only ever styled
@@ -462,7 +462,7 @@ export function DialoguePanel({
         </div>
         <input
           id={pickerId}
-          className="dialogue-media__input"
+          className="visually-hidden dialogue-media__input"
           type="file"
           multiple
           accept={DIALOGUE_MEDIA_ACCEPT}

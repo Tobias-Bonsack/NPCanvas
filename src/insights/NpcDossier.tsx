@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { formatRoute } from '../app/route.ts'
+import { formatSpokenAt, resolveZones, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
@@ -8,7 +9,6 @@ import { questAccentStyle } from '../quest/quest-style.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, DialogueId, Quest, Zone, ZoneId } from '../project/types.ts'
 import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
-import { formatSpokenAt, resolveZones, zoneLabel } from './dialogue-summary.ts'
 import { npcKey, npcLabel } from './filters.ts'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
 import {
@@ -94,7 +94,7 @@ export function NpcDossier({
                   onClick={() => onSelectedKeyChange(profile.key)}
                 >
                   <span className="npc-dossier__name">{profile.label}</span>
-                  <span className="npc-dossier__lines">{profile.dialogues.length}</span>
+                  <span className="npc-dossier__count">{profile.dialogues.length}</span>
                   <SegmentBar counts={profile.tally.counts} className="npc-dossier__spark" />
                 </button>
               </li>
@@ -146,7 +146,7 @@ function Dossier({
       </dl>
 
       <section className="npc-dossier__section" aria-label="Relevance profile">
-        <h4 className="npc-dossier__section-title">Relevance</h4>
+        <h4 className="micro-label">Relevance</h4>
         <SegmentBar counts={profile.tally.counts} className="npc-dossier__profile" />
         <ul className="npc-dossier__chips">
           {SEGMENT_KEYS.filter((segment) => profile.tally.counts[segment] > 0).map((segment) => (
@@ -163,13 +163,13 @@ function Dossier({
       </section>
 
       <section className="npc-dossier__section" aria-label="Zones encountered in">
-        <h4 className="npc-dossier__section-title">Encountered in</h4>
+        <h4 className="micro-label">Encountered in</h4>
         {profile.zones.length === 0 ? (
           <p className="insights__empty">Never inside a zone.</p>
         ) : (
           <ul className="npc-dossier__chips">
             {profile.zones.map((zone) => (
-              <li key={zone.id} className="dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
+              <li key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
                 {zoneLabel(zone)}
               </li>
             ))}
@@ -178,7 +178,7 @@ function Dossier({
       </section>
 
       <section className="npc-dossier__section" aria-label="Quests">
-        <h4 className="npc-dossier__section-title">Quests</h4>
+        <h4 className="micro-label">Quests</h4>
         {profile.quests.length === 0 ? (
           <p className="insights__empty">None of their lines belong to a quest yet.</p>
         ) : (
@@ -239,7 +239,7 @@ function NpcLine({
             <span className="dialogue-row__nowhere">Outside any zone</span>
           ) : (
             zones.map((zone) => (
-              <span key={zone.id} className="dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
+              <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
                 {zoneLabel(zone)}
               </span>
             ))
@@ -298,13 +298,13 @@ function RenameForm({
     >
       <h3 className="npc-dossier__title">{profile.label}</h3>
       <input
-        className="filter-bar__search npc-dossier__input"
+        className="text-input npc-dossier__input"
         value={draft}
         aria-label={`Rename ${profile.label}`}
         placeholder={profile.key === '' ? 'Give them a name' : 'New name'}
         onChange={(event) => setDraft(event.target.value)}
       />
-      <button type="submit" className="filter-bar__clear" disabled={next === profile.key}>
+      <button type="submit" className="button" disabled={next === profile.key}>
         {next === '' ? 'Clear name' : 'Rename'}
       </button>
       {merges && (
@@ -325,7 +325,7 @@ function Fact({
 }): ReactElement {
   return (
     <div className="npc-dossier__fact">
-      <dt>{term}</dt>
+      <dt className="micro-label">{term}</dt>
       <dd>{children}</dd>
     </div>
   )

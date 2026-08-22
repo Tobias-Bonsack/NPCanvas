@@ -37,7 +37,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
           </p>
           <button
             type="button"
-            className="connect__button"
+            className="button--primary"
             onClick={() => void connectToNewDirectory()}
           >
             Choose project folder
@@ -54,7 +54,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
           </p>
           <button
             type="button"
-            className="connect__button"
+            className="button--primary"
             onClick={() => void grantSavedDirectoryAccess()}
           >
             Reconnect to {state.directoryName}
@@ -89,7 +89,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
               `data.json`. */}
           <button
             type="button"
-            className="connect__button"
+            className="button--primary"
             onClick={() => void connectToNewDirectory()}
           >
             Choose project folder

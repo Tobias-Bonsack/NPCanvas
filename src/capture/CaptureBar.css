@@ -9,17 +9,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* Matches `.dialogue-form__legend` by value rather than by class: this is a section heading in
-   the panel's column and must read as a sibling of MEDIA and QUESTS, but the capture feature
-   does not otherwise depend on the dialogue form's stylesheet. */
-.capture-bar__title {
-  margin: 0;
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
 .capture-bar__row {
   align-self: stretch;
   display: flex;
@@ -38,7 +27,7 @@
 /* The primary action of the section, so it wears the accent the media picker wears. */
 .capture-bar__connect {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--accent-contrast);
   background: var(--accent);
   border: none;
@@ -52,31 +41,10 @@
   cursor: progress;
 }
 
-.capture-bar__button {
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.capture-bar__button:hover {
-  color: var(--text);
-  background: var(--surface-3);
-}
-
-.capture-bar__button--danger {
-  color: #ff8f8f;
-  border-color: rgb(255 143 143 / 0.5);
-}
-
 /* The row holds a picker plus up to four actions, so it wraps rather than compressing them. */
 .capture-bar__select {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -92,14 +60,14 @@
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
 }
 
 .capture-bar__input {
   flex: 1;
   min-width: 6rem;
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -117,14 +85,14 @@
 /* Chromium's raw track label can be long and has no spaces to wrap at, so it is clipped rather
    than allowed to widen the panel. */
 .capture-bar__label {
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .capture-bar__size {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -136,7 +104,7 @@
   margin: 0;
   padding: var(--space-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -148,7 +116,7 @@
 .capture-bar__note,
 .capture-bar__error {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
 }
 
 .capture-bar__hint,
@@ -157,5 +125,5 @@
 }
 
 .capture-bar__error {
-  color: #ff8f8f;
+  color: var(--danger);
 }

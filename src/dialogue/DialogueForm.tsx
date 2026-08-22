@@ -73,7 +73,7 @@ export function DialogueForm({
   return (
     <div className="dialogue-form">
       <div className="dialogue-form__field">
-        <label className="dialogue-form__label" htmlFor={`${fieldId}-npc`}>
+        <label className="micro-label" htmlFor={`${fieldId}-npc`}>
           NPC
         </label>
         <NpcNameInput
@@ -87,7 +87,7 @@ export function DialogueForm({
       </div>
 
       <div className="dialogue-form__field">
-        <label className="dialogue-form__label" htmlFor={`${fieldId}-spoken-at`}>
+        <label className="micro-label" htmlFor={`${fieldId}-spoken-at`}>
           Heard at
         </label>
         <input
@@ -129,7 +129,7 @@ export function DialogueForm({
       {/* Always shown, including for a dialogue that carries pictures: the line and the frames
           proving it are separate fields, and a captured screenshot is transcribed into this one. */}
       <div className="dialogue-form__field dialogue-form__field--grow">
-        <label className="dialogue-form__label" htmlFor={`${fieldId}-text`}>
+        <label className="micro-label" htmlFor={`${fieldId}-text`}>
           What was said
         </label>
         <textarea

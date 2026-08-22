@@ -1,10 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useChartWidth } from './chart-width.ts'
+import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
+import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
 import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
-import { DialogueRow } from './DialogueRow.tsx'
 import { SegmentDefs } from './SegmentLegend.tsx'
-import { resolveZones } from './dialogue-summary.ts'
 import type { DialogueFilter } from './filters.ts'
 import type { SegmentKey } from './relevance-segments.ts'
 import { SEGMENT_COLOR, SEGMENT_KEYS, tallyOf, totalOf } from './relevance-segments.ts'
@@ -306,12 +306,7 @@ function TimelinePanel({
           several, or focus one and press Shift+arrow then Enter, to filter to that stretch of
           time.
         </p>
-        <button
-          type="button"
-          className="filter-bar__clear"
-          disabled={!hasRange}
-          onClick={onClearRange}
-        >
+        <button type="button" className="button" disabled={!hasRange} onClick={onClearRange}>
           Clear range
         </button>
       </header>
@@ -424,7 +419,7 @@ function BucketDetail({
     <div className="timeline__detail">
       <h3 className="timeline__detail-title">
         {capitalize(describeBucket(bucket, unit))}
-        <span className="quest-board__count">{bucket.dialogues.length}</span>
+        <span className="count-pill">{bucket.dialogues.length}</span>
       </h3>
       {/* Polite, not assertive, and a one-line summary rather than the rows below: an assertive
           region would interrupt a screen reader mid-sentence, and reading out up to twelve full

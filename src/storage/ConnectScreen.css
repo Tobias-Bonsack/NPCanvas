@@ -9,7 +9,7 @@
 }
 
 .connect__title {
-  font-size: 2.5rem;
+  font-size: var(--text-4xl);
   margin: 0;
 }
 
@@ -20,7 +20,7 @@
 
 .connect__note {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   border-left: 2px solid var(--border-strong);
   padding-left: var(--space-3);
@@ -34,19 +34,6 @@
   border-radius: var(--radius-2);
   background: var(--surface-1);
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
-.connect__button {
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-2);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  cursor: pointer;
-}
-
-.connect__button:hover {
-  filter: brightness(1.1);
-}

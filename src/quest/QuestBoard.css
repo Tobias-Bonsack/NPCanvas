@@ -23,18 +23,7 @@
 
 .quest-board__title {
   margin: 0;
-  font-size: 1.75rem;
-}
-
-.quest-board__new {
-  font: inherit;
-  font-size: 0.875rem;
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-2);
-  padding: var(--space-2) var(--space-4);
-  cursor: pointer;
+  font-size: var(--text-2xl);
 }
 
 .quest-board__empty {
@@ -54,26 +43,15 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 
-/* The count is the group's whole point — how much is left, how much is done — so it is a
-   pill rather than a parenthesis and stays legible against the muted heading. */
-.quest-board__count {
-  font-family: var(--font-mono);
-  letter-spacing: 0;
-  color: var(--text);
-  background: var(--surface-2);
-  border-radius: var(--radius-round);
-  padding: 0 var(--space-2);
-}
-
 .quest-board__group-empty {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -84,27 +62,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-.quest-board__button {
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.quest-board__button:hover {
-  color: var(--text);
-  background: var(--surface-3);
-}
-
-.quest-board__button--danger {
-  border-color: var(--border-strong);
-  color: #ff8f8f;
 }
 
 /* ---- card ---- */
@@ -122,17 +79,6 @@
   background: var(--surface-1);
 }
 
-/* Done is context, not clutter: faded enough to read as finished, still fully interactive so
-   a quest can be reopened without hunting for it. */
-.quest-card[data-status='done'] {
-  opacity: 0.62;
-}
-
-.quest-card[data-status='done']:hover,
-.quest-card[data-status='done']:focus-within {
-  opacity: 1;
-}
-
 .quest-card__header {
   display: flex;
   align-items: center;
@@ -145,7 +91,7 @@
   flex: 1;
   min-width: 8rem;
   margin: 0;
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -156,7 +102,7 @@
 }
 
 .quest-card__linked-count {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -166,7 +112,7 @@
   align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
 }
 
 .quest-card__note {
@@ -198,13 +144,13 @@
 }
 
 .quest-card__swatch[aria-pressed='true'] {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 1px;
 }
 
 .quest-card__empty {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -240,80 +186,12 @@
   border-top: 1px solid var(--border);
 }
 
-/* ---- one dialogue row ---- */
-
-/* A grid, not a flex row: the four columns have to line up down the whole list, and the
-   snippet is the only one allowed to give up width. */
-.quest-card__link,
-.quest-picker__option {
+/* The linked-dialogue row and the attach picker's option are both `.dialogue-row` now — see
+   `src/dialogue-row/DialogueRow.css`. `.quest-card__dialogue` still needs its own row a bit
+   narrower than the full row width, to leave room for the Detach button beside it. */
+.quest-card__dialogue .dialogue-row {
   flex: 1;
   min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(6rem, max-content) minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-3);
-  font: inherit;
-  font-size: 0.8125rem;
-  text-align: left;
-  text-decoration: none;
-  color: var(--text);
-  background: none;
-  border: 0;
-  padding: var(--space-2) var(--space-3);
-  cursor: pointer;
-}
-
-.quest-card__link:hover,
-.quest-picker__option:hover {
-  background: var(--surface-2);
-}
-
-.quest-card__npc {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* The column that absorbs a narrow window — everything else here is identity or time. */
-.quest-card__snippet {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-}
-
-.quest-card__where {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  white-space: nowrap;
-}
-
-/* The same chip the dialogue panel uses, so the board and the canvas name a region with the
-   same colour rather than making the reader compare two words. */
-.quest-card__zone {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-round);
-  border: 1px solid hsl(var(--zone-hue) 75% 62%);
-  background: hsl(var(--zone-hue) 70% 55% / 0.18);
-}
-
-/* Zones come back most specific first, so everything after the first is broader context. */
-.quest-card__zone:not(:first-child) {
-  opacity: 0.7;
-}
-
-.quest-card__nowhere,
-.quest-card__when {
-  color: var(--text-muted);
-}
-
-.quest-card__when {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  white-space: nowrap;
 }
 
 /* ---- form ---- */
@@ -333,7 +211,7 @@
 }
 
 .quest-form__label {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -342,7 +220,7 @@
 .quest-form__input,
 .quest-form__textarea {
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -376,7 +254,7 @@
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-0);
   border: 1px solid var(--border);
@@ -397,13 +275,9 @@
   background: var(--surface-0);
 }
 
-.quest-picker__option {
-  width: 100%;
-}
-
 .quest-picker__empty,
 .quest-picker__more {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }

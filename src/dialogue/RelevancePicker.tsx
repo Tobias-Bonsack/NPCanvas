@@ -20,7 +20,7 @@ export function RelevancePicker({
 
   return (
     <fieldset className="dialogue-form__fieldset">
-      <legend className="dialogue-form__legend">Relevance</legend>
+      <legend className="micro-label dialogue-form__legend">Relevance</legend>
       <div className="relevance-picker">
         {RELEVANCE_TAGS.map((tag) => {
           const inputId = `${groupId}-${tag}`

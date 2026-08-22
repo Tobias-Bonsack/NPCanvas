@@ -50,7 +50,7 @@ export function DialogueQuestLinks({
 
   return (
     <section className="dialogue-quests">
-      <h3 className="dialogue-form__legend">Quests</h3>
+      <h3 className="micro-label">Quests</h3>
 
       {linked.length === 0 ? (
         <p className="dialogue-quests__empty">In no quest yet.</p>
@@ -67,7 +67,7 @@ export function DialogueQuestLinks({
               </a>
               <button
                 type="button"
-                className="dialogue-panel__button"
+                className="button"
                 onClick={() =>
                   dispatch({ kind: 'quest/dialogue-detached', questId: quest.id, dialogueId })
                 }
@@ -93,7 +93,7 @@ export function DialogueQuestLinks({
         <div className="dialogue-quests__actions">
           <button
             type="button"
-            className="dialogue-panel__button"
+            className="button"
             disabled={quests.length === linked.length}
             title={
               quests.length === 0
@@ -106,7 +106,7 @@ export function DialogueQuestLinks({
           >
             Attach to existing quest
           </button>
-          <button type="button" className="dialogue-panel__button" onClick={createQuest}>
+          <button type="button" className="button" onClick={createQuest}>
             Create quest from this dialogue
           </button>
         </div>
@@ -169,7 +169,7 @@ function QuestPicker({
           aria-label="Search quests"
           onChange={(event) => setQuery(event.target.value)}
         />
-        <button type="button" className="dialogue-panel__button" onClick={onClose}>
+        <button type="button" className="button" onClick={onClose}>
           Close
         </button>
       </div>

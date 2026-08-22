@@ -37,6 +37,55 @@
   --radius-3: 10px;
   --radius-round: 999px;
 
+  /* Typography scale — nine steps, floor at 0.75rem (12px). Nothing in the app prints smaller
+     than that; a size that used to sit below it (0.6875rem) was the least readable text in the
+     app for no reason other than never having been asked to join the scale. */
+  --text-2xs: 0.75rem;
+  --text-xs: 0.8125rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.0625rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2rem;
+  --text-4xl: 2.5rem;
+
+  /* Semantic status colours — the only two the app needs. Both get a light-theme override
+     below: a colour picked to read on a near-black surface is not guaranteed to read on white. */
+  --danger: #ff8f8f;
+  --warning: #ffcf8f;
+
+  /* Ink for text painted directly on a saturated hue fill — a relevance segment's count, a
+     pressed quest-filter toggle. Fixed regardless of theme: the fill underneath is the same
+     hue whether the app is light or dark, so an ink that flipped with the theme would go
+     light-on-light in one of them. */
+  --ink-on-hue: #10131a;
+
+  /* The hue-chip recipe every zone and quest chip builds on top of its own `--zone-hue` or
+     `--quest-hue` — an outline a touch brighter than the fill, at low opacity, so a project
+     with a dozen zones still reads as one system rather than one improvisation per chip. */
+  --hue-chip-border: 75% 62%;
+  --hue-chip-fill: 70% 55%;
+  --hue-chip-fill-alpha: 0.18;
+
+  /* A relevance tag's own accent — mirrors `SATURATION`/`LIGHTNESS` in relevance.ts, which
+     computes the same colour in JS for contexts CSS alone cannot reach (the pin fill). */
+  --relevance-sl: 70% 60%;
+
+  /* One focus ring for every custom control the browser's own default outline does not reach —
+     `outline-offset` still varies per control, since an inset ring on a segmented button and an
+     outset one on a card are both correct for their own shape. */
+  --focus-ring: 2px solid var(--accent);
+
+  /* The one true popover shadow — currently just the search palette, but a second overlay
+     should reach for this rather than inventing its own blur and spread. */
+  --shadow-popover: 0 20px 60px rgb(0 0 0 / 0.4);
+
+  /* A floor every button, input and select can agree on when several of them sit in one row —
+     `min-height`, not `height`: content taller than this (a wrapped label) still gets to ask
+     for more room instead of being clipped. */
+  --control-height: 2rem;
+
   color-scheme: light dark;
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -63,6 +112,11 @@
 
     /* Darkened for contrast: the dark theme's gold is illegible as ink on white. */
     --quest: #a9741a;
+
+    /* Darkened the same way --quest is: the dark theme's pale salmon and amber are illegible
+       as ink on white, which is the one thing the theme mechanism exists to prevent. */
+    --danger: #b3261e;
+    --warning: #8a5a00;
   }
 }
 
@@ -104,4 +158,114 @@ body {
   background: var(--accent);
   color: var(--accent-contrast);
   text-decoration: none;
+}
+
+/* ---- shared primitives ----
+   Every feature stylesheet used to define its own copy of these — a secondary button, a
+   primary one, an uppercase section label, a count pill, a text input, a coloured chip — byte
+   for byte identical in most cases. One definition here, used everywhere, is what keeps a
+   change to "what a button looks like" from meaning eleven edits. */
+
+.button {
+  font: inherit;
+  font-size: var(--text-2xs);
+  min-height: var(--control-height);
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.button--danger {
+  border-color: var(--border-strong);
+  color: var(--danger);
+}
+
+.button--primary {
+  font: inherit;
+  font-size: var(--text-sm);
+  min-height: var(--control-height);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.button--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.button--primary:disabled,
+.button--primary[aria-disabled='true'] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* An uppercase section label — a form's legend, a chart's axis title, a capture profile's
+   heading. Never below the app's own text floor; see the typography scale above. */
+.micro-label {
+  margin: 0;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* The count beside a heading — "Open 2", "3 dialogues" — a pill rather than a parenthesis so
+   it stays legible against a muted label. */
+.count-pill {
+  font-family: var(--font-mono);
+  letter-spacing: 0;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: var(--radius-round);
+  padding: 0 var(--space-2);
+}
+
+/* A plain text input, for anything that is not one of the insights filter bar's own
+   purpose-built controls (which stay in FilterBar.css — they carry their own sizing rules a
+   generic input should not impose). */
+.text-input {
+  font: inherit;
+  font-size: var(--text-sm);
+  min-height: var(--control-height);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-2);
+}
+
+/* A zone or quest's colour, as an outline plus a translucent fill built from whichever hue
+   custom property the caller published — `zoneHueStyle`/`questAccentStyle` in TS set exactly
+   one of `--zone-hue`/`--quest-hue` via `style`, and the attribute selector picks the matching
+   recipe. `:not(:first-child)` fading (zones come back most specific first) is scoped to each
+   list's own class, since a quest chip is never in that kind of list. */
+.hue-chip {
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-round);
+}
+
+.hue-chip[style*='--zone-hue'] {
+  border: 1px solid hsl(var(--zone-hue) var(--hue-chip-border));
+  background: hsl(var(--zone-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
+}
+
+.hue-chip[style*='--quest-hue'] {
+  border: 1px solid hsl(var(--quest-hue) var(--hue-chip-border));
+  background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }

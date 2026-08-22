@@ -186,12 +186,12 @@ function ZoneRow({
               if (event.key === 'Escape') onSetMode({ kind: 'idle' })
             }}
           />
-          <button type="submit" className="map-list__button">
+          <button type="submit" className="button">
             Save
           </button>
           <button
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -218,7 +218,7 @@ function ZoneRow({
           ))}
           <button
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -236,7 +236,7 @@ function ZoneRow({
           </span>
           <button
             type="button"
-            className="map-list__button map-list__button--danger"
+            className="button button--danger"
             onClick={() => {
               dispatch({ kind: 'zone/deleted', zoneId: zone.id })
               onSetMode({ kind: 'idle' })
@@ -246,7 +246,7 @@ function ZoneRow({
           </button>
           <button
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'idle' })}
           >
             Cancel
@@ -273,7 +273,7 @@ function ZoneRow({
           <button
             ref={triggerRef.rename}
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'renaming', id: zone.id, draft: zone.name })}
           >
             Rename
@@ -281,7 +281,7 @@ function ZoneRow({
           <button
             ref={triggerRef.colour}
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'recolouring', id: zone.id })}
           >
             Colour
@@ -289,7 +289,7 @@ function ZoneRow({
           <button
             ref={triggerRef.delete}
             type="button"
-            className="map-list__button"
+            className="button"
             onClick={() => onSetMode({ kind: 'confirming-delete', id: zone.id })}
           >
             Delete

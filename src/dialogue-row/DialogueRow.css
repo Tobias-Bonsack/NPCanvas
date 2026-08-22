@@ -1,0 +1,73 @@
+/* The one dialogue row, shared by every list of dialogues in the app — the timeline's hover
+   detail, the NPC dossier's lines, the quest board's linked dialogues and its attach picker.
+   A grid, not a flex row: the columns have to line up down the whole list, and the snippet is
+   the only one allowed to give up width — but it still keeps a floor (`minmax(4rem, 1fr)`) and
+   the "where" column is capped (`minmax(0, 12rem)`) rather than left as `auto`, so a dialogue in
+   several long-named zones cannot squeeze the snippet away to nothing or overflow the row. */
+.dialogue-row {
+  display: grid;
+  grid-template-columns: auto minmax(6rem, max-content) minmax(4rem, 1fr) minmax(0, 12rem) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--surface-0);
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.dialogue-row:hover {
+  background: var(--surface-2);
+}
+
+.dialogue-row__npc {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialogue-row__snippet {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.dialogue-row__where {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.dialogue-row__zone {
+  flex: none;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Zones come back most specific first, so everything after the first is broader context. */
+.dialogue-row__where .dialogue-row__zone:not(:first-child) {
+  opacity: 0.7;
+}
+
+.dialogue-row__nowhere,
+.dialogue-row__when {
+  color: var(--text-muted);
+}
+
+.dialogue-row__when {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+}

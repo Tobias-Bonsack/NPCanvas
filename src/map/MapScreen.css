@@ -22,6 +22,9 @@
   flex: 1;
   min-height: 0;
   display: flex;
+  /* The anchor a narrow-window sidebar overlays against — see the media query below. Harmless
+     at every wider width, where the sidebar stays a normal flex sibling and never needs it. */
+  position: relative;
 }
 
 .map-screen__sidebar {
@@ -32,6 +35,23 @@
   padding: var(--space-3);
   border-right: 1px solid var(--border);
   background: var(--surface-1);
+}
+
+/* The sidebar and the dialogue panel are together a fixed 38rem of chrome (16rem + 22rem) that
+   used to come straight out of the canvas's width with no floor — at 1024px with a dialogue
+   open the canvas was already down to ~26rem, and below ~640px it was squeezed to nothing.
+   Below 72rem the sidebar floats over the canvas instead of sharing width with it, since
+   browsing the map list is secondary to looking at the canvas itself; the dialogue panel stays
+   a sibling (see the "not an overlay" note on `.dialogue-panel` — a line is written while the
+   map underneath is still visible) but gives up width earlier, and again below 40rem. */
+@media (max-width: 72rem) {
+  .map-screen__sidebar {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    z-index: 5;
+    box-shadow: var(--shadow-popover);
+  }
 }
 
 .map-screen__canvas {
@@ -61,7 +81,7 @@
 
 .map-screen__title {
   margin: 0;
-  font-size: 2rem;
+  font-size: var(--text-3xl);
 }
 
 .map-screen__lead {
@@ -79,7 +99,7 @@
 
 .map-list__heading {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -128,7 +148,7 @@
   align-items: center;
   gap: var(--space-1);
   flex-wrap: wrap;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
 .map-list__input {
@@ -140,27 +160,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
-}
-
-.map-list__button {
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.map-list__button:hover {
-  color: var(--text);
-  background: var(--surface-3);
-}
-
-.map-list__button--danger {
-  border-color: var(--border-strong);
-  color: #ff8f8f;
 }
 
 /* ---- zone list ---- */
@@ -178,13 +177,13 @@
 
 .zone-list__empty {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .zone-list__map {
   margin: var(--space-2) 0 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   font-weight: 400;
   color: var(--text-muted);
 }
@@ -198,7 +197,7 @@
   align-items: baseline;
   gap: var(--space-2);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   text-align: left;
   overflow: hidden;
   white-space: nowrap;
@@ -225,7 +224,7 @@
 .zone-list__count {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -253,7 +252,7 @@
 }
 
 .zone-list__swatch[aria-pressed='true'] {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -266,7 +265,7 @@
 
 .tool-picker__button {
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -291,7 +290,7 @@
 .tool-picker__button:focus-visible {
   position: relative;
   z-index: 1;
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -301,7 +300,7 @@
   padding: 0 3px;
   border-radius: var(--radius-1);
   background: rgba(255, 255, 255, 0.12);
-  font-size: 0.6875rem;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
 }
 
@@ -322,7 +321,7 @@
    that colour, so the toggle and its effect on the canvas are visibly the same subject. */
 .quest-filter {
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -339,7 +338,7 @@
 }
 
 .quest-filter[aria-pressed='true'] {
-  color: #10151f;
+  color: var(--ink-on-hue);
   background: var(--quest);
   border-color: var(--quest);
 }
@@ -358,43 +357,23 @@
   flex-wrap: wrap;
 }
 
-.map-import__label {
-  font-size: 0.875rem;
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-radius: var(--radius-2);
-  padding: var(--space-2) var(--space-4);
-  cursor: pointer;
-}
-
-.map-import__label[aria-disabled='true'] {
+.map-import__label[data-importing] {
   opacity: 0.6;
   cursor: progress;
 }
 
-/* Visually hidden but still focusable and still the label's target, so keyboard users tab
-   to a real file input rather than to a label that does nothing on Enter. */
-.map-import__input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  border: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* :has() rather than a sibling combinator — the label precedes the input in the DOM, and
-   Chromium-only means there is no reason to reorder the markup for a selector's sake. */
+   Chromium-only means there is no reason to reorder the markup for a selector's sake. The
+   input itself is `.visually-hidden` (index.css) — still focusable and still the label's
+   target, so keyboard users tab to a real file input rather than to a label that does nothing
+   on Enter. */
 .map-import:has(.map-import__input:focus-visible) .map-import__label {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 
 .map-import__error {
   margin: 0;
-  font-size: 0.875rem;
-  color: #ff8f8f;
+  font-size: var(--text-sm);
+  color: var(--danger);
 }

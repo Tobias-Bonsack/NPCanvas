@@ -69,7 +69,7 @@ export function QuestForm({ quest, onDone }: { quest: Quest; onDone: () => void 
       </div>
 
       {/* Submit only closes the editor — leaving it flushes what is still in the fields. */}
-      <button type="submit" className="quest-board__button">
+      <button type="submit" className="button">
         Done
       </button>
     </form>

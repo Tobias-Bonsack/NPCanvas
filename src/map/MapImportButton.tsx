@@ -45,12 +45,16 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
     <div className="map-import">
       {/* A styled `<label>` driving a visually-hidden input: `<input type="file">` cannot be
           restyled, and a button would need a ref plus a synthetic click to reach it. */}
-      <label className="map-import__label" htmlFor={inputId} aria-disabled={importing}>
+      <label
+        className="button--primary map-import__label"
+        htmlFor={inputId}
+        data-importing={importing ? 'true' : undefined}
+      >
         {importing ? 'Importing…' : label}
       </label>
       <input
         id={inputId}
-        className="map-import__input"
+        className="visually-hidden map-import__input"
         type="file"
         accept={MAP_IMAGE_ACCEPT}
         disabled={importing}

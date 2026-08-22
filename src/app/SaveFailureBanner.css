@@ -10,7 +10,7 @@
   border-bottom: 1px solid var(--border-strong);
   background: var(--surface-2);
   /* The app's danger ink, matching every other destructive affordance. */
-  border-left: 3px solid #ff8f8f;
+  border-left: 3px solid var(--danger);
 }
 
 .save-banner__text {
@@ -21,18 +21,18 @@
 }
 
 .save-banner__title {
-  font-size: 0.875rem;
-  color: #ff8f8f;
+  font-size: var(--text-sm);
+  color: var(--danger);
 }
 
 .save-banner__message {
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .save-banner__action {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   margin-left: auto;
   padding: var(--space-2) var(--space-4);
   border: 1px solid transparent;

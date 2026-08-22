@@ -18,7 +18,7 @@
 /* Only for keyboard focus, not a mouse click that happened to land the pointer here — a
    pan or a pin selection already gives its own visual feedback. */
 .map-canvas:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: -2px;
 }
 
@@ -118,7 +118,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
   background: var(--surface-1);
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
 }
 
 /* −, the readout, +, and Fit as one visually joined cluster — the readout keeps the same
@@ -142,7 +142,7 @@
   border-radius: var(--radius-2);
   background: var(--surface-1);
   color: var(--text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
 }
 
 .map-canvas__zoom {
@@ -296,7 +296,7 @@
    vertical band per tag, or the chrome's own surface when untagged. */
 .pin__marker {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   line-height: 1;
   color: var(--text);
   border: 1px solid var(--border-strong);
@@ -340,7 +340,7 @@
   min-width: 7rem;
   /* Relevance hues sit at a fixed 60% lightness in both themes, so the ink on top of them has
      to be fixed too: var(--text) is near-white in the dark theme and would disappear. */
-  color: #10151f;
+  color: var(--ink-on-hue);
   border-color: rgba(0, 0, 0, 0.3);
 }
 
@@ -353,7 +353,7 @@
 /* Selection is an outline for the same reason: the fill is spoken for. Counter-scaled along
    with the pin, so it stays 2 screen pixels at any zoom. */
 .pin__marker[data-selected='true'] {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -394,7 +394,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1) var(--space-2);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-2);
   background: var(--surface-3);
@@ -411,7 +411,7 @@
 }
 
 .pin__button--danger {
-  color: #ff8f8f;
+  color: var(--danger);
   border-color: var(--border-strong);
 }
 

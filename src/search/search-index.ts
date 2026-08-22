@@ -1,5 +1,5 @@
 import { npcKey, npcLabel } from '../insights/filters.ts'
-import { zoneLabel } from '../insights/dialogue-summary.ts'
+import { zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import type { Dialogue, ProjectFile, Quest, Zone } from '../project/types.ts'
 import { dialogueSearchText } from './dialogue-search-text.ts'
 

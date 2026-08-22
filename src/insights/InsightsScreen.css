@@ -23,20 +23,20 @@
 
 .insights__title {
   margin: 0;
-  font-size: 1.75rem;
+  font-size: var(--text-2xl);
 }
 
 .insights__count {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .insights__empty {
   margin: 0;
   max-width: 34rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
@@ -79,7 +79,7 @@
   flex: 1;
   min-width: 12rem;
   font: inherit;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--surface-0);
   border: 1px solid var(--border);
@@ -91,7 +91,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -100,7 +100,7 @@
 .filter-bar__date input,
 .filter-bar__select {
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   letter-spacing: 0;
   text-transform: none;
   color: var(--text);
@@ -115,26 +115,10 @@
   cursor: not-allowed;
 }
 
-.filter-bar__clear {
-  font: inherit;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.filter-bar__clear:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .filter-bar__error {
   margin: 0;
-  font-size: 0.75rem;
-  color: #ff8f8f;
+  font-size: var(--text-2xs);
+  color: var(--danger);
 }
 
 .filter-bar__chips {
@@ -149,7 +133,7 @@
 .filter-bar__tag,
 .filter-bar__kind {
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text);
   background: none;
   border: 1px solid var(--border-strong);
@@ -159,12 +143,12 @@
 }
 
 .filter-bar__tag {
-  border-color: hsl(var(--relevance-hue) 70% 60%);
+  border-color: hsl(var(--relevance-hue) var(--relevance-sl));
 }
 
 .filter-bar__tag[aria-pressed='true'] {
-  background: hsl(var(--relevance-hue) 70% 60%);
-  color: #10131a;
+  background: hsl(var(--relevance-hue) var(--relevance-sl));
+  color: var(--ink-on-hue);
   font-weight: 600;
 }
 
@@ -180,7 +164,7 @@
   align-items: center;
   gap: var(--space-1);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
@@ -190,30 +174,17 @@
 }
 
 .filter-bar__active[style*='--zone-hue'] {
-  border-color: hsl(var(--zone-hue) 75% 62%);
-  background: hsl(var(--zone-hue) 70% 55% / 0.18);
+  border-color: hsl(var(--zone-hue) var(--hue-chip-border));
+  background: hsl(var(--zone-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }
 
 .filter-bar__remove {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .filter-bar__active:hover .filter-bar__remove {
   color: var(--text);
-}
-
-/* Visually hidden, still read aloud: the chip's visible text says what the filter is, and the
-   button's action — removing it — would otherwise be carried by a bare × glyph. */
-.filter-bar__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
 }
 
 /* ---- panels and charts ---- */
@@ -237,14 +208,14 @@
 
 .insights__panel-title {
   margin: 0;
-  font-size: 1.0625rem;
+  font-size: var(--text-lg);
 }
 
 .insights__panel-note {
   margin: 0;
   flex: 1;
   min-width: 14rem;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -256,7 +227,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -289,7 +260,7 @@
 }
 
 .insights__chart-title {
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -308,7 +279,7 @@
 .insights__row-label,
 .insights__row-total {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--text-2xs);
   fill: var(--text-muted);
   dominant-baseline: middle;
 }
@@ -328,7 +299,7 @@
 }
 
 .insights__segment:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -336,9 +307,9 @@
    schemes, so an ink that flipped with the theme would go light-on-light. */
 .insights__segment-count {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   font-weight: 600;
-  fill: #10131a;
+  fill: var(--ink-on-hue);
   dominant-baseline: middle;
   pointer-events: none;
 }
@@ -356,7 +327,7 @@
 
 .timeline__tick {
   font-family: var(--font-sans);
-  font-size: 11px;
+  font-size: var(--text-2xs);
   fill: var(--text-muted);
 }
 
@@ -367,7 +338,7 @@
 }
 
 .timeline__bucket:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring);
   outline-offset: 1px;
 }
 
@@ -403,7 +374,7 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -411,6 +382,9 @@
 
 /* ---- one dialogue row ---- */
 
+/* The row itself (`.dialogue-row` and its children) is shared by every feature that lists
+   dialogues — see `src/dialogue-row/DialogueRow.css`. This is only the list wrapper the
+   timeline's hover detail draws around it. */
 .insights__rows {
   margin: 0;
   padding: 0;
@@ -424,69 +398,6 @@
 
 .insights__rows > li + li {
   border-top: 1px solid var(--border);
-}
-
-/* A grid, not a flex row: the columns have to line up down the whole list, and the snippet is
-   the only one allowed to give up width. Mirrors the quest board's linked rows. */
-.dialogue-row {
-  display: grid;
-  grid-template-columns: auto minmax(6rem, max-content) minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: 0.8125rem;
-  text-decoration: none;
-  color: var(--text);
-  background: var(--surface-0);
-  padding: var(--space-2) var(--space-3);
-}
-
-.dialogue-row:hover {
-  background: var(--surface-2);
-}
-
-.dialogue-row__npc {
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dialogue-row__snippet {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-muted);
-}
-
-.dialogue-row__where {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  white-space: nowrap;
-}
-
-.dialogue-row__zone {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-round);
-  border: 1px solid hsl(var(--zone-hue) 75% 62%);
-  background: hsl(var(--zone-hue) 70% 55% / 0.18);
-}
-
-/* Zones come back most specific first, so everything after the first is broader context. */
-.dialogue-row__zone:not(:first-child) {
-  opacity: 0.7;
-}
-
-.dialogue-row__nowhere,
-.dialogue-row__when {
-  color: var(--text-muted);
-}
-
-.dialogue-row__when {
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  white-space: nowrap;
 }
 
 /* ---- npc dossier ---- */
@@ -537,7 +448,7 @@
   align-items: center;
   gap: var(--space-1) var(--space-2);
   font: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   text-align: left;
   color: var(--text);
   background: none;
@@ -562,9 +473,9 @@
   white-space: nowrap;
 }
 
-.npc-dossier__lines {
+.npc-dossier__count {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -598,7 +509,7 @@
 
 .npc-dossier__title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-xl);
 }
 
 .npc-dossier__input {
@@ -610,7 +521,7 @@
 .npc-dossier__merge {
   width: 100%;
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
   color: var(--quest);
 }
 
@@ -621,30 +532,15 @@
   margin: 0;
 }
 
-.npc-dossier__fact dt {
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
-
 .npc-dossier__fact dd {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
 }
 
 .npc-dossier__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.npc-dossier__section-title {
-  margin: 0;
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 .npc-dossier__chips {
@@ -655,7 +551,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
 }
 
 .npc-dossier__chip {
@@ -671,13 +567,14 @@
   border-radius: var(--radius-round);
 }
 
-/* The same hue the quest wears on its card and on the pins that fly its flag. */
+/* The same hue the quest wears on its card and on the pins that fly its flag, at the same
+   border/fill recipe every other hue chip uses — see `--hue-chip-*` in index.css. */
 .npc-dossier__quest {
   display: inline-block;
   padding: 0 var(--space-2);
   border-radius: var(--radius-round);
-  border: 1px solid hsl(var(--quest-hue) 70% 55%);
-  background: hsl(var(--quest-hue) 70% 55% / 0.18);
+  border: 1px solid hsl(var(--quest-hue) var(--hue-chip-border));
+  background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
   color: var(--text);
   text-decoration: none;
 }
@@ -706,7 +603,7 @@
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  font-size: 0.75rem;
+  font-size: var(--text-2xs);
 }
 
 /* pre-wrap: a logged line keeps the breaks it was typed with — a dialogue box's own line
@@ -718,7 +615,7 @@
 
 .npc-line__empty {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
