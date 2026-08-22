@@ -12,6 +12,17 @@
   overflow: hidden;
 }
 
+/* A pass-through flex item: the view it wraps (`.map-screen`, `.quest-board`, `.insights`) is
+   what actually sets `flex: 1; min-height: 0` and scrolls itself — this just has to forward the
+   same sizing contract down one level rather than letting the `<main>` itself become the thing
+   that overflows. */
+.app-shell__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .app {
   max-width: 48rem;
   margin: 0 auto;

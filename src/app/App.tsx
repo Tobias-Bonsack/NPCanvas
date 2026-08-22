@@ -67,19 +67,30 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
 
   return (
     <div className="app-shell">
+      {/* First in the DOM and invisible until it has focus: Tab from anywhere in the shell
+          reaches it before the nav's own links, and Enter jumps straight past the nav and the
+          canvas full of pin buttons. */}
+      <a className="skip-link visually-hidden" href="#main-content">
+        Skip to main content
+      </a>
       <Nav directoryName={state.directoryName} onReviewSaveFailure={() => setDismissed(null)} />
       <SaveFailureBanner dismissed={dismissed} onDismiss={setDismissed} />
       {repairs !== null && (
         <RepairNotice repairs={repairs} onDismiss={() => setDismissedRepairs(repairs)} />
       )}
-      <ReadyView
-        state={state}
-        route={route}
-        viewState={viewState}
-        onCanvasStateChange={onCanvasStateChange}
-        onInsightsStateChange={onInsightsStateChange}
-        onQuestsStateChange={onQuestsStateChange}
-      />
+      {/* The one landmark every ready view shares — each of the three renders a `<section>` of
+          its own below this, which is right: they are siblings within the app's one main
+          region, not three separate mains. */}
+      <main id="main-content" className="app-shell__main">
+        <ReadyView
+          state={state}
+          route={route}
+          viewState={viewState}
+          onCanvasStateChange={onCanvasStateChange}
+          onInsightsStateChange={onInsightsStateChange}
+          onQuestsStateChange={onQuestsStateChange}
+        />
+      </main>
       {/* Mounted here, above the route switch, so `/` and Ctrl/Cmd+K work from every view. */}
       <SearchPalette project={state.project} onOpenNpcDossier={onOpenNpcDossier} />
     </div>

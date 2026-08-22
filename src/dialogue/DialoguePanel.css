@@ -177,7 +177,7 @@
   cursor: pointer;
 }
 
-.dialogue-media__label[aria-disabled='true'] {
+.dialogue-media__label[data-importing] {
   opacity: 0.6;
   cursor: progress;
 }

@@ -28,6 +28,7 @@ import type {
   Zone,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
+import { isTextFieldFocused } from '../text-field-focus.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import './DialoguePanel.css'
 
@@ -81,6 +82,7 @@ export function DialoguePanel({
   onClose,
   autoFocusNpc,
   onAutoFocusConsumed,
+  openedFromPin,
 }: {
   project: ProjectFile
   dialogue: Dialogue
@@ -94,11 +96,22 @@ export function DialoguePanel({
   /** This dialogue was just placed, and its NPC field — not its pin — is owed the focus. */
   autoFocusNpc: boolean
   onAutoFocusConsumed: () => void
+  /**
+   * Whether this open is the direct result of a pointerup on a pin — see `PinLayer`'s
+   * `onPinSelected`. That pin has already focused itself by the time this mounts, so the panel
+   * must not steal it back; every other way in (a link from the quest board or Insights, the
+   * search palette, a cold load of `?dialogue=<id>`) leaves focus wherever it was before the
+   * click, which is not necessarily anywhere useful — so the panel claims it instead. Read once,
+   * at mount, in the effect below: which pin was last clicked cannot un-happen for a dialogue
+   * that stays selected, but a *fresh* open only ever happens once per mount.
+   */
+  openedFromPin: boolean
 }): ReactElement {
   const [importState, setImportState] = useState<ImportState>({ kind: 'idle' })
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
   const [dropTarget, setDropTarget] = useState(false)
   const pickerId = useId()
+  const asideRef = useRef<HTMLElement>(null)
   // Filled by `DialogueForm`. The line field is a draft that only reaches the store on blur or
   // after an idle, and a capture appends to the store's text — so Ctrl+Enter straight out of the
   // textarea has to push the draft down first, or it appends to a line the user has moved past.
@@ -112,16 +125,41 @@ export function DialoguePanel({
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
   // Escape aimed at "close this" would otherwise have to be pressed inside the panel first.
   // Stood down while the learner is up, so one Escape does not both cancel a capture in flight
-  // and close the panel that was going to report what it did.
+  // and close the panel that was going to report what it did. Typing is exempt too — a text
+  // field never loses what is being typed into it just because Escape was the key pressed —
+  // and an open alertdialog or the quest picker claims the key before it can bubble this far;
+  // see `useAlertDialogFocus` and `DialogueQuestLinks`'s picker.
   const learning = captureState.kind === 'learning'
   useEffect(() => {
     if (learning) return
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      if (isTextFieldFocused()) return
+      onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose, learning])
+
+  // Frozen at their mount-time value, deliberately: this effect only ever asks "how did *this*
+  // open happen", never "how does the current render's props describe things now".
+  const openedFromPinAtMount = useRef(openedFromPin)
+  const autoFocusNpcAtMount = useRef(autoFocusNpc)
+
+  // Focus moves into the panel on a "real" open — anywhere but a pin click, which has already
+  // focused itself, and anywhere but a fresh placement, whose NPC field claims it instead (see
+  // `autoFocusNpc`). Whichever way it opened, the element that had focus before it is restored
+  // when the panel closes — a link clicked on the quest board should hand focus back to that
+  // link, not strand it on a panel that just vanished.
+  useEffect(() => {
+    const trigger = document.activeElement
+    if (!openedFromPinAtMount.current && !autoFocusNpcAtMount.current) {
+      asideRef.current?.focus({ preventScroll: true })
+    }
+    return () => {
+      if (trigger instanceof HTMLElement) trigger.focus({ preventScroll: true })
+    }
+  }, [])
 
   // A warning or an error belongs to the import that produced it, and would otherwise hang
   // over whichever dialogue the user selected next.
@@ -287,8 +325,12 @@ export function DialoguePanel({
 
   return (
     <aside
+      ref={asideRef}
       className="dialogue-panel"
       aria-label="Dialogue"
+      // Only ever a programmatic focus target — the panel's own controls are the tab stops,
+      // never the `<aside>` itself when the user is tabbing normally.
+      tabIndex={-1}
       data-drop-target={dropTarget ? 'true' : undefined}
       // preventDefault on dragover is what marks the panel as a drop target at all; without
       // it the browser navigates to the dropped file and the app is simply gone.
@@ -391,7 +433,11 @@ export function DialoguePanel({
           <label
             className="dialogue-media__label"
             htmlFor={pickerId}
-            aria-disabled={importState.kind === 'importing'}
+            // Not `aria-disabled`: that attribute means something on a widget with a role, and
+            // a `<label>` has none — it conveys nothing to assistive tech and only ever styled
+            // this element. The real state lives on the `<input>` below, which is genuinely
+            // `disabled` and already announced as such; this is a plain style hook.
+            data-importing={importState.kind === 'importing' ? 'true' : undefined}
           >
             {importState.kind === 'importing'
               ? importingLabel(importState.done, importState.total)

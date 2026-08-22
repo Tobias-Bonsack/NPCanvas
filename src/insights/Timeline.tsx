@@ -187,7 +187,11 @@ export function Timeline({
           }}
           onPointerMove={(event) => {
             const index = indexAt(event)
-            onActiveChange(index)
+            // `onActiveChange` writes into the lifted view state as a whole new object every
+            // call — see `InsightsScreen`'s `setTimelineActive` — so calling it unconditionally
+            // on every pointermove re-renders the detail pane, and re-announces its live region,
+            // for every pixel crossed inside the bucket already open.
+            if (index !== active) onActiveChange(index)
             setBrush((current) => (current === null ? null : { ...current, to: index }))
           }}
           onPointerUp={(event) => {
@@ -347,13 +351,18 @@ function BucketDetail({
   }
 
   return (
-    // Polite, not assertive: the list updates on every pointer move across the chart, and an
-    // assertive region would interrupt a screen reader on each one.
-    <div className="timeline__detail" aria-live="polite">
+    <div className="timeline__detail">
       <h3 className="timeline__detail-title">
         {capitalize(describeBucket(bucket, unit))}
         <span className="quest-board__count">{bucket.dialogues.length}</span>
       </h3>
+      {/* Polite, not assertive, and a one-line summary rather than the rows below: an assertive
+          region would interrupt a screen reader mid-sentence, and reading out up to twelve full
+          dialogue rows on every bucket change is not what "announce what changed" means. */}
+      <p className="visually-hidden" aria-live="polite">
+        {bucket.dialogues.length} {bucket.dialogues.length === 1 ? 'dialogue' : 'dialogues'} in{' '}
+        {describeBucket(bucket, unit)}
+      </p>
       {bucket.dialogues.length === 0 ? (
         <p className="insights__empty">Nothing was logged in this one.</p>
       ) : (

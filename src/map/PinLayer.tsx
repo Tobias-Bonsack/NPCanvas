@@ -1,8 +1,9 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { relevancePinBackground } from '../dialogue/relevance.ts'
+import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -74,6 +75,7 @@ export const PinLayer = memo(function PinLayer({
   questsByDialogue,
   visibleRect,
   suppressFocusId,
+  onPinSelected,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
@@ -106,12 +108,28 @@ export const PinLayer = memo(function PinLayer({
    * palette.
    */
   suppressFocusId: DialogueId | null
+  /**
+   * Told about a selection made by an actual pointerup on a pin — never called for a
+   * programmatic selection (a link, the search palette, a cold `?dialogue=<id>` load). This is
+   * what lets `DialoguePanel` tell "this pin already has the focus it needs" apart from "focus
+   * has to be moved into the panel" on open. Fired through a ref inside the layer, so it can
+   * stay out of `onPointerUp`'s dependency list — see the handlers below.
+   */
+  onPinSelected: (dialogueId: DialogueId) => void
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
   const drag = useRef<DragGesture<PinDragGesture> | null>(null)
   const [dragged, setDragged] = useState<PinDrag | null>(null)
   const [pendingDelete, setPendingDelete] = useState<DialogueId | null>(null)
+
+  // A ref rather than a dependency: `onPointerUp` is a stable `useCallback` with an empty
+  // dependency list, which is what keeps `memo(Pin)` from reconciling on every render of this
+  // layer — see the comment above `handlers`.
+  const onPinSelectedRef = useRef(onPinSelected)
+  useEffect(() => {
+    onPinSelectedRef.current = onPinSelected
+  })
 
   // A confirmation belongs to the pin that was selected when it opened; leaving that pin
   // must not leave a stray prompt hanging over the map.
@@ -174,6 +192,7 @@ export const PinLayer = memo(function PinLayer({
     // A slightly shaky click still selects — that is the whole point of the threshold.
     if (!end.moved) {
       select(end.data.id)
+      onPinSelectedRef.current(end.data.id)
       return
     }
 
@@ -390,6 +409,7 @@ const Pin = memo(function Pin({
 }): ReactElement {
   const buttonRef = useRef<HTMLButtonElement>(null)
   const name = pinName(dialogue)
+  const questsId = useId()
 
   // Read inside the effect below without being one of its dependencies — see there for why.
   const suppressFocusRef = useRef(suppressFocus)
@@ -431,7 +451,12 @@ const Pin = memo(function Pin({
         data-tagged={dialogue.relevance.length > 0 ? 'true' : undefined}
         aria-current={selected ? 'true' : undefined}
         style={{ background: relevancePinBackground(dialogue.relevance) }}
-        title={pinTitle(name, quests)}
+        // A tooltip only, now — the accessible name already comes from `pin__name`'s visible
+        // text, so this must not carry anything that name does not, or the two would disagree
+        // for a sighted mouse user versus everyone else. The quests are a *description*, not
+        // part of the name — see `aria-describedby` below.
+        title={name}
+        aria-describedby={quests.length > 0 ? questsId : undefined}
         onPointerDown={(event) => handlers.onPointerDown(event, dialogue)}
         onPointerMove={handlers.onPointerMove}
         onPointerUp={handlers.onPointerUp}
@@ -452,7 +477,7 @@ const Pin = memo(function Pin({
         <span className="pin__name">{name}</span>
         {/* A separate mark in a separate place, not another colour in the fill: the fill is
             spoken for by relevance, and a fifth band would read as a fifth tag. Decorative —
-            the button's title names the quests for anyone who cannot see the flags. */}
+            the hidden text below names the quests for anyone who cannot see the flags. */}
         {quests.length > 0 && (
           <span className="pin__quests" aria-hidden="true">
             {quests.map((quest, index) => (
@@ -462,42 +487,66 @@ const Pin = memo(function Pin({
             ))}
           </span>
         )}
+        {/* The description `aria-describedby` above points at — present in the accessibility
+            tree without being read as part of the button's name, and without a `title`
+            tooltip's information being reachable only by hovering. */}
+        {quests.length > 0 && (
+          <span id={questsId} className="visually-hidden">
+            In {quests.map(questTitle).join(', ')}
+          </span>
+        )}
       </button>
 
       {confirmingDelete && (
-        <div
-          className="pin__confirm"
-          role="alert"
-          data-canvas-ui
-          // On the container, not on Cancel: `autoFocus` is on Delete, so a handler bound to
-          // the Cancel button never sees the key. Here it fires wherever focus is inside the
-          // prompt. `stopPropagation` keeps it from also reaching `DialoguePanel`'s window
-          // listener — React binds at the root container, so stopping the synthetic event
-          // stops the native one before it bubbles out of the app — because Escape on a
-          // destructive prompt must dismiss the prompt, not close the whole panel.
-          onKeyDown={(event) => {
-            if (event.key !== 'Escape') return
-            event.stopPropagation()
-            handlers.onCancelDelete()
-          }}
-        >
-          <span>Delete this dialogue?</span>
-          <button
-            type="button"
-            className="pin__button pin__button--danger"
-            autoFocus
-            onClick={() => handlers.onConfirmDelete(dialogue)}
-          >
-            Delete
-          </button>
-          <button type="button" className="pin__button" onClick={handlers.onCancelDelete}>
-            Cancel
-          </button>
-        </div>
+        <PinDeleteConfirm
+          dialogue={dialogue}
+          onCancel={handlers.onCancelDelete}
+          onConfirm={handlers.onConfirmDelete}
+        />
       )}
     </div>
   )
 })
+
+/**
+ * Its own component, not inline JSX in `Pin`: `useAlertDialogFocus` is a hook, and hooks cannot
+ * be called from inside the `confirmingDelete &&` branch of a function that also returns without
+ * it — mounting and unmounting *this* component is what mount/unmount means to the hook.
+ */
+function PinDeleteConfirm({
+  dialogue,
+  onCancel,
+  onConfirm,
+}: {
+  dialogue: Dialogue
+  onCancel: () => void
+  onConfirm: (dialogue: Dialogue) => void
+}): ReactElement {
+  const ref = useAlertDialogFocus(onCancel)
+  return (
+    <div
+      ref={ref}
+      className="pin__confirm"
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={`Delete ${pinName(dialogue)}?`}
+      tabIndex={-1}
+      data-canvas-ui
+    >
+      <span>Delete this dialogue?</span>
+      <button
+        type="button"
+        className="pin__button pin__button--danger"
+        onClick={() => onConfirm(dialogue)}
+      >
+        Delete
+      </button>
+      <button type="button" className="pin__button" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  )
+}
 
 /**
  * A pennant on a pole, filled for the same reason `ContentGlyph` is: at this size a stroke
@@ -518,15 +567,6 @@ function QuestFlag({ quest }: { quest: Quest }): ReactElement {
       <path d="M3 1h1.8v14H3z M4.8 1.6h8.4l-2.2 3.2 2.2 3.2H4.8z" />
     </svg>
   )
-}
-
-/**
- * The pin's accessible name, plus the quests it belongs to. `title` rather than a visible
- * label because the flags are decorative — this is the only place the fact is stated in words.
- */
-function pinTitle(name: string, quests: readonly Quest[]): string {
-  if (quests.length === 0) return name
-  return `${name} — ${quests.map(questTitle).join(', ')}`
 }
 
 function questTitle(quest: Quest): string {

@@ -84,6 +84,12 @@ export function MapScreen({
   // stops a *later* reselection of the same dialogue from re-stealing focus from its pin.
   const onAutoFocusConsumed = useCallback(() => setAutoFocusDialogueId(null), [])
 
+  // The dialogue a pin's own pointerup last selected — see `PinLayer`'s `onPinSelected`. Read
+  // once, at the moment `DialoguePanel` mounts, to decide whether the panel should move focus
+  // into itself (every other way in) or leave it on the pin, which has already focused itself.
+  const [pinClickId, setPinClickId] = useState<DialogueId | null>(null)
+  const onPinSelected = useCallback((dialogueId: DialogueId) => setPinClickId(dialogueId), [])
+
   // A map drag in progress. It lives here, above both world-space layers, because the image
   // and its pins have to move together in the same frame — and it stays out of the store,
   // which would push a document-shaped update through autosave on every pointermove.
@@ -226,6 +232,11 @@ export function MapScreen({
   return (
     <section className="map-screen">
       <header className="map-screen__bar">
+        {/* Visually hidden: the bar is already dense with controls, and "Canvas" would say
+            nothing a sighted user does not already see from the map itself. The other two
+            views print a visible title because they open on a page of text; this one opens on
+            a picture. Still a real heading — the one thing every view needs regardless. */}
+        <h1 className="visually-hidden">Canvas</h1>
         {/* Grouped, because both are controls that change what the canvas does; the legend on
             the far side only explains what is already drawn. */}
         <div className="map-screen__controls">
@@ -287,6 +298,7 @@ export function MapScreen({
               questsByDialogue={questIndex}
               visibleRect={visibleRect}
               suppressFocusId={autoFocusDialogueId}
+              onPinSelected={onPinSelected}
             />
           </MapCanvas>
         </div>
@@ -298,6 +310,7 @@ export function MapScreen({
             onClose={onCloseDialogue}
             autoFocusNpc={autoFocusDialogueId === selectedDialogue.id}
             onAutoFocusConsumed={onAutoFocusConsumed}
+            openedFromPin={pinClickId === selectedDialogue.id}
           />
         )}
       </div>

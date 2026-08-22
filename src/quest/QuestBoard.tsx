@@ -5,6 +5,7 @@ import { formatRoute, navigate } from '../app/route.ts'
 import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
+import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { newQuestId } from '../project/ids.ts'
@@ -214,6 +215,8 @@ function QuestCard({
   }, [quest.dialogueIds, dialoguesById])
 
   const toggle = STATUS_TOGGLE[quest.status]
+  const name = questName(quest)
+  const nameId = `${questCardElementId(quest.id)}-name`
 
   return (
     <article
@@ -221,15 +224,21 @@ function QuestCard({
       className="quest-card"
       data-status={quest.status}
       style={questAccentStyle(quest)}
+      // A named region, the same pattern `QuestGroup` already uses — forty cards otherwise all
+      // read as "quest-card" to anything that announces the region a control lives in.
+      aria-labelledby={nameId}
     >
       <header className="quest-card__header">
-        <h3 className="quest-card__name">{quest.name.trim() === '' ? 'Untitled quest' : quest.name}</h3>
+        <h3 id={nameId} className="quest-card__name">
+          {name}
+        </h3>
         <span className="quest-card__linked-count">
           {quest.dialogueIds.length} {quest.dialogueIds.length === 1 ? 'dialogue' : 'dialogues'}
         </span>
         <button
           type="button"
           className="quest-board__button"
+          aria-label={`${toggle.label}: ${name}`}
           onClick={() => dispatch({ kind: 'quest/status-set', questId: quest.id, status: toggle.to })}
         >
           {toggle.label}
@@ -237,6 +246,7 @@ function QuestCard({
         <button
           type="button"
           className="quest-board__button"
+          aria-label={`Edit ${name}`}
           onClick={() => onSetMode({ kind: 'editing', id: quest.id })}
         >
           Edit
@@ -244,6 +254,7 @@ function QuestCard({
         <button
           type="button"
           className="quest-board__button"
+          aria-label={`Change the colour of ${name}`}
           onClick={() => onSetMode({ kind: 'recolouring', id: quest.id })}
         >
           Colour
@@ -251,6 +262,7 @@ function QuestCard({
         <button
           type="button"
           className="quest-board__button"
+          aria-label={`Delete ${name}`}
           onClick={() => onSetMode({ kind: 'confirming-delete', id: quest.id })}
         >
           Delete
@@ -285,6 +297,7 @@ function QuestCard({
               <button
                 type="button"
                 className="quest-board__button"
+                aria-label={`Detach ${npcNameOf(dialogue)}: ${snippetOf(dialogue)} from ${name}`}
                 onClick={() =>
                   dispatch({
                     kind: 'quest/dialogue-detached',
@@ -379,32 +392,60 @@ function QuestCardMode({
 
     case 'confirming-delete':
       return (
-        <div className="quest-card__confirm" role="alert">
-          {/* No cascade to warn about — a quest references dialogues, it never owns them. */}
-          <span>Delete this quest? Its dialogues stay exactly where they are.</span>
-          <button
-            type="button"
-            className="quest-board__button quest-board__button--danger"
-            onClick={() => {
-              dispatch({ kind: 'quest/deleted', questId: quest.id })
-              onSetMode({ kind: 'idle' })
-            }}
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            className="quest-board__button"
-            onClick={() => onSetMode({ kind: 'idle' })}
-          >
-            Cancel
-          </button>
-        </div>
+        <QuestDeleteConfirm
+          quest={quest}
+          onCancel={() => onSetMode({ kind: 'idle' })}
+          onConfirm={() => {
+            dispatch({ kind: 'quest/deleted', questId: quest.id })
+            onSetMode({ kind: 'idle' })
+          }}
+        />
       )
 
     default:
       return assertNever(mode)
   }
+}
+
+/**
+ * Its own component, not inline JSX in the `switch` above: `useAlertDialogFocus` is a hook, and
+ * a `case` that only sometimes calls one breaks the rule that every render of a component calls
+ * the same hooks in the same order. Mounting and unmounting this component is what "open" and
+ * "closed" mean to the hook.
+ */
+function QuestDeleteConfirm({
+  quest,
+  onCancel,
+  onConfirm,
+}: {
+  quest: Quest
+  onCancel: () => void
+  onConfirm: () => void
+}): ReactElement {
+  const ref = useAlertDialogFocus(onCancel)
+  return (
+    <div
+      ref={ref}
+      className="quest-card__confirm"
+      role="alertdialog"
+      aria-modal="true"
+      aria-label={`Delete ${questName(quest)}?`}
+      tabIndex={-1}
+    >
+      {/* No cascade to warn about — a quest references dialogues, it never owns them. */}
+      <span>Delete this quest? Its dialogues stay exactly where they are.</span>
+      <button
+        type="button"
+        className="quest-board__button quest-board__button--danger"
+        onClick={onConfirm}
+      >
+        Delete
+      </button>
+      <button type="button" className="quest-board__button" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  )
 }
 
 /** How many matches a search shows before it stops listing and starts counting. */
@@ -581,6 +622,12 @@ function locationsOf(
 /** The DOM id a quest's card is scrolled to when `?edit=<id>` names it. */
 function questCardElementId(questId: QuestId): string {
   return `quest-card-${questId}`
+}
+
+/** A quest created from a dialogue starts nameless, and a blank card is nothing to click on. */
+function questName(quest: Quest): string {
+  const trimmed = quest.name.trim()
+  return trimmed === '' ? 'Untitled quest' : trimmed
 }
 
 function npcNameOf(dialogue: Dialogue): string {

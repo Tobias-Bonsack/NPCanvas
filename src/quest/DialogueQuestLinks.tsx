@@ -146,7 +146,19 @@ function QuestPicker({
   }, [quests, attached, query])
 
   return (
-    <div className="dialogue-quests__picker">
+    // Escape is claimed here, on the picker itself, rather than only on the search input: the
+    // picker is a sub-control of the dialogue panel, and `DialoguePanel`'s own Escape-to-close
+    // listener is bound on `window`, which only ever sees a bubbled key that nothing closer
+    // stopped. Without `stopPropagation` here, one Escape would close the picker *and* the
+    // panel underneath it, however focus happened to be sitting inside this box.
+    <div
+      className="dialogue-quests__picker"
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.stopPropagation()
+        onClose()
+      }}
+    >
       <div className="dialogue-quests__bar">
         <input
           className="dialogue-quests__input"
@@ -156,9 +168,6 @@ function QuestPicker({
           placeholder="Search quests"
           aria-label="Search quests"
           onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') onClose()
-          }}
         />
         <button type="button" className="dialogue-panel__button" onClick={onClose}>
           Close

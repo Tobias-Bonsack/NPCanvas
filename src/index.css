@@ -70,3 +70,38 @@ body {
   margin: 0;
   min-height: 100vh;
 }
+
+/* Off-screen but still in the accessibility tree and still focusable — the one recipe for
+   "read this, don't show it" the whole app can share (a skip link, a chart's live-region
+   summary, a decoration's spoken description). `clip-path` over `clip: rect()`, which is
+   deprecated. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* A skip link is meant to be seen only once it has focus — Tab from anywhere in the shell
+   reaches it first, and Enter jumps straight past the nav and the canvas full of pin buttons. */
+.skip-link.visually-hidden:focus {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  overflow: visible;
+  clip-path: none;
+  white-space: normal;
+  z-index: 10;
+  border-radius: var(--radius-2);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  text-decoration: none;
+}
