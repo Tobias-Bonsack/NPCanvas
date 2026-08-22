@@ -6,6 +6,7 @@ export type DialogueId = string & { readonly brand: 'DialogueId' }
 export type QuestId = string & { readonly brand: 'QuestId' }
 export type MediaId = string & { readonly brand: 'MediaId' }
 export type CaptureProfileId = string & { readonly brand: 'CaptureProfileId' }
+export type RelevanceTagId = string & { readonly brand: 'RelevanceTagId' }
 
 /**
  * A coordinate pair, in whichever space the field holding it names.
@@ -20,13 +21,26 @@ export type Point = { x: number; y: number }
 /** At least three vertices — a two-point "region" is not representable. */
 export type Polygon = readonly [Point, Point, Point, ...Point[]]
 
-export const RELEVANCE_TAGS = [
+/**
+ * The vocabulary a V1–V4 document had no choice but to use — four names chosen up front,
+ * compiled in rather than owned by the project. Frozen here, beside `GameMapV1`, `DialogueV3`
+ * and `QuestV2`, purely so `migrateV4` has something to zip against `defaultRelevanceTags()`'s
+ * output by index; nothing post-migration ever reads it again.
+ */
+export const RELEVANCE_SLUGS_V4 = [
   'out-of-world',
   'worldbuilding',
   'peoplebuilding',
   'other',
 ] as const
-export type RelevanceTag = (typeof RELEVANCE_TAGS)[number]
+export type RelevanceSlugV4 = (typeof RELEVANCE_SLUGS_V4)[number]
+
+/**
+ * A relevance tag the project owns, the same shape `Zone` and `Quest` already use for a
+ * user-owned coloured record. Its position in `ProjectFile['relevanceTags']` is the canonical
+ * order every chart, chip and pin band draws in — see `Dialogue.relevance` below.
+ */
+export type RelevanceTag = { id: RelevanceTagId; name: string; hue: number }
 
 /** A file that physically lives in <project>/media/. Never a URL, never a path. */
 export type MediaFile = { fileName: string; mimeType: string; byteSize: number }
@@ -94,8 +108,8 @@ export type Dialogue = {
   media: DialogueMedia[]
   /** ISO 8601 from Date#toISOString — when the line was heard in real time. */
   spokenAt: string
-  /** Deduplicated, stored in RELEVANCE_TAGS order. Empty = untagged. */
-  relevance: RelevanceTag[]
+  /** Deduplicated, stored in `project.relevanceTags` order. Empty = untagged. */
+  relevance: RelevanceTagId[]
 }
 
 /**
@@ -190,7 +204,22 @@ export type DialogueV3 = {
     | { kind: 'gif'; file: MediaFile; width: number; height: number }
     | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
   spokenAt: string
-  relevance: RelevanceTag[]
+  relevance: RelevanceSlugV4[]
+}
+
+/**
+ * A V4 dialogue: today's `Dialogue`, before relevance became a document-owned tag rather than a
+ * compiled-in slug. `migrateV4` is the only thing that still reads this shape.
+ */
+export type DialogueV4 = {
+  id: DialogueId
+  mapId: MapId
+  npcName: string
+  position: Point
+  text: string
+  media: DialogueMedia[]
+  spokenAt: string
+  relevance: RelevanceSlugV4[]
 }
 
 /** A V1/V2 quest: no colour, because every quest was drawn in one shared gold. */
@@ -245,19 +274,42 @@ export type ProjectFileV4 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
+  dialogues: DialogueV4[]
+  quests: Quest[]
+  captureProfiles: CaptureProfile[]
+}
+
+/**
+ * V5 moves the relevance vocabulary into the document: four names chosen up front cannot be
+ * the categories every player wants for their own log, so a relevance tag becomes a record the
+ * project owns, exactly the way a `Quest` already owns its name and its hue. `relevanceTags`'
+ * own order is the canonical order `Dialogue.relevance` is normalized against.
+ */
+export type ProjectFileV5 = {
+  schemaVersion: 5
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
   dialogues: Dialogue[]
   quests: Quest[]
   captureProfiles: CaptureProfile[]
+  relevanceTags: RelevanceTag[]
 }
 
 /**
  * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
  * it migrates anything older forward, so nothing downstream branches on a version.
  */
-export type StoredProjectFile = ProjectFileV1 | ProjectFileV2 | ProjectFileV3 | ProjectFileV4
+export type StoredProjectFile =
+  | ProjectFileV1
+  | ProjectFileV2
+  | ProjectFileV3
+  | ProjectFileV4
+  | ProjectFileV5
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV4
+export type ProjectFile = ProjectFileV5
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
@@ -277,6 +329,8 @@ export type ProjectRepairs =
       zones: number
       /** Quest references that named no dialogue, summed over every quest. */
       questDialogueIds: number
+      /** Dialogue relevance ids naming no tag, summed over every dialogue. */
+      relevance: number
     }
 
 // ---- in-memory app state ----

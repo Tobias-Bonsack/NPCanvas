@@ -3,11 +3,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useChartWidth } from './chart-width.ts'
 import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
-import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
+import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
 import { SegmentDefs } from './SegmentLegend.tsx'
 import type { DialogueFilter } from './filters.ts'
 import type { SegmentKey } from './relevance-segments.ts'
-import { SEGMENT_COLOR, SEGMENT_KEYS, tallyOf, totalOf } from './relevance-segments.ts'
+import { segmentColor, segmentKeys, tallyOf, totalOf } from './relevance-segments.ts'
 import type { BucketUnit, TimeBucket } from './timeline-buckets.ts'
 import { bucketDialogues, describeBucket, formatBucketStart } from './timeline-buckets.ts'
 
@@ -39,6 +39,7 @@ export function Timeline({
   dialogues,
   zonesById,
   zoneIndex,
+  relevanceTags,
   filter,
   onChange,
   active,
@@ -47,6 +48,7 @@ export function Timeline({
   dialogues: readonly Dialogue[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  relevanceTags: readonly RelevanceTag[]
   filter: DialogueFilter
   onChange: (filter: DialogueFilter) => void
   /**
@@ -61,6 +63,8 @@ export function Timeline({
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const { unit, buckets } = useMemo(() => bucketDialogues(dialogues), [dialogues])
+  const segmentKeysList = useMemo(() => segmentKeys(relevanceTags), [relevanceTags])
+  const colors = useMemo(() => segmentColor(relevanceTags), [relevanceTags])
   // A brush in flight cannot outlive the pointer gesture that draws it, so unlike `active` it
   // stays local — there is nothing to restore across a view switch.
   const [brush, setBrush] = useState<Brush | null>(null)
@@ -113,7 +117,7 @@ export function Timeline({
   // panels are the same measurement seen along two different axes — and every label below says
   // so, rather than mixing in a count of *dialogues*, which a doubly tagged line would disagree
   // with.
-  const tallies = buckets.map((bucket) => tallyOf(bucket.dialogues))
+  const tallies = buckets.map((bucket) => tallyOf(bucket.dialogues, relevanceTags))
   const tallest = tallies.reduce((max, each) => Math.max(max, totalOf(each.counts)), 0)
   const scale = tallest === 0 ? 0 : PLOT_HEIGHT / tallest
   const slot = plotWidth / buckets.length
@@ -181,7 +185,7 @@ export function Timeline({
         role="img"
         aria-label={`Tag occurrences per ${unit}`}
       >
-        <SegmentDefs idPrefix="timeline" />
+        <SegmentDefs idPrefix="timeline" tags={relevanceTags} />
 
         <text className="insights__row-label" x={PLOT_X - 6} y={PLOT_TOP + 4} textAnchor="end">
           {tallest}
@@ -207,6 +211,8 @@ export function Timeline({
             bucket={bucket}
             unit={unit}
             counts={tallies[index].counts}
+            keys={segmentKeysList}
+            colors={colors}
             x={PLOT_X + index * slot}
             width={slot}
             scale={scale}
@@ -319,6 +325,8 @@ function TimelineBar({
   bucket,
   unit,
   counts,
+  keys,
+  colors,
   x,
   width,
   scale,
@@ -329,7 +337,9 @@ function TimelineBar({
 }: {
   bucket: TimeBucket
   unit: BucketUnit
-  counts: Record<SegmentKey, number>
+  counts: Map<SegmentKey, number>
+  keys: readonly SegmentKey[]
+  colors: ReadonlyMap<SegmentKey, string>
   x: number
   width: number
   scale: number
@@ -364,14 +374,20 @@ function TimelineBar({
       {/* The sole source of this bucket's accessible name — see the identical note in
           RelevanceBreakdown.tsx. An `aria-label` here would have said the same thing twice. */}
       <title>{label}</title>
-      {SEGMENT_KEYS.map((segment) => {
-        const count = counts[segment]
+      {keys.map((segment) => {
+        const count = counts.get(segment) ?? 0
         if (count === 0) return null
         const height = count * scale
         y -= height
         return (
           <g key={segment}>
-            <rect x={left} y={y} width={barWidth} height={height} fill={SEGMENT_COLOR[segment]} />
+            <rect
+              x={left}
+              y={y}
+              width={barWidth}
+              height={height}
+              fill={colors.get(segment) ?? 'transparent'}
+            />
             <rect
               x={left}
               y={y}

@@ -3,7 +3,7 @@ import type {
   DialogueContentKind,
   DialogueId,
   MapId,
-  RelevanceTag,
+  RelevanceTagId,
   ZoneId,
 } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
@@ -29,7 +29,7 @@ export type ZoneScope = ZoneId | typeof NO_ZONE
  * else in this view, and a filter that disagreed would drop half of them.
  */
 export type DialogueFilter = {
-  relevance: readonly RelevanceTag[]
+  relevance: readonly RelevanceTagId[]
   npcKeys: readonly string[]
   zones: readonly ZoneScope[]
   mapIds: readonly MapId[]

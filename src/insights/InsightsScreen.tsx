@@ -82,6 +82,7 @@ export function InsightsScreen({
             dialogues={undated}
             zonesById={zonesById}
             zoneIndex={zoneIndex}
+            relevanceTags={project.relevanceTags}
             filter={filter}
             onChange={setFilter}
             active={timelineActive}
@@ -91,6 +92,7 @@ export function InsightsScreen({
             dialogues={dialogues}
             zones={project.zones}
             zoneIndex={zoneIndex}
+            relevanceTags={project.relevanceTags}
             filter={filter}
             onChange={setFilter}
           />
@@ -99,6 +101,7 @@ export function InsightsScreen({
             quests={project.quests}
             zonesById={zonesById}
             zoneIndex={zoneIndex}
+            relevanceTags={project.relevanceTags}
             selectedKey={dossierKey}
             onSelectedKeyChange={setDossierKey}
           />

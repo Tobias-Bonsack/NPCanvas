@@ -12,6 +12,7 @@ import type {
   DialogueId,
   GameMap,
   ProjectFile,
+  RelevanceTagId,
   Selection,
   Zone,
 } from '../project/types.ts'
@@ -186,6 +187,14 @@ export function MapScreen({
   const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
   const questLinked = useMemo(() => dialoguesInAnyQuest(questIndex), [questIndex])
 
+  // Built once per document change, on the identity of `project.relevanceTags` alone — see
+  // CLAUDE.md's `World-space layers` note: a `PinLayer` prop must never change on anything but a
+  // real document edit, or the memo that keeps panning free stops holding.
+  const relevanceHueByTag = useMemo(
+    () => new Map<RelevanceTagId, number>(project.relevanceTags.map((tag) => [tag.id, tag.hue])),
+    [project.relevanceTags],
+  )
+
   // The filters intersect rather than override: a selected zone and the quest highlight are
   // two independent questions, and answering only the most recent one would silently discard
   // half of what the user asked for. `null` when neither is active, so nothing dims at all.
@@ -256,7 +265,7 @@ export function MapScreen({
             Quest pins only
           </button>
         </div>
-        <CanvasLegend />
+        <CanvasLegend relevanceTags={project.relevanceTags} />
       </header>
       <div className="map-screen__body">
         {/* A sidebar rather than a row in the bar: the list grows with the project, and it
@@ -296,6 +305,7 @@ export function MapScreen({
               selectedId={selection.kind === 'dialogue' ? selection.id : null}
               highlighted={highlighted}
               questsByDialogue={questIndex}
+              relevanceHueByTag={relevanceHueByTag}
               visibleRect={visibleRect}
               suppressFocusId={autoFocusDialogueId}
               onPinSelected={onPinSelected}

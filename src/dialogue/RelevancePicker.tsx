@@ -1,20 +1,21 @@
 import type { ReactElement } from 'react'
 import { useId } from 'react'
-import type { RelevanceTag } from '../project/types.ts'
-import { RELEVANCE_TAGS } from '../project/types.ts'
-import { RELEVANCE_STYLE, relevanceHueStyle } from './relevance.ts'
+import type { RelevanceTag, RelevanceTagId } from '../project/types.ts'
+import { relevanceHueStyle } from './relevance.ts'
 
 /**
- * Checkboxes, not a select: a dialogue carries any combination of tags, and all four fit on
- * screen at once. Click order is not preserved — the reducer normalizes to `RELEVANCE_TAGS`
- * order — so this hands up whatever set the toggle produced and lets that be the authority.
+ * Checkboxes, not a select: a dialogue carries any combination of tags. Click order is not
+ * preserved — the reducer normalizes into the project's own `relevanceTags` order — so this
+ * hands up whatever set the toggle produced and lets that be the authority.
  */
 export function RelevancePicker({
+  tags,
   value,
   onChange,
 }: {
-  value: readonly RelevanceTag[]
-  onChange: (relevance: RelevanceTag[]) => void
+  tags: readonly RelevanceTag[]
+  value: readonly RelevanceTagId[]
+  onChange: (relevance: RelevanceTagId[]) => void
 }): ReactElement {
   const groupId = useId()
 
@@ -22,16 +23,16 @@ export function RelevancePicker({
     <fieldset className="dialogue-form__fieldset">
       <legend className="micro-label dialogue-form__legend">Relevance</legend>
       <div className="relevance-picker">
-        {RELEVANCE_TAGS.map((tag) => {
-          const inputId = `${groupId}-${tag}`
-          const checked = value.includes(tag)
+        {tags.map((tag) => {
+          const inputId = `${groupId}-${tag.id}`
+          const checked = value.includes(tag.id)
           return (
             <label
-              key={tag}
+              key={tag.id}
               className="relevance-picker__tag"
               htmlFor={inputId}
               data-checked={checked ? 'true' : undefined}
-              style={relevanceHueStyle(tag)}
+              style={relevanceHueStyle(tag.hue)}
             >
               <input
                 id={inputId}
@@ -40,11 +41,13 @@ export function RelevancePicker({
                 checked={checked}
                 onChange={(event) =>
                   onChange(
-                    event.target.checked ? [...value, tag] : value.filter((other) => other !== tag),
+                    event.target.checked
+                      ? [...value, tag.id]
+                      : value.filter((other) => other !== tag.id),
                   )
                 }
               />
-              {RELEVANCE_STYLE[tag].label}
+              {tag.name}
             </label>
           )
         })}

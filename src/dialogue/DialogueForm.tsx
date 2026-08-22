@@ -1,9 +1,9 @@
 import type { ReactElement, RefObject } from 'react'
 import { useEffect, useId, useRef } from 'react'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, RelevanceTag } from '../project/types.ts'
+import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
-import { RELEVANCE_STYLE } from './relevance.ts'
+import { relevanceNames } from './relevance.ts'
 import { fromLocalDateTimeValue, toLocalDateTimeValue } from './local-datetime.ts'
 import { NpcNameInput } from './NpcNameInput.tsx'
 import { RelevancePicker } from './RelevancePicker.tsx'
@@ -23,6 +23,7 @@ import './DialogueForm.css'
  */
 export function DialogueForm({
   dialogue,
+  relevanceTags,
   npcNames,
   flushRef,
   autoFocusNpc,
@@ -30,6 +31,7 @@ export function DialogueForm({
   previousRelevance,
 }: {
   dialogue: Dialogue
+  relevanceTags: readonly RelevanceTag[]
   npcNames: readonly string[]
   /**
    * Filled with a function that pushes both drafts into the document now. The capture path holds
@@ -42,7 +44,7 @@ export function DialogueForm({
   /** Called once the autofocus above has actually happened — see the effect below. */
   onAutoFocusConsumed: () => void
   /** The previous line's tags, offered as a one-click carry-over — see `RelevanceCarryOver`. */
-  previousRelevance: readonly RelevanceTag[]
+  previousRelevance: readonly RelevanceTagId[]
 }): ReactElement {
   // One base id per form instance; each control suffixes it, so a second panel could never
   // collide and every label targets exactly its own control.
@@ -106,6 +108,7 @@ export function DialogueForm({
       </div>
 
       <RelevancePicker
+        tags={relevanceTags}
         value={dialogue.relevance}
         onChange={(relevance) => dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance })}
       />
@@ -122,7 +125,7 @@ export function DialogueForm({
             dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance: [...previousRelevance] })
           }
         >
-          Same as the last line: {previousRelevance.map((tag) => RELEVANCE_STYLE[tag].label).join(', ')}
+          Same as the last line: {relevanceNames(previousRelevance, relevanceTags).join(', ')}
         </button>
       )}
 

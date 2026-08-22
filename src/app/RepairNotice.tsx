@@ -45,6 +45,7 @@ function describeRepairs(repairs: RepairedProject): string {
     count(repairs.dialogues, 'dialogue', 'dialogues'),
     count(repairs.zones, 'zone', 'zones'),
     count(repairs.questDialogueIds, 'quest link', 'quest links'),
+    count(repairs.relevance, 'relevance tag reference', 'relevance tag references'),
   ].filter((part) => part !== null)
   return `Dropped ${joinWithAnd(parts)}.`
 }

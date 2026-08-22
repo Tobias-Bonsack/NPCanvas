@@ -5,10 +5,12 @@ import type { ParseResult } from './data-file.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
 // A document exercising every branch of the reader: a line with no pictures, all three media
-// kinds, a polygon and a quest. Rebuilt per test so a mutation cannot leak into the next case.
+// kinds, a polygon, a quest and the four relevance tags. Rebuilt per test so a mutation cannot
+// leak into the next case. Tag ids deliberately match the old V4 slugs, which is what lets
+// `v4Document` below reuse these dialogues' `relevance` arrays verbatim.
 function validDocument(): Record<string, unknown> {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     projectName: 'Fisherman’s Rest',
     savedAt: '2026-08-14T10:00:00.000Z',
     maps: [
@@ -121,6 +123,12 @@ function validDocument(): Record<string, unknown> {
       },
     ],
     captureProfiles: [],
+    relevanceTags: [
+      { id: 'out-of-world', name: 'Out of world', hue: 220 },
+      { id: 'worldbuilding', name: 'Worldbuilding', hue: 150 },
+      { id: 'peoplebuilding', name: 'Peoplebuilding', hue: 35 },
+      { id: 'other', name: 'Other', hue: 290 },
+    ],
   }
 }
 
@@ -168,7 +176,7 @@ describe('parseProjectFile', () => {
     expect(serializeProject(result.file)).not.toContain('unknownDialogueKey')
   })
 
-  it('normalises relevance to RELEVANCE_TAGS order without duplicates', () => {
+  it('normalises relevance into the project’s own tag order, without duplicates', () => {
     const data = validDocument()
     const dialogues = data.dialogues as Record<string, unknown>[]
     dialogues[0].relevance = ['other', 'worldbuilding', 'worldbuilding']
@@ -188,8 +196,8 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 5
-    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3 or 4, but found 5')
+    data.schemaVersion = 6
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3, 4 or 5, but found 6')
   })
 
   it('rejects a map with no placement', () => {
@@ -199,15 +207,21 @@ describe('parseProjectFile', () => {
     expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
   })
 
-  it('round trips a V4 document with its placements and quest hues unchanged', () => {
+  it('round trips a V5 document with its placements, quest hues and relevance tags unchanged', () => {
     const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.schemaVersion).toBe(5)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
+    expect(result.file.relevanceTags).toEqual([
+      { id: 'out-of-world', name: 'Out of world', hue: 220 },
+      { id: 'worldbuilding', name: 'Worldbuilding', hue: 150 },
+      { id: 'peoplebuilding', name: 'Peoplebuilding', hue: 35 },
+      { id: 'other', name: 'Other', hue: 290 },
+    ])
 
     const rewritten = parseProjectFile(serializeProject(result.file))
     expect(rewritten.ok).toBe(true)
@@ -215,15 +229,24 @@ describe('parseProjectFile', () => {
     expect(rewritten.file.maps).toEqual(result.file.maps)
     expect(rewritten.file.quests).toEqual(result.file.quests)
     expect(rewritten.file.dialogues).toEqual(result.file.dialogues)
+    expect(rewritten.file.relevanceTags).toEqual(result.file.relevanceTags)
   })
 })
+
+/** A V4 document: today's `Dialogue`, before relevance became a document-owned tag. */
+function v4Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 4
+  delete data.relevanceTags
+  return data
+}
 
 /**
  * A V3 document: one exclusive content slot per dialogue, and no capture profiles. All four old
  * kinds, because the V3→V4 migration has a branch per kind.
  */
 function v3Document(): Record<string, unknown> {
-  const data = validDocument()
+  const data = v4Document()
   data.schemaVersion = 3
   delete data.captureProfiles
   data.dialogues = [
@@ -326,13 +349,53 @@ function v1Document(): Record<string, unknown> {
   return data
 }
 
+describe('parseProjectFile: V4 migration', () => {
+  it('moves the compiled-in vocabulary into the document, seeding the same tags a fresh project gets', () => {
+    const result = parseProjectFile(JSON.stringify(v4Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
+      'Out of world',
+      'Worldbuilding',
+      'Peoplebuilding',
+      'Other',
+    ])
+    expect(result.file.relevanceTags.map((tag) => tag.hue)).toEqual([220, 150, 35, 290])
+    expect(new Set(result.file.relevanceTags.map((tag) => tag.id)).size).toBe(4)
+  })
+
+  it('rewrites every dialogue’s relevance from the old slugs to the freshly minted tag ids', () => {
+    const result = parseProjectFile(JSON.stringify(v4Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const [outOfWorld, worldbuilding, peoplebuilding, other] = result.file.relevanceTags
+    expect(result.file.dialogues[0].relevance).toEqual([worldbuilding.id])
+    expect(result.file.dialogues[1].relevance).toEqual([])
+    expect(result.file.dialogues[2].relevance).toEqual([outOfWorld.id, other.id])
+    expect(result.file.dialogues[3].relevance).toEqual([peoplebuilding.id])
+  })
+
+  it('leaves everything a V4 document already got right alone', () => {
+    const result = parseProjectFile(JSON.stringify(v4Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
+    expect(result.file.quests[0].hue).toBe(45)
+    expect(result.file.zones[0].name).toBe('Harbour')
+  })
+})
+
 describe('parseProjectFile: V3 migration', () => {
   it('splits every old content kind into a line and its pictures', () => {
     const result = parseProjectFile(JSON.stringify(v3Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.schemaVersion).toBe(5)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -386,7 +449,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.schemaVersion).toBe(5)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -410,16 +473,17 @@ describe('parseProjectFile: V2 migration', () => {
 })
 
 describe('parseProjectFile: V1 migration', () => {
-  it('chains V1 through V2 and V3 to V4, placing the maps and colouring the quests', () => {
+  it('chains V1 through V2, V3 and V4 to V5, placing the maps and colouring the quests', () => {
     const result = parseProjectFile(JSON.stringify(v1Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.schemaVersion).toBe(5)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
     expect(result.file.captureProfiles).toEqual([])
+    expect(result.file.relevanceTags).toHaveLength(4)
     expect(result.file.zones[0].name).toBe('Harbour')
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
@@ -452,7 +516,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 4, maps: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 5, maps: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -511,8 +575,8 @@ describe('parseProjectFile: field validation', () => {
     expect(rejectionMessage(data)).toContain('dialogues[2].content.kind')
   })
 
-  it('rejects a relevance tag outside RELEVANCE_TAGS', () => {
-    const data = validDocument()
+  it('rejects an unknown V4 relevance slug', () => {
+    const data = v4Document()
     const dialogues = data.dialogues as Record<string, unknown>[]
     dialogues[0].relevance = ['worldbuilding', 'lore']
     expect(rejectionMessage(data)).toContain('dialogues[0].relevance[1]')
@@ -544,18 +608,38 @@ describe('parseProjectFile: field validation', () => {
       'captureProfiles[0].screenRect.height: expected a finite number',
     )
   })
+
+  it('rejects a relevance tag hue outside 0..359', () => {
+    const data = validDocument()
+    const relevanceTags = data.relevanceTags as Record<string, unknown>[]
+    relevanceTags[0].hue = 400
+    expect(rejectionMessage(data)).toBe('relevanceTags[0].hue: expected a hue in 0..359')
+  })
+
+  it('rejects a relevance tag with no name', () => {
+    const data = validDocument()
+    const relevanceTags = data.relevanceTags as Record<string, unknown>[]
+    delete relevanceTags[0].name
+    expect(rejectionMessage(data)).toBe('relevanceTags[0].name: expected a string')
+  })
 })
 
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(4)
+    expect(project.schemaVersion).toBe(5)
     expect(project.captureProfiles).toEqual([])
+    expect(project.relevanceTags.map((tag) => tag.name)).toEqual([
+      'Out of world',
+      'Worldbuilding',
+      'Peoplebuilding',
+      'Other',
+    ])
 
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(4)
+    expect(reread.file.schemaVersion).toBe(5)
   })
 })
 
@@ -694,6 +778,7 @@ describe('parseProjectFile: identity', () => {
     ['zones', 'zone-1'],
     ['dialogues', 'dialogue-1'],
     ['quests', 'quest-1'],
+    ['relevanceTags', 'out-of-world'],
   ])('rejects two %s sharing an id, naming the id', (key, id) => {
     const data = validDocument()
     const records = data[key] as Record<string, unknown>[]
@@ -772,7 +857,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(4)
+    expect(reread.file.schemaVersion).toBe(5)
   })
 })
 
@@ -806,6 +891,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       dialogues: 1,
       zones: 0,
       questDialogueIds: 1,
+      relevance: 0,
     })
   })
 
@@ -822,6 +908,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       dialogues: 0,
       zones: 1,
       questDialogueIds: 0,
+      relevance: 0,
     })
   })
 
@@ -838,6 +925,23 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       dialogues: 0,
       zones: 0,
       questDialogueIds: 1,
+      relevance: 0,
+    })
+  })
+
+  it('drops a dialogue relevance id naming no tag, rather than rejecting the document', () => {
+    const data = validDocument()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].relevance = ['worldbuilding', 'tag-gone']
+
+    const result = repaired(data)
+    expect(result.file.dialogues[0].relevance).toEqual(['worldbuilding'])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 0,
+      questDialogueIds: 0,
+      relevance: 1,
     })
   })
 
@@ -855,6 +959,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       dialogues: 4,
       zones: 1,
       questDialogueIds: 2,
+      relevance: 0,
     })
   })
 
@@ -875,7 +980,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(4)
+    expect(result.file.schemaVersion).toBe(5)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })
@@ -898,6 +1003,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       dialogues: 1,
       zones: 0,
       questDialogueIds: 0,
+      relevance: 0,
     })
   })
 })

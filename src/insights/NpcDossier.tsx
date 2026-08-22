@@ -7,15 +7,15 @@ import { zoneHueStyle } from '../map/zone-style.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, DialogueId, Quest, Zone, ZoneId } from '../project/types.ts'
+import type { Dialogue, DialogueId, Quest, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
 import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
 import { npcKey, npcLabel } from './filters.ts'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
 import {
-  SEGMENT_COLOR,
-  SEGMENT_KEYS,
-  SEGMENT_LABEL,
   emptyTally,
+  segmentColor,
+  segmentKeys,
+  segmentLabel,
   tally,
   totalOf,
 } from './relevance-segments.ts'
@@ -44,6 +44,7 @@ export function NpcDossier({
   quests,
   zonesById,
   zoneIndex,
+  relevanceTags,
   selectedKey,
   onSelectedKeyChange,
 }: {
@@ -51,13 +52,14 @@ export function NpcDossier({
   quests: readonly Quest[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  relevanceTags: readonly RelevanceTag[]
   /** The open NPC's key — lifted to `App` so it survives a switch away and back. */
   selectedKey: string | null
   onSelectedKeyChange: (key: string | null) => void
 }): ReactElement {
   const profiles = useMemo(
-    () => buildProfiles(dialogues, quests, zonesById, zoneIndex),
-    [dialogues, quests, zonesById, zoneIndex],
+    () => buildProfiles(dialogues, quests, zonesById, zoneIndex, relevanceTags),
+    [dialogues, quests, zonesById, zoneIndex, relevanceTags],
   )
 
   // A key naming an NPC the filter (or a rename) has since removed falls back to the top of the
@@ -74,14 +76,14 @@ export function NpcDossier({
         </p>
       </header>
 
-      <SegmentLegend />
+      <SegmentLegend tags={relevanceTags} />
 
       {profiles.length === 0 ? (
         <p className="insights__empty">Nobody has said anything in this selection.</p>
       ) : (
         <div className="npc-dossier">
           <svg className="npc-dossier__defs" aria-hidden="true">
-            <SegmentDefs idPrefix="npc" />
+            <SegmentDefs idPrefix="npc" tags={relevanceTags} />
           </svg>
 
           <ul className="npc-dossier__list">
@@ -95,7 +97,11 @@ export function NpcDossier({
                 >
                   <span className="npc-dossier__name">{profile.label}</span>
                   <span className="npc-dossier__count">{profile.dialogues.length}</span>
-                  <SegmentBar counts={profile.tally.counts} className="npc-dossier__spark" />
+                  <SegmentBar
+                    counts={profile.tally.counts}
+                    tags={relevanceTags}
+                    className="npc-dossier__spark"
+                  />
                 </button>
               </li>
             ))}
@@ -110,6 +116,7 @@ export function NpcDossier({
               knownKeys={profiles.map((profile) => profile.key)}
               zonesById={zonesById}
               zoneIndex={zoneIndex}
+              relevanceTags={relevanceTags}
               onRenamed={onSelectedKeyChange}
             />
           )}
@@ -124,16 +131,20 @@ function Dossier({
   knownKeys,
   zonesById,
   zoneIndex,
+  relevanceTags,
   onRenamed,
 }: {
   profile: NpcProfile
   knownKeys: readonly string[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  relevanceTags: readonly RelevanceTag[]
   onRenamed: (key: string) => void
 }): ReactElement {
   const first = profile.dialogues[0]
   const last = profile.dialogues[profile.dialogues.length - 1]
+  const labels = segmentLabel(relevanceTags)
+  const colors = segmentColor(relevanceTags)
 
   return (
     <article className="npc-dossier__detail">
@@ -147,18 +158,24 @@ function Dossier({
 
       <section className="npc-dossier__section" aria-label="Relevance profile">
         <h4 className="micro-label">Relevance</h4>
-        <SegmentBar counts={profile.tally.counts} className="npc-dossier__profile" />
+        <SegmentBar
+          counts={profile.tally.counts}
+          tags={relevanceTags}
+          className="npc-dossier__profile"
+        />
         <ul className="npc-dossier__chips">
-          {SEGMENT_KEYS.filter((segment) => profile.tally.counts[segment] > 0).map((segment) => (
-            <li key={segment} className="npc-dossier__chip">
-              <span
-                className="npc-dossier__dot"
-                style={{ background: SEGMENT_COLOR[segment] }}
-                aria-hidden="true"
-              />
-              {SEGMENT_LABEL[segment]} {profile.tally.counts[segment]}
-            </li>
-          ))}
+          {segmentKeys(relevanceTags)
+            .filter((segment) => (profile.tally.counts.get(segment) ?? 0) > 0)
+            .map((segment) => (
+              <li key={segment} className="npc-dossier__chip">
+                <span
+                  className="npc-dossier__dot"
+                  style={{ background: colors.get(segment) ?? 'transparent' }}
+                  aria-hidden="true"
+                />
+                {labels.get(segment) ?? ''} {profile.tally.counts.get(segment) ?? 0}
+              </li>
+            ))}
         </ul>
       </section>
 
@@ -334,12 +351,15 @@ function Fact({
 /** A composition bar: every NPC's is full width, so the shapes compare rather than the sizes. */
 function SegmentBar({
   counts,
+  tags,
   className,
 }: {
-  counts: Record<SegmentKey, number>
+  counts: Map<SegmentKey, number>
+  tags: readonly RelevanceTag[]
   className: string
 }): ReactElement {
   const total = totalOf(counts)
+  const colors = segmentColor(tags)
   let x = 0
 
   return (
@@ -347,15 +367,15 @@ function SegmentBar({
       {total === 0 ? (
         <rect width="100" height="8" className="insights__track" />
       ) : (
-        SEGMENT_KEYS.map((segment) => {
-          const count = counts[segment]
+        segmentKeys(tags).map((segment) => {
+          const count = counts.get(segment) ?? 0
           if (count === 0) return null
           const width = (count / total) * 100
           const left = x
           x += width
           return (
             <g key={segment}>
-              <rect x={left} y="0" width={width} height="8" fill={SEGMENT_COLOR[segment]} />
+              <rect x={left} y="0" width={width} height="8" fill={colors.get(segment) ?? 'transparent'} />
               <rect x={left} y="0" width={width} height="8" fill={`url(#npc-${segment})`} />
             </g>
           )
@@ -375,6 +395,7 @@ function buildProfiles(
   quests: readonly Quest[],
   zonesById: ReadonlyMap<ZoneId, Zone>,
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>,
+  relevanceTags: readonly RelevanceTag[],
 ): NpcProfile[] {
   const questsByDialogue = indexQuestsByDialogue(quests)
   const byKey = new Map<string, Dialogue[]>()
@@ -387,7 +408,7 @@ function buildProfiles(
 
   const profiles = [...byKey].map(([key, lines]) => {
     const ordered = [...lines].sort((a, b) => a.spokenAt.localeCompare(b.spokenAt))
-    const counts = emptyTally()
+    const counts = emptyTally(relevanceTags)
     const zones = new Map<ZoneId, Zone>()
     const questSet = new Map<Quest['id'], Quest>()
     for (const dialogue of ordered) {

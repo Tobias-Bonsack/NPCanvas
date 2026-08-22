@@ -1,19 +1,12 @@
 import type { ReactElement } from 'react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
+import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
 import { useChartWidth } from './chart-width.ts'
 import type { DialogueFilter, ZoneScope } from './filters.ts'
 import { NO_ZONE, npcKey, npcLabel } from './filters.ts'
 import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
-import {
-  SEGMENT_COLOR,
-  SEGMENT_KEYS,
-  SEGMENT_LABEL,
-  emptyTally,
-  tally,
-  totalOf,
-} from './relevance-segments.ts'
+import { emptyTally, segmentColor, segmentKeys, segmentLabel, tally, totalOf } from './relevance-segments.ts'
 
 /** What clicking a row's segment narrows to — the row's own axis, whichever chart it is in. */
 type RowTarget =
@@ -25,7 +18,7 @@ type BreakdownRow = {
   label: string
   /** Distinct dialogues, which is what the row is sorted and labelled by. */
   dialogues: number
-  counts: Record<SegmentKey, number>
+  counts: Map<SegmentKey, number>
   target: RowTarget
 }
 
@@ -42,17 +35,22 @@ export function RelevanceBreakdown({
   dialogues,
   zones,
   zoneIndex,
+  relevanceTags,
   filter,
   onChange,
 }: {
   dialogues: readonly Dialogue[]
   zones: readonly Zone[]
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  relevanceTags: readonly RelevanceTag[]
   filter: DialogueFilter
   onChange: (filter: DialogueFilter) => void
 }): ReactElement {
-  const byZone = useMemo(() => zoneRows(dialogues, zones, zoneIndex), [dialogues, zones, zoneIndex])
-  const byNpc = useMemo(() => npcRows(dialogues), [dialogues])
+  const byZone = useMemo(
+    () => zoneRows(dialogues, zones, zoneIndex, relevanceTags),
+    [dialogues, zones, zoneIndex, relevanceTags],
+  )
+  const byNpc = useMemo(() => npcRows(dialogues, relevanceTags), [dialogues, relevanceTags])
 
   function select(target: RowTarget, segment: SegmentKey): void {
     const narrowed: DialogueFilter =
@@ -74,11 +72,23 @@ export function RelevanceBreakdown({
         </p>
       </header>
 
-      <SegmentLegend />
+      <SegmentLegend tags={relevanceTags} />
 
       <div className="insights__charts">
-        <BreakdownChart idPrefix="zone" title="By zone" rows={byZone} onSelect={select} />
-        <BreakdownChart idPrefix="npc" title="By NPC" rows={byNpc} onSelect={select} />
+        <BreakdownChart
+          idPrefix="zone"
+          title="By zone"
+          rows={byZone}
+          tags={relevanceTags}
+          onSelect={select}
+        />
+        <BreakdownChart
+          idPrefix="npc"
+          title="By NPC"
+          rows={byNpc}
+          tags={relevanceTags}
+          onSelect={select}
+        />
       </div>
     </section>
   )
@@ -103,11 +113,13 @@ function BreakdownChart({
   idPrefix,
   title,
   rows,
+  tags,
   onSelect,
 }: {
   idPrefix: string
   title: string
   rows: readonly BreakdownRow[]
+  tags: readonly RelevanceTag[]
   onSelect: (target: RowTarget, segment: SegmentKey) => void
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
@@ -116,6 +128,9 @@ function BreakdownChart({
   // A single row must still fill the bar rather than being drawn as a sliver of an imagined
   // larger maximum, so the scale is the largest row, never a fixed ceiling.
   const widest = rows.reduce((max, row) => Math.max(max, totalOf(row.counts)), 0)
+  const keys = useMemo(() => segmentKeys(tags), [tags])
+  const labels = useMemo(() => segmentLabel(tags), [tags])
+  const colors = useMemo(() => segmentColor(tags), [tags])
 
   return (
     <figure className="insights__chart">
@@ -130,12 +145,15 @@ function BreakdownChart({
           role="img"
           aria-label={title}
         >
-          <SegmentDefs idPrefix={idPrefix} />
+          <SegmentDefs idPrefix={idPrefix} tags={tags} />
           {rows.map((row, index) => (
             <BreakdownBar
               key={row.key}
               idPrefix={idPrefix}
               row={row}
+              keys={keys}
+              labels={labels}
+              colors={colors}
               y={index * ROW_PITCH}
               width={width}
               barWidth={barWidth}
@@ -152,6 +170,9 @@ function BreakdownChart({
 function BreakdownBar({
   idPrefix,
   row,
+  keys,
+  labels,
+  colors,
   y,
   width,
   barWidth,
@@ -160,6 +181,9 @@ function BreakdownBar({
 }: {
   idPrefix: string
   row: BreakdownRow
+  keys: readonly SegmentKey[]
+  labels: ReadonlyMap<SegmentKey, string>
+  colors: ReadonlyMap<SegmentKey, string>
   y: number
   /** The chart's own measured width — where the row's total count is printed. */
   width: number
@@ -174,13 +198,13 @@ function BreakdownBar({
     <g>
       <ClippedLabel text={row.label} maxWidth={LABEL_WIDTH} x={LABEL_WIDTH} y={middle} />
       <rect className="insights__track" x={BAR_X} y={y} width={barWidth} height={ROW_HEIGHT} rx="3" />
-      {SEGMENT_KEYS.map((segment) => {
-        const count = row.counts[segment]
+      {keys.map((segment) => {
+        const count = row.counts.get(segment) ?? 0
         if (count === 0) return null
         const segmentWidth = count * scale
         const left = x
         x += segmentWidth
-        const label = `${row.label}, ${SEGMENT_LABEL[segment]}: ${count}`
+        const label = `${row.label}, ${labels.get(segment) ?? ''}: ${count}`
         return (
           <g
             key={segment}
@@ -205,7 +229,7 @@ function BreakdownBar({
               y={y}
               width={segmentWidth}
               height={ROW_HEIGHT}
-              fill={SEGMENT_COLOR[segment]}
+              fill={colors.get(segment) ?? 'transparent'}
             />
             <rect
               x={left}
@@ -291,9 +315,10 @@ function zoneRows(
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>,
+  relevanceTags: readonly RelevanceTag[],
 ): BreakdownRow[] {
   const byZone = new Map<ZoneId, Tally>()
-  const outside = emptyTally()
+  const outside = emptyTally(relevanceTags)
 
   for (const dialogue of dialogues) {
     const inside = zoneIndex.get(dialogue.id) ?? []
@@ -303,7 +328,7 @@ function zoneRows(
     }
     // A line in two overlapping zones counts in both, exactly as `countDialoguesByZone` does.
     for (const zoneId of inside) {
-      const bucket = byZone.get(zoneId) ?? emptyTally()
+      const bucket = byZone.get(zoneId) ?? emptyTally(relevanceTags)
       tally(bucket, dialogue)
       byZone.set(zoneId, bucket)
     }
@@ -334,11 +359,11 @@ function zoneRows(
 }
 
 /** NPCs by line count, with everything past `NPC_LIMIT` folded into one clickable "Other". */
-function npcRows(dialogues: readonly Dialogue[]): BreakdownRow[] {
+function npcRows(dialogues: readonly Dialogue[], relevanceTags: readonly RelevanceTag[]): BreakdownRow[] {
   const byNpc = new Map<string, Tally>()
   for (const dialogue of dialogues) {
     const key = npcKey(dialogue)
-    const bucket = byNpc.get(key) ?? emptyTally()
+    const bucket = byNpc.get(key) ?? emptyTally(relevanceTags)
     tally(bucket, dialogue)
     byNpc.set(key, bucket)
   }
@@ -356,10 +381,12 @@ function npcRows(dialogues: readonly Dialogue[]): BreakdownRow[] {
 
   const head = rows.slice(0, NPC_LIMIT)
   const tail = rows.slice(NPC_LIMIT)
-  const merged = emptyTally()
+  const merged = emptyTally(relevanceTags)
   for (const row of tail) {
     merged.dialogues += row.dialogues
-    for (const segment of SEGMENT_KEYS) merged.counts[segment] += row.counts[segment]
+    for (const [segment, count] of row.counts) {
+      merged.counts.set(segment, (merged.counts.get(segment) ?? 0) + count)
+    }
   }
   head.push({
     key: 'npc-other',

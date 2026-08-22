@@ -22,13 +22,13 @@ import type {
   Quest,
   QuestId,
   RelevanceTag,
+  RelevanceTagId,
   SaveFailure,
   SaveState,
   Selection,
   Zone,
   ZoneId,
 } from './types.ts'
-import { RELEVANCE_TAGS } from './types.ts'
 
 export type Action =
   | { kind: 'project/unsupported' }
@@ -62,7 +62,7 @@ export type Action =
   | { kind: 'dialogue/media-removed'; dialogueId: DialogueId; mediaId: MediaId }
   | { kind: 'dialogue/media-reordered'; dialogueId: DialogueId; mediaId: MediaId; toIndex: number }
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
-  | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTag[] }
+  | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTagId[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
   | { kind: 'quest/added'; quest: Quest }
   | { kind: 'quest/renamed'; questId: QuestId; name: string }
@@ -417,7 +417,7 @@ function applyAction(state: AppState, action: Action): AppState {
       if (state.kind !== 'ready') return state
       const target = findDialogue(state.project, action.dialogueId)
       if (target === null) return state
-      const relevance = normalizeRelevance(action.relevance)
+      const relevance = normalizeRelevance(action.relevance, state.project.relevanceTags)
       if (isSameRelevance(target.relevance, relevance)) return state
       return withDialogue(state, target, { ...target, relevance })
     }
@@ -825,18 +825,21 @@ function moveMedium(
 }
 
 /**
- * Deduplicated and in `RELEVANCE_TAGS` order, whatever order the checkboxes were clicked in.
- * The declaration order is the canonical one, so `data.json` stays stable and diffable —
+ * Deduplicated and in the project's own `relevanceTags` order, whatever order the checkboxes
+ * were clicked in. That order is the canonical one, so `data.json` stays stable and diffable —
  * toggling a tag off and on again must not reshuffle the array and produce a spurious write.
  */
-function normalizeRelevance(tags: readonly RelevanceTag[]): RelevanceTag[] {
-  const chosen = new Set(tags)
-  return RELEVANCE_TAGS.filter((tag) => chosen.has(tag))
+function normalizeRelevance(
+  ids: readonly RelevanceTagId[],
+  tags: readonly RelevanceTag[],
+): RelevanceTagId[] {
+  const chosen = new Set(ids)
+  return tags.map((tag) => tag.id).filter((id) => chosen.has(id))
 }
 
 /** Both sides are already normalized, so element-wise equality is enough. */
-function isSameRelevance(a: readonly RelevanceTag[], b: readonly RelevanceTag[]): boolean {
-  return a.length === b.length && a.every((tag, index) => tag === b[index])
+function isSameRelevance(a: readonly RelevanceTagId[], b: readonly RelevanceTagId[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index])
 }
 
 /**

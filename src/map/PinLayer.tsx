@@ -2,7 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } f
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
-import { relevancePinBackground } from '../dialogue/relevance.ts'
+import { relevanceHues, relevancePinBackground } from '../dialogue/relevance.ts'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
@@ -14,6 +14,7 @@ import type {
   MapId,
   Point,
   Quest,
+  RelevanceTagId,
 } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
@@ -73,6 +74,7 @@ export const PinLayer = memo(function PinLayer({
   selectedId,
   highlighted,
   questsByDialogue,
+  relevanceHueByTag,
   visibleRect,
   suppressFocusId,
   onPinSelected,
@@ -94,6 +96,12 @@ export const PinLayer = memo(function PinLayer({
    * answer different questions about the same pin.
    */
   questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
+  /**
+   * The project's own relevance hues, by tag id — built in `MapScreen` with `useMemo` on the
+   * identity of `project.relevanceTags`, which is what keeps this document state rather than
+   * viewport state and preserves the memo boundary above.
+   */
+  relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   /**
    * Canvas space, already grown by `CULL_MARGIN` — pins outside it are not rendered at all.
    * It is republished only when the view settles, which is what keeps culling from costing a
@@ -258,6 +266,7 @@ export const PinLayer = memo(function PinLayer({
           selectedId={selectedId}
           highlighted={highlighted}
           questsByDialogue={questsByDialogue}
+          relevanceHueByTag={relevanceHueByTag}
           visibleRect={visibleRect}
           dragged={dragged}
           pendingDelete={pendingDelete}
@@ -280,6 +289,7 @@ const PinMapGroup = memo(function PinMapGroup({
   selectedId,
   highlighted,
   questsByDialogue,
+  relevanceHueByTag,
   visibleRect,
   dragged,
   pendingDelete,
@@ -292,6 +302,7 @@ const PinMapGroup = memo(function PinMapGroup({
   selectedId: DialogueId | null
   highlighted: ReadonlySet<DialogueId> | null
   questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
+  relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   visibleRect: Rect | null
   dragged: PinDrag | null
   pendingDelete: DialogueId | null
@@ -332,6 +343,7 @@ const PinMapGroup = memo(function PinMapGroup({
           onScreen={visible !== null && rectContains(visible, dialogue.position)}
           dimmed={highlighted !== null && !highlighted.has(dialogue.id)}
           quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
+          relevanceHueByTag={relevanceHueByTag}
           selected={dialogue.id === selectedId}
           confirmingDelete={pendingDelete === dialogue.id}
           suppressFocus={dialogue.id === suppressFocusId}
@@ -386,6 +398,7 @@ const Pin = memo(function Pin({
   onScreen,
   dimmed,
   quests,
+  relevanceHueByTag,
   selected,
   confirmingDelete,
   suppressFocus,
@@ -400,6 +413,7 @@ const Pin = memo(function Pin({
   dimmed: boolean
   /** Every quest naming this dialogue, in document order — one flag each, uncapped. */
   quests: readonly Quest[]
+  relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   selected: boolean
   confirmingDelete: boolean
   /** This pin was just placed, so its dialogue's own NPC field is claiming focus instead — see
@@ -450,7 +464,7 @@ const Pin = memo(function Pin({
         // against — see the rules in MapCanvas.css.
         data-tagged={dialogue.relevance.length > 0 ? 'true' : undefined}
         aria-current={selected ? 'true' : undefined}
-        style={{ background: relevancePinBackground(dialogue.relevance) }}
+        style={{ background: relevancePinBackground(relevanceHues(dialogue.relevance, relevanceHueByTag)) }}
         // A tooltip only, now — the accessible name already comes from `pin__name`'s visible
         // text, so this must not carry anything that name does not, or the two would disagree
         // for a sighted mouse user versus everyone else. The quests are a *description*, not

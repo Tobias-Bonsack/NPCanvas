@@ -1,4 +1,12 @@
-import type { CaptureProfileId, DialogueId, MapId, MediaId, QuestId, ZoneId } from './types.ts'
+import type {
+  CaptureProfileId,
+  DialogueId,
+  MapId,
+  MediaId,
+  QuestId,
+  RelevanceTagId,
+  ZoneId,
+} from './types.ts'
 
 // The only permitted `as` casts on ids in the codebase. Every other module must
 // obtain ids from here, so a branded id can never be forged from a raw string.
@@ -27,6 +35,10 @@ export function newCaptureProfileId(): CaptureProfileId {
   return crypto.randomUUID() as CaptureProfileId
 }
 
+export function newRelevanceTagId(): RelevanceTagId {
+  return crypto.randomUUID() as RelevanceTagId
+}
+
 // Ids arriving from outside the document — the URL hash and `data.json`. Branding a raw
 // string is not a claim that the entity exists; callers must still look it up and handle a miss.
 
@@ -52,4 +64,8 @@ export function asMediaId(raw: string): MediaId {
 
 export function asCaptureProfileId(raw: string): CaptureProfileId {
   return raw as CaptureProfileId
+}
+
+export function asRelevanceTagId(raw: string): RelevanceTagId {
+  return raw as RelevanceTagId
 }

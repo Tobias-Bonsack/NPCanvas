@@ -81,8 +81,9 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   substrate the coordinates are expressed in.
 - **No enums** (`erasableSyntaxOnly` is on). The pattern is `export const X = [...] as const` plus
   `type X = (typeof X)[number]` — runtime list and union type from one declaration.
-- **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`, `MediaId`, `CaptureProfileId`) are
-  constructed only in `src/project/ids.ts`. Those are the only permitted `as` casts on ids.
+- **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`, `MediaId`, `CaptureProfileId`,
+  `RelevanceTagId`) are constructed only in `src/project/ids.ts`. Those are the only permitted `as`
+  casts on ids.
 - **Store scope.** `src/project/store.ts` is a module-level store over a pure reducer, read through
   `useSyncExternalStore`. It holds the persisted document, connection state, and selection.
   Transient UI — canvas viewport, active tool, form drafts, filter bar — stays in component
@@ -117,6 +118,11 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   yet transcribed) and `media` may be empty (a line typed by hand). What a pin, a row or the kind
   filter shows comes from `dialogueContentKind()` — the first medium's kind, or `'text'` — derived
   on every read, never stored.
+- **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
+  user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
+  stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
+  chart segment, a pin band, and a filter chip all draw in, and the order the reducer normalizes
+  `Dialogue.relevance` (a deduplicated `RelevanceTagId[]`) against on every edit.
 - **Media contract.** `data.json` stores `{ fileName, mimeType, byteSize }` plus intrinsic
   dimensions — never URLs, paths, or data URLs. Files are `media/<dialogueId>-<mediaId>.<ext>` with
   the extension derived from the MIME type, never from the upload's filename (untrusted, and both
@@ -129,14 +135,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **4**. To
-  evolve: add `ProjectFileV5`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **5**. To
+  evolve: add `ProjectFileV6`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV3(migrateV2(migrateV1(…)))` — so a new version adds one function and one case, not one
-  per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV4(migrateV3(migrateV2(migrateV1(…))))` — so a new version adds one function and one case,
+  not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -144,7 +150,11 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   slot into the new pair: a text dialogue becomes `{ text, media: [] }`, a media one
   `{ text: '', media: [one medium] }` with a fresh `MediaId` and its `fileName` untouched, and every
   project gets `captureProfiles: []`. `DialogueV3` is kept in `types.ts` as the pre-migration shape,
-  beside `GameMapV1` and `QuestV2`, and is the only thing `readDialogueV3` still builds.
+  beside `GameMapV1` and `QuestV2`, and is the only thing `readDialogueV3` still builds. The V4→V5
+  migration (`migrateV4`) builds the project's `relevanceTags` once via the same `defaultRelevanceTags()`
+  a brand new project seeds, then rewrites every dialogue's compiled-in relevance slugs into the
+  matching tag ids — mirroring the V2→V3 pattern of calling the one function the live app also calls.
+  `DialogueV4` is kept beside `DialogueV3` as the pre-migration shape.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asDialogueId, asMapId, asMediaId, asZoneId } from '../project/ids.ts'
+import { asDialogueId, asMapId, asMediaId, asRelevanceTagId, asZoneId } from '../project/ids.ts'
 import type { Dialogue, DialogueId, DialogueMedia, MapId, ZoneId } from '../project/types.ts'
 import type { DialogueFilter } from './filters.ts'
 import { EMPTY_FILTER, NO_ZONE, applyFilter, isEmptyFilter, toggleFilterValue } from './filters.ts'
@@ -8,6 +8,9 @@ const HARBOUR = asMapId('harbour')
 const FOREST = asMapId('forest')
 const DOCKS = asZoneId('docks')
 const MARKET = asZoneId('market')
+const WORLDBUILDING = asRelevanceTagId('worldbuilding')
+const PEOPLEBUILDING = asRelevanceTagId('peoplebuilding')
+const OTHER = asRelevanceTagId('other')
 
 function dialogue(id: string, overrides: Partial<Dialogue> = {}): Dialogue {
   return {
@@ -35,14 +38,14 @@ const image: DialogueMedia = {
 const MARA = dialogue('mara', {
   npcName: '  Mara  ',
   text: 'The harbour master owes me a debt',
-  relevance: ['worldbuilding'],
+  relevance: [WORLDBUILDING],
   spokenAt: '2026-08-10T08:00:00.000Z',
 })
 const TOMAS = dialogue('tomas', {
   npcName: 'Tomas',
   mapId: FOREST,
   media: [image],
-  relevance: ['peoplebuilding', 'other'],
+  relevance: [PEOPLEBUILDING, OTHER],
   spokenAt: '2026-08-12T08:00:00.000Z',
 })
 const UNNAMED = dialogue('unnamed', {
@@ -78,7 +81,7 @@ describe('isEmptyFilter', () => {
   })
 
   it('is false as soon as any field narrows', () => {
-    expect(isEmptyFilter(filter({ relevance: ['other'] }))).toBe(false)
+    expect(isEmptyFilter(filter({ relevance: [OTHER] }))).toBe(false)
     expect(isEmptyFilter(filter({ from: '2026-08-01T00:00:00.000Z' }))).toBe(false)
   })
 })
@@ -89,11 +92,11 @@ describe('applyFilter', () => {
   })
 
   it('matches any of the selected relevance tags', () => {
-    expect(ids(applyFilter(ALL, filter({ relevance: ['worldbuilding'] }), ZONE_INDEX))).toEqual([
+    expect(ids(applyFilter(ALL, filter({ relevance: [WORLDBUILDING] }), ZONE_INDEX))).toEqual([
       'mara',
     ])
     expect(
-      ids(applyFilter(ALL, filter({ relevance: ['worldbuilding', 'other'] }), ZONE_INDEX)),
+      ids(applyFilter(ALL, filter({ relevance: [WORLDBUILDING, OTHER] }), ZONE_INDEX)),
     ).toEqual(['mara', 'tomas'])
   })
 
@@ -147,7 +150,7 @@ describe('applyFilter', () => {
 
   it('combines two fields with AND', () => {
     expect(
-      ids(applyFilter(ALL, filter({ text: 'debt', relevance: ['worldbuilding'] }), ZONE_INDEX)),
+      ids(applyFilter(ALL, filter({ text: 'debt', relevance: [WORLDBUILDING] }), ZONE_INDEX)),
     ).toEqual(['mara'])
     expect(
       ids(applyFilter(ALL, filter({ zones: [MARKET], mapIds: [FOREST] }), ZONE_INDEX)),

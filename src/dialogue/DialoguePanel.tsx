@@ -24,7 +24,7 @@ import type {
   DialogueMedia,
   Glyph,
   ProjectFile,
-  RelevanceTag,
+  RelevanceTagId,
   Zone,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
@@ -376,6 +376,7 @@ export function DialoguePanel({
       <DialogueForm
         key={dialogueId}
         dialogue={dialogue}
+        relevanceTags={project.relevanceTags}
         npcNames={npcNames}
         flushRef={flushDraft}
         autoFocusNpc={autoFocusNpc}
@@ -588,7 +589,7 @@ function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
 function previousRelevanceFor(
   dialogues: readonly Dialogue[],
   excludeId: Dialogue['id'],
-): readonly RelevanceTag[] {
+): readonly RelevanceTagId[] {
   const previous = dialogues
     .filter((candidate) => candidate.id !== excludeId)
     .sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))[0]

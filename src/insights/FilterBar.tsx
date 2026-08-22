@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactElement } from 'react'
 import { useMemo } from 'react'
-import { RELEVANCE_STYLE, relevanceHueStyle } from '../dialogue/relevance.ts'
+import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
-import type { Dialogue, GameMap, ProjectFile, RelevanceTag, Zone } from '../project/types.ts'
-import { DIALOGUE_CONTENT_KINDS, RELEVANCE_TAGS } from '../project/types.ts'
+import type { Dialogue, GameMap, ProjectFile, RelevanceTagId, Zone } from '../project/types.ts'
+import { DIALOGUE_CONTENT_KINDS } from '../project/types.ts'
 import type { ContentKind, DialogueFilter, ZoneScope } from './filters.ts'
 import {
   EMPTY_FILTER,
@@ -112,21 +112,21 @@ export function FilterBar({
 
       <div className="filter-bar__row">
         <div className="filter-bar__chips" role="group" aria-label="Relevance">
-          {RELEVANCE_TAGS.map((tag) => (
+          {project.relevanceTags.map((tag) => (
             <button
-              key={tag}
+              key={tag.id}
               type="button"
               className="filter-bar__tag"
-              style={relevanceHueStyle(tag)}
-              aria-pressed={filter.relevance.includes(tag)}
+              style={relevanceHueStyle(tag.hue)}
+              aria-pressed={filter.relevance.includes(tag.id)}
               onClick={() =>
                 onChange({
                   ...filter,
-                  relevance: toggleFilterValue<RelevanceTag>(filter.relevance, tag),
+                  relevance: toggleFilterValue<RelevanceTagId>(filter.relevance, tag.id),
                 })
               }
             >
-              {RELEVANCE_STYLE[tag].label}
+              {tag.name}
             </button>
           ))}
         </div>

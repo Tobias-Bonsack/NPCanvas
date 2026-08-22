@@ -1,3 +1,4 @@
+import { defaultRelevanceTags } from '../dialogue/relevance.ts'
 import { clampMapScale, nextMapOrigin } from '../map/canvas-layout.ts'
 import { nextQuestHue } from '../quest/quest-style.ts'
 import {
@@ -6,6 +7,7 @@ import {
   asMapId,
   asMediaId,
   asQuestId,
+  asRelevanceTagId,
   asZoneId,
   newMediaId,
 } from './ids.ts'
@@ -16,6 +18,7 @@ import type {
   DialogueId,
   DialogueMedia,
   DialogueV3,
+  DialogueV4,
   GameMap,
   GameMapV1,
   Glyph,
@@ -29,21 +32,25 @@ import type {
   ProjectFileV1,
   ProjectFileV2,
   ProjectFileV3,
+  ProjectFileV4,
+  ProjectFileV5,
   ProjectRepairs,
   Quest,
   QuestId,
   QuestStatus,
   QuestV2,
+  RelevanceSlugV4,
   RelevanceTag,
+  RelevanceTagId,
   Zone,
   ZoneId,
 } from './types.ts'
-import { QUEST_STATUSES, RELEVANCE_TAGS } from './types.ts'
+import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
 
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -51,6 +58,7 @@ export function createEmptyProject(name: string): ProjectFile {
     dialogues: [],
     quests: [],
     captureProfiles: [],
+    relevanceTags: defaultRelevanceTags(),
   }
 }
 
@@ -259,22 +267,56 @@ function readMediaFile(value: unknown, path: string): MediaFile {
   }
 }
 
-function readRelevance(value: unknown, path: string): RelevanceTag[] {
+/** A V1–V4 dialogue's relevance: slugs against the compiled-in `RELEVANCE_SLUGS_V4` vocabulary. */
+function readRelevanceV4(value: unknown, path: string): RelevanceSlugV4[] {
   const raw = readArray(value, path)
   const found = raw.map((tag, index) => {
     const text = readString(tag, `${path}[${index}]`)
-    if (!isRelevanceTag(text)) {
-      throw new SchemaError(`${path}[${index}]`, `one of ${RELEVANCE_TAGS.join(', ')}`)
+    if (!isRelevanceSlugV4(text)) {
+      throw new SchemaError(`${path}[${index}]`, `one of ${RELEVANCE_SLUGS_V4.join(', ')}`)
     }
     return text
   })
-  // Rebuilt from RELEVANCE_TAGS rather than returned as read, which enforces the
-  // "deduplicated, in RELEVANCE_TAGS order" invariant on a hand-edited file too.
-  return RELEVANCE_TAGS.filter((tag) => found.includes(tag))
+  // Rebuilt from RELEVANCE_SLUGS_V4 rather than returned as read, which enforces the
+  // "deduplicated, in RELEVANCE_SLUGS_V4 order" invariant on a hand-edited file too.
+  return RELEVANCE_SLUGS_V4.filter((tag) => found.includes(tag))
 }
 
-function isRelevanceTag(value: string): value is RelevanceTag {
-  return (RELEVANCE_TAGS as readonly string[]).includes(value)
+function isRelevanceSlugV4(value: string): value is RelevanceSlugV4 {
+  return (RELEVANCE_SLUGS_V4 as readonly string[]).includes(value)
+}
+
+/**
+ * A V5 dialogue's relevance: ids against the project's own `relevanceTags`. Known ids come back
+ * in `tagOrder`'s canonical order; anything unrecognised trails after them rather than being
+ * rejected here — `repairReferences` is what counts and drops a tag id that names nothing,
+ * exactly as it already does for a dangling `mapId` or quest reference.
+ */
+function readRelevanceV5(
+  value: unknown,
+  path: string,
+  tagOrder: readonly RelevanceTagId[],
+): RelevanceTagId[] {
+  const raw = readArray(value, path)
+  const found = new Set(
+    raw.map((tag, index) => asRelevanceTagId(readString(tag, `${path}[${index}]`))),
+  )
+  const known = tagOrder.filter((id) => found.has(id))
+  const unknown = [...found].filter((id) => !tagOrder.includes(id))
+  return [...known, ...unknown]
+}
+
+function readRelevanceTagId(value: unknown, path: string): RelevanceTagId {
+  return asRelevanceTagId(readString(value, path))
+}
+
+function readRelevanceTag(value: unknown, path: string): RelevanceTag {
+  const raw = readObject(value, path)
+  return {
+    id: readRelevanceTagId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    hue: readHue(raw.hue, `${path}.hue`),
+  }
 }
 
 function readDialogueContentV3(value: unknown, path: string): DialogueV3['content'] {
@@ -407,25 +449,42 @@ function readZone(value: unknown, path: string): Zone {
   }
 }
 
-/** The fields every dialogue version shares; only the content differs between V3 and V4. */
-function readDialogueCommon(
+/** The fields every dialogue version shares; only `relevance` and the content differ by version. */
+function readDialogueCommon<R>(
   raw: Record<string, unknown>,
   path: string,
-): Omit<Dialogue, 'text' | 'media'> {
+  readRelevanceField: (value: unknown, path: string) => R,
+): {
+  id: DialogueId
+  mapId: MapId
+  npcName: string
+  position: Point
+  spokenAt: string
+  relevance: R
+} {
   return {
     id: readDialogueId(raw.id, `${path}.id`),
     mapId: readMapId(raw.mapId, `${path}.mapId`),
     npcName: readString(raw.npcName, `${path}.npcName`),
     position: readPoint(raw.position, `${path}.position`),
     spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
-    relevance: readRelevance(raw.relevance, `${path}.relevance`),
+    relevance: readRelevanceField(raw.relevance, `${path}.relevance`),
   }
 }
 
-function readDialogue(value: unknown, path: string): Dialogue {
+function readDialogueV4(value: unknown, path: string): DialogueV4 {
   const raw = readObject(value, path)
   return {
-    ...readDialogueCommon(raw, path),
+    ...readDialogueCommon(raw, path, readRelevanceV4),
+    text: readString(raw.text, `${path}.text`),
+    media: readMedia(raw.media, `${path}.media`),
+  }
+}
+
+function readDialogue(value: unknown, path: string, tagOrder: readonly RelevanceTagId[]): Dialogue {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder)),
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
   }
@@ -446,7 +505,7 @@ function readMedia(value: unknown, path: string): DialogueMedia[] {
 function readDialogueV3(value: unknown, path: string): DialogueV3 {
   const raw = readObject(value, path)
   return {
-    ...readDialogueCommon(raw, path),
+    ...readDialogueCommon(raw, path, readRelevanceV4),
     content: readDialogueContentV3(raw.content, `${path}.content`),
   }
 }
@@ -511,12 +570,12 @@ function readProjectFile(value: unknown): { file: ProjectFile; repairs: ProjectR
  */
 function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: ProjectRepairs } {
   const mapIds = new Set<MapId>(file.maps.map((map) => map.id))
-  const dialogues = file.dialogues.filter((dialogue) => mapIds.has(dialogue.mapId))
+  const survivingDialogues = file.dialogues.filter((dialogue) => mapIds.has(dialogue.mapId))
   const zones = file.zones.filter((zone) => mapIds.has(zone.mapId))
 
   // Against the *surviving* dialogues, so a quest reference to a dialogue dropped one line
   // above goes with it — the two repairs are one pass, not two independent ones.
-  const dialogueIds = new Set<DialogueId>(dialogues.map((dialogue) => dialogue.id))
+  const dialogueIds = new Set<DialogueId>(survivingDialogues.map((dialogue) => dialogue.id))
   let questDialogueIds = 0
   const quests = file.quests.map((quest) => {
     const kept = quest.dialogueIds.filter((id) => dialogueIds.has(id))
@@ -525,9 +584,20 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
     return { ...quest, dialogueIds: kept }
   })
 
+  // Every id readRelevanceV5 read is already normalised into canonical order; only ids naming
+  // no current tag need dropping, and readRelevanceV5 trails those after the known ones.
+  const tagIds = new Set<RelevanceTagId>(file.relevanceTags.map((tag) => tag.id))
+  let relevance = 0
+  const dialogues = survivingDialogues.map((dialogue) => {
+    const kept = dialogue.relevance.filter((id) => tagIds.has(id))
+    if (kept.length === dialogue.relevance.length) return dialogue
+    relevance += dialogue.relevance.length - kept.length
+    return { ...dialogue, relevance: kept }
+  })
+
   const droppedDialogues = file.dialogues.length - dialogues.length
   const droppedZones = file.zones.length - zones.length
-  if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0) {
+  if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0 && relevance === 0) {
     return { file, repairs: { kind: 'none' } }
   }
   return {
@@ -537,6 +607,7 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
       dialogues: droppedDialogues,
       zones: droppedZones,
       questDialogueIds,
+      relevance,
     },
   }
 }
@@ -574,15 +645,17 @@ function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))
+      return migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw)))))
     case 2:
-      return migrateV3(migrateV2(readProjectFileV2(raw)))
+      return migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))
     case 3:
-      return migrateV3(readProjectFileV3(raw))
+      return migrateV4(migrateV3(readProjectFileV3(raw)))
     case 4:
-      return readProjectFileV4(raw)
+      return migrateV4(readProjectFileV4(raw))
+    case 5:
+      return readProjectFileV5(raw)
     default:
-      throw new SchemaError('schemaVersion', `1, 2, 3 or 4, but found ${String(schemaVersion)}`)
+      throw new SchemaError('schemaVersion', `1, 2, 3, 4 or 5, but found ${String(schemaVersion)}`)
   }
 }
 
@@ -635,14 +708,36 @@ function readProjectFileV3(raw: Record<string, unknown>): ProjectFileV3 {
   }
 }
 
-function readProjectFileV4(raw: Record<string, unknown>): ProjectFile {
+function readProjectFileV4(raw: Record<string, unknown>): ProjectFileV4 {
   return {
     schemaVersion: 4,
     ...readCommonFields(raw),
     maps: readUniqueArray(raw, 'maps', readGameMap),
-    dialogues: readUniqueArray(raw, 'dialogues', readDialogue),
+    dialogues: readUniqueArray(raw, 'dialogues', readDialogueV4),
     quests: readQuestsV3(raw),
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+  }
+}
+
+/**
+ * V5 reads `relevanceTags` first: its order is what `readDialogue` normalizes every dialogue's
+ * relevance ids against, so the tag list has to exist before a single dialogue can be read.
+ */
+function readProjectFileV5(raw: Record<string, unknown>): ProjectFileV5 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  return {
+    schemaVersion: 5,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    relevanceTags,
   }
 }
 
@@ -682,7 +777,7 @@ function migrateV2(file: ProjectFileV2): ProjectFileV3 {
  * meant. `fileName` is carried over verbatim rather than renamed to the V4 scheme: a migration
  * is pure and cannot touch `media/`, and the name has always been stored rather than derived.
  */
-function migrateV3(file: ProjectFileV3): ProjectFile {
+function migrateV3(file: ProjectFileV3): ProjectFileV4 {
   return {
     ...file,
     schemaVersion: 4,
@@ -691,7 +786,7 @@ function migrateV3(file: ProjectFileV3): ProjectFile {
   }
 }
 
-function migrateDialogueV3(dialogue: DialogueV3): Dialogue {
+function migrateDialogueV3(dialogue: DialogueV3): DialogueV4 {
   const { content, ...rest } = dialogue
   if (content.kind === 'text') return { ...rest, text: content.text, media: [] }
   // `id` first, matching the order `readDialogueMedia` builds a medium in. JSON.stringify
@@ -699,4 +794,26 @@ function migrateDialogueV3(dialogue: DialogueV3): Dialogue {
   // project's first save differ from every save after it — a whole-file diff, once, for
   // nothing. See the byte-stability test in data-file.test.ts.
   return { ...rest, text: '', media: [{ id: newMediaId(), ...content }] }
+}
+
+/**
+ * V4 compiled the relevance vocabulary in; V5 moves it into the document. The four tags are
+ * built once, via the same `defaultRelevanceTags` a brand new project seeds — which is what
+ * makes a migrated project and a fresh one indistinguishable — and every dialogue's slugs are
+ * rewritten into the matching ids. `RELEVANCE_SLUGS_V4.indexOf` is safe here because
+ * `defaultRelevanceTags` returns its four tags in that exact order.
+ */
+function migrateV4(file: ProjectFileV4): ProjectFileV5 {
+  const relevanceTags = defaultRelevanceTags()
+  return {
+    ...file,
+    schemaVersion: 5,
+    dialogues: file.dialogues.map((dialogue) => ({
+      ...dialogue,
+      relevance: dialogue.relevance.map(
+        (slug) => relevanceTags[RELEVANCE_SLUGS_V4.indexOf(slug)].id,
+      ),
+    })),
+    relevanceTags,
+  }
 }

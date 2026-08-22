@@ -1,8 +1,8 @@
 import type { ReactElement } from 'react'
-import type { DialogueContentKind } from '../project/types.ts'
-import { DIALOGUE_CONTENT_KINDS, RELEVANCE_TAGS } from '../project/types.ts'
+import type { DialogueContentKind, RelevanceTag } from '../project/types.ts'
+import { DIALOGUE_CONTENT_KINDS } from '../project/types.ts'
 import { ContentGlyph } from './ContentGlyph.tsx'
-import { RELEVANCE_STYLE, relevanceColor } from './relevance.ts'
+import { relevanceColor } from './relevance.ts'
 import './CanvasLegend.css'
 
 /**
@@ -21,7 +21,11 @@ const CONTENT_KIND_LABEL: Record<DialogueContentKind, string> = {
  * What a pin's mark and colour mean. Rendered from the same `ContentGlyph` and the same hues
  * the pins use, so the legend cannot describe a scheme the canvas no longer draws.
  */
-export function CanvasLegend(): ReactElement {
+export function CanvasLegend({
+  relevanceTags,
+}: {
+  relevanceTags: readonly RelevanceTag[]
+}): ReactElement {
   return (
     <div className="canvas-legend">
       <ul className="canvas-legend__group" aria-label="Pin content kinds">
@@ -36,10 +40,13 @@ export function CanvasLegend(): ReactElement {
       </ul>
 
       <ul className="canvas-legend__group" aria-label="Pin relevance colours">
-        {RELEVANCE_TAGS.map((tag) => (
-          <li key={tag} className="canvas-legend__item">
-            <span className="canvas-legend__swatch" style={{ background: relevanceColor(tag) }} />
-            {RELEVANCE_STYLE[tag].label}
+        {relevanceTags.map((tag) => (
+          <li key={tag.id} className="canvas-legend__item">
+            <span
+              className="canvas-legend__swatch"
+              style={{ background: relevanceColor(tag.hue) }}
+            />
+            {tag.name}
           </li>
         ))}
         {/* Named, because a neutral ring is a statement — "not classified yet" — and a reader

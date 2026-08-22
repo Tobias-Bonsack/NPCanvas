@@ -7,6 +7,7 @@ import {
   asMapId,
   asMediaId,
   asQuestId,
+  asRelevanceTagId,
   asZoneId,
 } from './ids.ts'
 import type { Action } from './reducer.ts'
@@ -21,6 +22,7 @@ import type {
   MapId,
   ProjectFile,
   Quest,
+  RelevanceTag,
   Zone,
 } from './types.ts'
 
@@ -98,6 +100,16 @@ function zone(id: string, mapId: MapId): Zone {
   }
 }
 
+function relevanceTag(id: string, name: string, hue: number): RelevanceTag {
+  return { id: asRelevanceTagId(id), name, hue }
+}
+
+/** Fixed ids (not random, unlike `defaultRelevanceTags`) so a test can name its own expectations. */
+const OUT_OF_WORLD = relevanceTag('out-of-world', 'Out of world', 220)
+const WORLDBUILDING = relevanceTag('worldbuilding', 'Worldbuilding', 150)
+const PEOPLEBUILDING = relevanceTag('peoplebuilding', 'Peoplebuilding', 35)
+const OTHER = relevanceTag('other', 'Other', 290)
+
 function quest(id: string, dialogueIds: string[]): Quest {
   return {
     id: asQuestId(id),
@@ -136,6 +148,9 @@ function twoMapProject(): ProjectFile {
       dialogue('dialogue-forest', forest.id),
     ],
     quests: [quest('quest-1', ['dialogue-harbour', 'dialogue-forest'])],
+    // Fixed rather than the random ids `createEmptyProject` seeds, so a relevance test can name
+    // an id and know exactly which tag it addresses.
+    relevanceTags: [OUT_OF_WORLD, WORLDBUILDING, PEOPLEBUILDING, OTHER],
   }
 }
 
@@ -185,7 +200,11 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     dialogueId: asDialogueId('dialogue-1'),
     spokenAt: '2026-08-14T10:00:00.000Z',
   },
-  { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('dialogue-1'), relevance: ['other'] },
+  {
+    kind: 'dialogue/relevance-set',
+    dialogueId: asDialogueId('dialogue-1'),
+    relevance: [asRelevanceTagId('other')],
+  },
   { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-1') },
   { kind: 'zone/added', zone: zone('zone-1', asMapId('harbour')) },
   { kind: 'zone/renamed', zoneId: asZoneId('zone-1'), name: 'Docks' },
@@ -821,26 +840,26 @@ describe('reduce: dialogue field edits', () => {
     expect(edited(next).spokenAt).toBe('2026-08-15T09:30:00.000Z')
   })
 
-  it('stores relevance deduplicated and in RELEVANCE_TAGS order, whatever the click order', () => {
+  it('stores relevance deduplicated and in the project’s tag order, whatever the click order', () => {
     const next = reduce(ready(twoMapProject()), {
       kind: 'dialogue/relevance-set',
       dialogueId: target,
-      relevance: ['other', 'worldbuilding', 'other', 'out-of-world'],
+      relevance: [OTHER.id, WORLDBUILDING.id, OTHER.id, OUT_OF_WORLD.id],
     })
-    expect(edited(next).relevance).toEqual(['out-of-world', 'worldbuilding', 'other'])
+    expect(edited(next).relevance).toEqual([OUT_OF_WORLD.id, WORLDBUILDING.id, OTHER.id])
   })
 
   it('treats a reshuffled set of the same tags as no change at all', () => {
     const tagged = reduce(ready(twoMapProject()), {
       kind: 'dialogue/relevance-set',
       dialogueId: target,
-      relevance: ['worldbuilding', 'other'],
+      relevance: [WORLDBUILDING.id, OTHER.id],
     })
     expect(
       reduce(tagged, {
         kind: 'dialogue/relevance-set',
         dialogueId: target,
-        relevance: ['other', 'worldbuilding', 'worldbuilding'],
+        relevance: [OTHER.id, WORLDBUILDING.id, WORLDBUILDING.id],
       }),
     ).toBe(tagged)
   })
@@ -855,7 +874,7 @@ describe('reduce: dialogue field edits', () => {
       { kind: 'dialogue/npc-named', dialogueId: asDialogueId('nope'), npcName: 'Ferryman' },
       { kind: 'dialogue/text-set', dialogueId: asDialogueId('nope'), text: 'x' },
       { kind: 'dialogue/spoken-at-set', dialogueId: asDialogueId('nope'), spokenAt: 'x' },
-      { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('nope'), relevance: ['other'] },
+      { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('nope'), relevance: [OTHER.id] },
     ]
     for (const action of edits) expect(reduce(state, action)).toBe(state)
   })
