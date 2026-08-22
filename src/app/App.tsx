@@ -6,11 +6,12 @@ import { QuestBoard } from '../quest/QuestBoard.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
 import type { AppState, ProjectRepairs, SaveState } from '../project/types.ts'
 import { useAppStateExceptSave } from '../project/store.ts'
+import { SearchPalette } from '../search/SearchPalette.tsx'
 import { Nav } from './Nav.tsx'
 import { RepairNotice } from './RepairNotice.tsx'
 import { SaveFailureBanner } from './SaveFailureBanner.tsx'
 import type { Route } from './route.ts'
-import { useRoute } from './route.ts'
+import { navigate, useRoute } from './route.ts'
 import type { CanvasViewState, InsightsViewState, QuestsViewState } from './view-state.ts'
 import { INITIAL_VIEW_STATE } from './view-state.ts'
 import './App.css'
@@ -57,6 +58,12 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
     (quests: QuestsViewState) => setViewState((prev) => ({ ...prev, quests })),
     [],
   )
+  // The one action the search palette cannot take on its own: opening an NPC's dossier means
+  // both routing to Insights and setting the view state that lives here.
+  const onOpenNpcDossier = useCallback((key: string) => {
+    setViewState((prev) => ({ ...prev, insights: { ...prev.insights, dossierKey: key } }))
+    navigate({ kind: 'insights' })
+  }, [])
 
   return (
     <div className="app-shell">
@@ -73,6 +80,8 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
         onInsightsStateChange={onInsightsStateChange}
         onQuestsStateChange={onQuestsStateChange}
       />
+      {/* Mounted here, above the route switch, so `/` and Ctrl/Cmd+K work from every view. */}
+      <SearchPalette project={state.project} onOpenNpcDossier={onOpenNpcDossier} />
     </div>
   )
 }

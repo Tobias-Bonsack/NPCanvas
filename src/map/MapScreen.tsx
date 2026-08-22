@@ -22,7 +22,7 @@ import type { Viewport } from './viewport.ts'
 import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
-import { isTextFieldFocused } from './text-field-focus.ts'
+import { isTextFieldFocused } from '../text-field-focus.ts'
 import { ZoneLayer } from './ZoneLayer.tsx'
 import { ZoneList } from './ZoneList.tsx'
 import {

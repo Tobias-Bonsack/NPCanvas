@@ -7,6 +7,7 @@ import type {
   ZoneId,
 } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
+import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 
 export type ContentKind = DialogueContentKind
 
@@ -139,14 +140,6 @@ export const UNNAMED_NPC = 'Unnamed'
 
 export function npcLabel(key: string): string {
   return key === '' ? UNNAMED_NPC : key
-}
-
-/**
- * Everything the free-text field matches against. A dialogue that is only a picture so far has
- * an empty body, so it matches on its NPC name alone until the line is transcribed.
- */
-export function dialogueSearchText(dialogue: Dialogue): string {
-  return `${dialogue.npcName} ${dialogue.text}`.toLowerCase()
 }
 
 /**

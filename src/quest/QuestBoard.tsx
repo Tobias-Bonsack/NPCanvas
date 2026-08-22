@@ -9,6 +9,7 @@ import { indexDialoguesByZone } from '../map/zone-index.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
+import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 import type {
   Dialogue,
   DialogueId,
@@ -435,7 +436,7 @@ function DialoguePicker({
     const hits =
       needle === ''
         ? candidates
-        : candidates.filter((dialogue) => searchText(dialogue).includes(needle))
+        : candidates.filter((dialogue) => dialogueSearchText(dialogue).includes(needle))
     return [...hits].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
   }, [dialogues, attached, query])
 
@@ -607,11 +608,6 @@ function snippetOf(dialogue: Dialogue): string {
   if (collapsed !== '') return collapsed
   if (dialogue.media.length === 0) return 'No text yet'
   return MEDIA_SNIPPET[dialogue.media[0].kind]
-}
-
-/** Everything the search matches against, lowercased once per keystroke per dialogue. */
-function searchText(dialogue: Dialogue): string {
-  return `${dialogue.npcName} ${dialogue.text}`.toLowerCase()
 }
 
 // Intl rather than a date library — see CLAUDE.md § Dependencies.
