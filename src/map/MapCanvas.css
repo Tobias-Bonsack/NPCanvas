@@ -333,11 +333,14 @@
   filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.9));
 }
 
-/* The width the bands need to stay nameable: at four tags this is ~28 px each, where a ring
-   around the glyph gave them a few pixels of arc. Only tagged pins get it — an untagged pin
-   has nothing to show off and should not be padded out to match. */
+/* The width the bands need to stay nameable. `relevancePinBackground` caps what it draws at
+   six bands — a project with more tags than that collapses the rest into one neutral overflow
+   band rather than shrinking every band below where a colour reads as one — so 8rem / 6 is the
+   floor: ~21 px per band, never under the 20 px a hue needs to stay distinguishable. Only
+   tagged pins get it — an untagged pin has nothing to show off and should not be padded out to
+   match. */
 .pin__marker[data-tagged='true'] {
-  min-width: 7rem;
+  min-width: 8rem;
   /* Relevance hues sit at a fixed 60% lightness in both themes, so the ink on top of them has
      to be fixed too: var(--text) is near-white in the dark theme and would disappear. */
   color: var(--ink-on-hue);

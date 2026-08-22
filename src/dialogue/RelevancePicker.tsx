@@ -4,9 +4,12 @@ import type { RelevanceTag, RelevanceTagId } from '../project/types.ts'
 import { relevanceHueStyle } from './relevance.ts'
 
 /**
- * Checkboxes, not a select: a dialogue carries any combination of tags. Click order is not
- * preserved — the reducer normalizes into the project's own `relevanceTags` order — so this
- * hands up whatever set the toggle produced and lets that be the authority.
+ * Checkboxes, not a select: a dialogue carries any combination of tags, and there is no fixed
+ * count of them to assume fits on screen — the list wraps onto further rows and scrolls within
+ * a bounded height past roughly four of them (`DialogueForm.css`) rather than growing the panel
+ * to match however many tags the project has. Click order is not preserved — the reducer
+ * normalizes into the project's own `relevanceTags` order — so this hands up whatever set the
+ * toggle produced and lets that be the authority.
  */
 export function RelevancePicker({
   tags,

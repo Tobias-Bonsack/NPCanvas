@@ -3,16 +3,31 @@ import type { RelevanceTag } from '../project/types.ts'
 import type { SegmentKey } from './relevance-segments.ts'
 import { segmentColor, segmentKeys, segmentLabel } from './relevance-segments.ts'
 
-type TextureShape = 'diagonal' | 'counter-diagonal' | 'dots' | 'grid' | 'verticals'
+type TextureShape =
+  | 'diagonal'
+  | 'counter-diagonal'
+  | 'dots'
+  | 'grid'
+  | 'crosshatch'
+  | 'checkerboard'
+  | 'verticals'
 
 /**
  * The shapes a tagged segment cycles through, in the order the app's original four tags used
  * them — a palette indexed by *position* in `project.relevanceTags`, not by name, so today's
  * four tags keep drawing exactly as they did before a project could create, rename or reorder
- * its own tags. `untagged` keeps its own shape outside this palette, drawn from `shapeForSegment`
- * below.
+ * its own tags. `untagged` keeps its own shape outside this palette (`verticals`, via
+ * `shapeForSegment` below), so it can never collide with a real tag's texture. Past the sixth
+ * tag the palette simply repeats — a documented degradation, not a blank swatch.
  */
-const TAG_SHAPES: readonly TextureShape[] = ['diagonal', 'counter-diagonal', 'dots', 'grid']
+const TAG_SHAPES: readonly TextureShape[] = [
+  'diagonal',
+  'counter-diagonal',
+  'dots',
+  'grid',
+  'crosshatch',
+  'checkerboard',
+]
 
 function shapeForSegment(segment: SegmentKey, index: number): TextureShape {
   if (segment === 'untagged') return 'verticals'
@@ -22,7 +37,7 @@ function shapeForSegment(segment: SegmentKey, index: number): TextureShape {
 /**
  * A texture per segment, so a chart survives being read by someone who cannot tell the hues
  * apart — and printed in greyscale. The shapes differ in *kind* (diagonal, counter-diagonal,
- * dots, grid, verticals), not merely in density.
+ * dots, grid, crosshatch, checkerboard, verticals), not merely in density.
  */
 export function SegmentPattern({ id, shape }: { id: string; shape: TextureShape }): ReactElement {
   const ink = 'rgba(0, 0, 0, 0.34)'
@@ -32,6 +47,18 @@ export function SegmentPattern({ id, shape }: { id: string; shape: TextureShape 
       {shape === 'counter-diagonal' && <path d="M0 0 6 6" stroke={ink} strokeWidth="1.6" />}
       {shape === 'dots' && <circle cx="3" cy="3" r="1.3" fill={ink} />}
       {shape === 'grid' && <path d="M0 3h6M3 0v6" stroke={ink} strokeWidth="1.1" />}
+      {shape === 'crosshatch' && (
+        <>
+          <path d="M0 6 6 0" stroke={ink} strokeWidth="1" />
+          <path d="M0 0 6 6" stroke={ink} strokeWidth="1" />
+        </>
+      )}
+      {shape === 'checkerboard' && (
+        <>
+          <rect x="0" y="0" width="3" height="3" fill={ink} />
+          <rect x="3" y="3" width="3" height="3" fill={ink} />
+        </>
+      )}
       {shape === 'verticals' && <path d="M1.5 0v6" stroke={ink} strokeWidth="1.2" />}
     </pattern>
   )

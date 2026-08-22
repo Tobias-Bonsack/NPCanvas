@@ -32,7 +32,7 @@ describe('relevancePinBackground', () => {
     )
   })
 
-  it('spans the full width exactly, however many hues there are', () => {
+  it('spans the full width exactly, however many bands are actually drawn', () => {
     for (let count = 2; count <= 12; count++) {
       const hues = Array.from({ length: count }, (_, index) => index * 10)
       const fill = relevancePinBackground(hues)
@@ -41,9 +41,35 @@ describe('relevancePinBackground', () => {
       // Floating-point division of 100 by the band count does not always land on the exact
       // literal "100", so the end of the gradient is checked numerically instead.
       expect(Number(lastStop?.[1])).toBeCloseTo(100)
-      // One `hsl(` per hue: a dropped or duplicated band would show as a wrong count.
-      expect(fill.split('hsl(').length - 1).toBe(count)
+      // One `hsl(` per band actually drawn — real bands cap at six, so a count past that still
+      // shows only six, the last of them the overflow marker rather than a dropped or
+      // duplicated real one.
+      expect(fill.split('hsl(').length - 1).toBe(Math.min(count, 6))
     }
+  })
+
+  it('pins the exact fill for two, four and twelve tags', () => {
+    expect(relevancePinBackground([220, 150])).toBe(
+      `linear-gradient(90deg, ${relevanceColor(220)} 0% 50%, ${relevanceColor(150)} 50% 100%)`,
+    )
+
+    const four = [220, 150, 35, 290]
+    expect(relevancePinBackground(four)).toBe(
+      `linear-gradient(90deg, ${four
+        .map((hue, i) => `${relevanceColor(hue)} ${i * 25}% ${(i + 1) * 25}%`)
+        .join(', ')})`,
+    )
+
+    // Twelve tags: only the first five keep their own hue, and the sixth and last band is the
+    // overflow marker — never a seventh-plus real colour silently dropped.
+    const twelve = Array.from({ length: 12 }, (_, index) => index * 10)
+    const share = 100 / 6
+    const colors = [...twelve.slice(0, 5).map(relevanceColor), 'hsl(220 8% 45%)']
+    expect(relevancePinBackground(twelve)).toBe(
+      `linear-gradient(90deg, ${colors
+        .map((color, i) => `${color} ${i * share}% ${(i + 1) * share}%`)
+        .join(', ')})`,
+    )
   })
 })
 

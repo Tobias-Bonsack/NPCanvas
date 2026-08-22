@@ -20,8 +20,11 @@
   --accent-contrast: #0b1220;
 
   /* Quest membership, wherever it is shown: the pin flag, the panel's quest links, the board.
-     Deliberately outside the relevance hues (220 / 150 / 35 / 290 at 70% 60%) and away from
-     --accent, so "in a quest" can never be mistaken for a tag or for a selection. */
+     A relevance tag's hue is user-chosen and can land anywhere on the wheel, so this can no
+     longer promise to sit outside all of them by number alone — what keeps a quest flag from
+     being mistaken for a relevance band is its shape and position (a pennant flown above the
+     pin, never a stripe in its fill), not this colour being reserved. Kept away from --accent
+     regardless, so "in a quest" still never reads as "selected". */
   --quest: #f2c14e;
 
   --space-1: 0.25rem;

@@ -74,14 +74,27 @@ export function relevanceColor(hue: number): string {
 }
 
 /**
+ * Past this many bands a hue stops being distinguishable from its neighbour on a pin a few
+ * screen pixels wide — see the min-width this is calibrated against in `MapCanvas.css`. The
+ * extra tags collapse into one neutral overflow band rather than shrinking every band below
+ * where a colour can still be read; the exhaustive per-tag breakdown is what the Insights charts
+ * are for, not a pin.
+ */
+const MAX_PIN_BANDS = 6
+
+/** Never a real tag's hue, so the overflow band can never be mistaken for a colour the project
+ *  actually uses — it has to read as "more", not as an unfamiliar category. */
+const OVERFLOW_BAND_COLOR = 'hsl(220 8% 45%)'
+
+/**
  * A pin's fill: every tag it carries, as equal vertical bands across the whole pin — already
  * resolved to hues, since a tag's colour now lives on the document's own record rather than a
  * compiled-in lookup. `PinLayer` resolves each `RelevanceTagId` through the project's hue map
  * before calling this.
  *
  * The pin body rather than a ring around the glyph, because a ring is a few pixels of arc per
- * tag — at four tags the segments were too small to name a colour. Bands get the pin's full
- * width, which is also why `.pin__marker[data-tagged]` carries a min-width.
+ * tag — bands get the pin's full width instead, which is also why `.pin__marker[data-tagged]`
+ * carries a min-width sized for `MAX_PIN_BANDS`.
  *
  * Untagged is deliberately the chrome's own surface rather than a first-tag default: "not yet
  * classified" is real information, and a colour would claim otherwise. A single tag skips the
@@ -92,11 +105,16 @@ export function relevancePinBackground(hues: readonly number[]): string {
   if (first === undefined) return 'var(--surface-2)'
   if (hues.length === 1) return relevanceColor(first)
 
+  const overflow = hues.length > MAX_PIN_BANDS
+  const colors = overflow
+    ? [...hues.slice(0, MAX_PIN_BANDS - 1).map(relevanceColor), OVERFLOW_BAND_COLOR]
+    : hues.map(relevanceColor)
+
   // Hard stops, not a blend: these are categories, and a gradient between two of them would
   // read as a third colour that means nothing.
-  const share = 100 / hues.length
-  const stops = hues.map(
-    (hue, index) => `${relevanceColor(hue)} ${index * share}% ${(index + 1) * share}%`,
+  const share = 100 / colors.length
+  const stops = colors.map(
+    (color, index) => `${color} ${index * share}% ${(index + 1) * share}%`,
   )
   return `linear-gradient(90deg, ${stops.join(', ')})`
 }
