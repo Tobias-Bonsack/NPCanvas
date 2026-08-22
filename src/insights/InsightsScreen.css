@@ -205,6 +205,29 @@
   flex-wrap: wrap;
 }
 
+/* Dropped opacity is the only feedback the row still being dragged needs — its slot in the
+   list is already tracking the pointer, since `orderedTags` re-sorts on every crossed row. */
+.relevance-tag-list__item[data-dragging] {
+  opacity: 0.6;
+}
+
+.relevance-tag-list__handle {
+  touch-action: none;
+  user-select: none;
+  font-size: var(--text-sm);
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: grab;
+}
+
+.relevance-tag-list__handle:active {
+  cursor: grabbing;
+}
+
 /* The row's primary label — a `hue-chip` (index.css) is the same pill a filter's active zone
    or quest chip already uses, keyed off `--relevance-hue` the same way. */
 .relevance-tag-list__name {

@@ -1,7 +1,9 @@
-import type { ReactElement } from 'react'
-import { useState } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import { RELEVANCE_HUES, nextRelevanceHue, relevanceHueStyle } from '../dialogue/relevance.ts'
+import type { DragGesture } from '../map/drag-gesture.ts'
+import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
 import type { RowTrigger } from '../map/row-focus.ts'
 import { useRowFocus } from '../map/row-focus.ts'
 import { newRelevanceTagId } from '../project/ids.ts'
@@ -9,6 +11,22 @@ import { dispatch } from '../project/store.ts'
 import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
 import type { DialogueFilter } from './filters.ts'
+
+/**
+ * What a tag's drag carries; `DragGesture` owns the pointer bookkeeping. `toIndex` is advanced
+ * by each move rather than read back from the `dragPreview` state at commit time — a commit can
+ * land in the same tick as the move that produced it, before React has re-rendered with the new
+ * state, and reading stale state there would dispatch the *previous* target index. Mirrors
+ * `PinLayer`'s `PinDragGesture.position`, which is live for the same reason.
+ */
+type TagDragData = { id: RelevanceTagId; startIndex: number; rowHeight: number; toIndex: number }
+
+/** The live target position of the tag being dragged — component state, never the store; see
+ *  the comment on `PinLayer`'s own `PinDrag` for why a dispatch per move is the wrong shape. */
+type TagDragPreview = { id: RelevanceTagId; toIndex: number }
+
+/** Only a fallback if a row's own measured height is somehow unavailable at drag start. */
+const DEFAULT_ROW_HEIGHT = 32
 
 /**
  * Transient list UI — the rename draft, the open palette, the delete confirmation — is
@@ -40,6 +58,12 @@ export function RelevanceTagList({
 }): ReactElement {
   const [mode, setMode] = useState<RelevanceTagListMode>({ kind: 'idle' })
 
+  // The drag gesture's own bookkeeping lives in a ref, exactly as `PinLayer`'s does; only the
+  // live preview it produces is state, so a pointermove costs a re-render of this list and
+  // nothing else.
+  const dragRef = useRef<DragGesture<TagDragData> | null>(null)
+  const [dragPreview, setDragPreview] = useState<TagDragPreview | null>(null)
+
   function createTag(): void {
     const tag: RelevanceTag = {
       id: newRelevanceTagId(),
@@ -50,6 +74,70 @@ export function RelevanceTagList({
     // Straight into renaming: a nameless tag in a list is nothing to click on.
     setMode({ kind: 'renaming', id: tag.id })
   }
+
+  function onHandlePointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    tag: RelevanceTag,
+    index: number,
+  ): void {
+    if (event.button !== 0) return
+    const row = event.currentTarget.closest('li')
+    const rowHeight = row?.getBoundingClientRect().height ?? DEFAULT_ROW_HEIGHT
+    beginDrag(dragRef, event, { id: tag.id, startIndex: index, rowHeight, toIndex: index })
+  }
+
+  function onHandlePointerMove(event: ReactPointerEvent<HTMLButtonElement>): void {
+    const move = moveDrag(dragRef, event)
+    if (move === null) return
+    const steps = Math.round(move.dy / move.data.rowHeight)
+    const toIndex = clamp(move.data.startIndex + steps, 0, relevanceTags.length - 1)
+    move.data.toIndex = toIndex
+    setDragPreview({ id: move.data.id, toIndex })
+  }
+
+  function onHandlePointerUp(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (event.button !== 0) return
+    const end = commitDrag(dragRef, event)
+    if (end === null) return
+    setDragPreview(null)
+    if (end.moved) {
+      dispatch({ kind: 'relevance-tag/reordered', tagId: end.data.id, toIndex: end.data.toIndex })
+    }
+  }
+
+  /**
+   * The platform withdrew the gesture, so the list snaps back to the document's own order and
+   * nothing is dispatched — a cancel is not a shorter pointerup. Escape mid-drag is the same
+   * terminal: there is no pointer event for a key press, so it clears the ref by hand rather
+   * than through `drag-gesture.ts`'s own cancel path.
+   */
+  function onHandlePointerCancel(event: ReactPointerEvent<HTMLButtonElement>): void {
+    if (cancelDrag(dragRef, event)) setDragPreview(null)
+  }
+
+  const dragging = dragPreview !== null
+  useEffect(() => {
+    if (!dragging) return
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return
+      dragRef.current = null
+      setDragPreview(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [dragging])
+
+  // The order this list actually renders in: the document's own, with the dragged tag at its
+  // live target position. Identical to `relevanceTags` whenever no drag is in flight.
+  const orderedTags = useMemo(() => {
+    if (dragPreview === null) return relevanceTags
+    const from = relevanceTags.findIndex((tag) => tag.id === dragPreview.id)
+    if (from === -1) return relevanceTags
+    const next = [...relevanceTags]
+    const [moved] = next.splice(from, 1)
+    next.splice(dragPreview.toIndex, 0, moved)
+    return next
+  }, [relevanceTags, dragPreview])
 
   return (
     <section className="insights__panel relevance-tag-list" aria-label="Relevance tags">
@@ -68,19 +156,37 @@ export function RelevanceTagList({
         <p className="insights__empty">No relevance tags left. Add one to start classifying lines.</p>
       ) : (
         <ul className="relevance-tag-list__items">
-          {relevanceTags.map((tag) => (
-            <li key={tag.id} className="relevance-tag-list__item">
-              <RelevanceTagRow
-                tag={tag}
-                dialogues={dialogues}
-                // Only the row the mode names is in that mode; every other row stays idle.
-                mode={'id' in mode && mode.id === tag.id ? mode : { kind: 'idle' }}
-                onSetMode={setMode}
-                filter={filter}
-                onFilterChange={onFilterChange}
-              />
-            </li>
-          ))}
+          {orderedTags.map((tag) => {
+            // The tag's real position, not its live preview slot — what the Move buttons and
+            // their disabled state must agree with, since a click is never mid-drag.
+            const index = relevanceTags.indexOf(tag)
+            return (
+              <li
+                key={tag.id}
+                className="relevance-tag-list__item"
+                data-dragging={dragPreview?.id === tag.id ? 'true' : undefined}
+              >
+                <RelevanceTagRow
+                  tag={tag}
+                  index={index}
+                  count={relevanceTags.length}
+                  dialogues={dialogues}
+                  // Only the row the mode names is in that mode; every other row stays idle.
+                  mode={'id' in mode && mode.id === tag.id ? mode : { kind: 'idle' }}
+                  onSetMode={setMode}
+                  filter={filter}
+                  onFilterChange={onFilterChange}
+                  onHandlePointerDown={(event) => onHandlePointerDown(event, tag, index)}
+                  onHandlePointerMove={onHandlePointerMove}
+                  onHandlePointerUp={onHandlePointerUp}
+                  onHandlePointerCancel={onHandlePointerCancel}
+                  onMove={(toIndex) =>
+                    dispatch({ kind: 'relevance-tag/reordered', tagId: tag.id, toIndex })
+                  }
+                />
+              </li>
+            )
+          })}
         </ul>
       )}
     </section>
@@ -90,18 +196,34 @@ export function RelevanceTagList({
 /** Exhaustive over `RelevanceTagListMode`; the `ReactElement` return type rejects a silently added one. */
 function RelevanceTagRow({
   tag,
+  index,
+  count,
   dialogues,
   mode,
   onSetMode,
   filter,
   onFilterChange,
+  onHandlePointerDown,
+  onHandlePointerMove,
+  onHandlePointerUp,
+  onHandlePointerCancel,
+  onMove,
 }: {
   tag: RelevanceTag
+  /** This tag's position in the document's own order — never the live drag preview. */
+  index: number
+  /** How many tags there are, so the last row's "Move down" can disable itself. */
+  count: number
   dialogues: readonly Dialogue[]
   mode: RelevanceTagListMode
   onSetMode: (mode: RelevanceTagListMode) => void
   filter: DialogueFilter
   onFilterChange: (filter: DialogueFilter) => void
+  onHandlePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onHandlePointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onHandlePointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onHandlePointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
+  onMove: (toIndex: number) => void
 }): ReactElement {
   const triggerRef = useRowFocus(triggerOf(mode))
 
@@ -169,9 +291,40 @@ function RelevanceTagRow({
     case 'idle':
       return (
         <>
+          {/* Pointer-only: a keyboard user reorders with the Move buttons below instead, which
+              is why this carries no keydown handling of its own. */}
+          <button
+            type="button"
+            className="relevance-tag-list__handle"
+            aria-label={`Reorder ${tagLabel(tag)}`}
+            onPointerDown={onHandlePointerDown}
+            onPointerMove={onHandlePointerMove}
+            onPointerUp={onHandlePointerUp}
+            onPointerCancel={onHandlePointerCancel}
+          >
+            ⠿
+          </button>
           <span className="hue-chip relevance-tag-list__name" style={relevanceHueStyle(tag.hue)}>
             {tagLabel(tag)}
           </span>
+          <button
+            type="button"
+            className="button"
+            aria-label={`Move ${tagLabel(tag)} up`}
+            disabled={index === 0}
+            onClick={() => onMove(index - 1)}
+          >
+            Move up
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-label={`Move ${tagLabel(tag)} down`}
+            disabled={index === count - 1}
+            onClick={() => onMove(index + 1)}
+          >
+            Move down
+          </button>
           <button
             ref={triggerRef.rename}
             type="button"
@@ -271,4 +424,8 @@ function tagLabel(tag: RelevanceTag): string {
 function describeCascade(count: number): string {
   if (count === 0) return 'No line carries it.'
   return count === 1 ? '1 line loses this tag.' : `${count} lines lose this tag.`
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
 }
