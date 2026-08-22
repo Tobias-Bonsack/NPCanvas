@@ -243,7 +243,11 @@ function NpcLine({
         </span>
         <a
           className="npc-line__link"
-          href={formatRoute({ kind: 'canvas', dialogueId: dialogue.id, focusMapId: dialogue.mapId })}
+          href={formatRoute({
+            kind: 'canvas',
+            dialogueId: dialogue.id,
+            focus: { kind: 'map', id: dialogue.mapId },
+          })}
         >
           Show on canvas
         </a>

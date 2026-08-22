@@ -13,6 +13,7 @@ import {
   nextMapOrigin,
   originForScale,
   zoneAtCanvasPoint,
+  zoneCanvasRect,
 } from './canvas-layout.ts'
 import type { Rect } from './geometry.ts'
 import { rectToPolygon } from './geometry.ts'
@@ -41,6 +42,22 @@ describe('mapCanvasRect', () => {
   it('takes the natural size through the map scale', () => {
     const map = gameMap('a', { origin: { x: 10, y: -20 }, scale: 2.5, width: 200, height: 100 })
     expect(mapCanvasRect(map)).toEqual({ x: 10, y: -20, width: 500, height: 250 })
+  })
+})
+
+describe('zoneCanvasRect', () => {
+  it('takes the polygon bounds through the map origin and scale', () => {
+    const map = gameMap('a', { origin: { x: 100, y: 50 }, scale: 2 })
+    const zone: Zone = {
+      id: asZoneId('shop'),
+      mapId: map.id,
+      name: 'shop',
+      polygon: rectToPolygon({ x: 10, y: 20, width: 30, height: 5 }),
+      hue: 200,
+    }
+    // Map-local (10, 20) through origin 100/50 and scale 2 lands at canvas (120, 90); the
+    // 30x5 box scales the same way the map's own footprint does in mapCanvasRect.
+    expect(zoneCanvasRect(map, zone)).toEqual({ x: 120, y: 90, width: 60, height: 10 })
   })
 })
 

@@ -494,7 +494,7 @@ function LinkedDialogue({
       href={formatRoute({
         kind: 'canvas',
         dialogueId: dialogue.id,
-        focusMapId: dialogue.mapId,
+        focus: { kind: 'map', id: dialogue.mapId },
       })}
     >
       <DialogueSummary dialogue={dialogue} zones={zones} />

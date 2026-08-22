@@ -282,10 +282,31 @@
   border-radius: 0 var(--radius-2) var(--radius-2) 0;
 }
 
-.tool-picker__button[aria-pressed='true'] {
+.tool-picker__button[aria-checked='true'] {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
+}
+
+.tool-picker__button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The one-letter shortcut, printed on the button itself so it needs no separate legend. */
+.tool-picker__key {
+  margin-left: var(--space-1);
+  padding: 0 3px;
+  border-radius: var(--radius-1);
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.6875rem;
+  font-family: var(--font-mono);
+}
+
+.tool-picker__button[aria-checked='true'] .tool-picker__key {
+  background: rgba(0, 0, 0, 0.18);
 }
 
 .map-screen__controls {

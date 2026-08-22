@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
+import { navigate } from '../app/route.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types.ts'
@@ -45,6 +46,15 @@ export function ZoneList({
     [project.maps, project.zones],
   )
 
+  /**
+   * The same one-shot `focus` channel `MapList` jumps a map with — see `route.ts`'s
+   * `FocusTarget` — so a zone off screen reads as "jumped to" instead of "nothing happened".
+   */
+  function onFocus(zone: Zone): void {
+    dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: zone.id } })
+    navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'zone', id: zone.id } })
+  }
+
   function onRenameSubmit(id: ZoneId, draft: string): void {
     const name = draft.trim()
     if (name !== '') dispatch({ kind: 'zone/renamed', zoneId: id, name })
@@ -69,6 +79,7 @@ export function ZoneList({
             counts={counts}
             mode={mode}
             onSetMode={setMode}
+            onFocus={onFocus}
             onRenameSubmit={onRenameSubmit}
           />
         ))
@@ -96,6 +107,7 @@ function ZoneGroup({
   counts,
   mode,
   onSetMode,
+  onFocus,
   onRenameSubmit,
 }: {
   map: GameMap
@@ -104,6 +116,7 @@ function ZoneGroup({
   counts: ReadonlyMap<ZoneId, number>
   mode: ZoneListMode
   onSetMode: (mode: ZoneListMode) => void
+  onFocus: (zone: Zone) => void
   onRenameSubmit: (id: ZoneId, draft: string) => void
 }): ReactElement | null {
   if (zones.length === 0) return null
@@ -120,6 +133,7 @@ function ZoneGroup({
               // Only the row the mode names is in that mode; every other row stays idle.
               mode={'id' in mode && mode.id === zone.id ? mode : { kind: 'idle' }}
               onSetMode={onSetMode}
+              onFocus={() => onFocus(zone)}
               onRenameSubmit={(draft) => onRenameSubmit(zone.id, draft)}
             />
           </li>
@@ -136,6 +150,7 @@ function ZoneRow({
   count,
   mode,
   onSetMode,
+  onFocus,
   onRenameSubmit,
 }: {
   zone: Zone
@@ -144,6 +159,7 @@ function ZoneRow({
   count: number
   mode: ZoneListMode
   onSetMode: (mode: ZoneListMode) => void
+  onFocus: () => void
   onRenameSubmit: (draft: string) => void
 }): ReactElement {
   const triggerRef = useRowFocus(triggerOf(mode))
@@ -246,9 +262,8 @@ function ZoneRow({
             className="zone-list__name"
             style={zoneHueStyle(zone.hue)}
             aria-current={selected ? 'true' : undefined}
-            onClick={() =>
-              dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: zone.id } })
-            }
+            title={`Jump the canvas to ${zone.name}`}
+            onClick={onFocus}
           >
             <span className="zone-list__label">{zone.name}</span>
             <span className="zone-list__count" title={`${count} dialogue${count === 1 ? '' : 's'}`}>

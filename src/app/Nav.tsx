@@ -12,7 +12,7 @@ import './Nav.css'
 // Real anchors, not buttons: the hash is the navigation mechanism, so middle-click,
 // bookmarking, and the back button all work without any handler of ours.
 const NAV_ITEMS: readonly { label: string; route: Route }[] = [
-  { label: 'Canvas', route: { kind: 'canvas', dialogueId: null, focusMapId: null } },
+  { label: 'Canvas', route: { kind: 'canvas', dialogueId: null, focus: null } },
   { label: 'Quests', route: { kind: 'quests', editQuestId: null } },
   { label: 'Insights', route: { kind: 'insights' } },
 ]
@@ -119,7 +119,7 @@ function ProjectSwitch({ directoryName }: { directoryName: string }): ReactEleme
     const opened = await connectToNewDirectory()
     // Ids in the hash belong to the project that has just been closed, so the switch lands on
     // a bare canvas rather than a link into a document that no longer contains it.
-    if (opened) navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
+    if (opened) navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
   }
 
   return (

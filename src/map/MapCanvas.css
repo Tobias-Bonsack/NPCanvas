@@ -15,6 +15,13 @@
   cursor: grabbing;
 }
 
+/* Only for keyboard focus, not a mouse click that happened to land the pointer here — a
+   pan or a pin selection already gives its own visual feedback. */
+.map-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .map-canvas[data-tool='place-dialogue'] {
   cursor: crosshair;
 }
@@ -112,6 +119,14 @@
   border-radius: var(--radius-2);
   background: var(--surface-1);
   font-size: 0.8125rem;
+}
+
+/* −, the readout, +, and Fit as one visually joined cluster — the readout keeps the same
+   `.map-canvas__zoom` sizing it always had, now on a button instead of a span. */
+.map-canvas__zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
 }
 
 /* Bottom-left, opposite the HUD: a gesture that refused to commit has to be visible without

@@ -84,6 +84,21 @@ export function originForScale(map: GameMap, scale: number): Point {
 }
 
 /**
+ * A zone's footprint in canvas space — its map-local bounding box taken through its map's own
+ * origin and scale, mirroring `mapCanvasRect`. What `ZoneList`'s focus jump fits the viewport
+ * to, the way `MapList`'s fits to `mapCanvasRect`.
+ */
+export function zoneCanvasRect(map: GameMap, zone: Zone): Rect {
+  const bounds = polygonBounds(zone.polygon)
+  return {
+    x: map.origin.x + bounds.x * map.scale,
+    y: map.origin.y + bounds.y * map.scale,
+    width: bounds.width * map.scale,
+    height: bounds.height * map.scale,
+  }
+}
+
+/**
  * The rectangle enclosing every map. `null` rather than a zero rect for an empty project, so
  * a caller cannot silently fit the viewport to a degenerate rectangle.
  */

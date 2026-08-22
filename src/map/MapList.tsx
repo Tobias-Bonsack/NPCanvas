@@ -29,7 +29,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
   /** Focus is carried in the hash so the jump is one navigation, not a second channel. */
   function onFocus(map: GameMap): void {
     dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
-    navigate({ kind: 'canvas', dialogueId: null, focusMapId: map.id })
+    navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'map', id: map.id } })
   }
 
   function onRenameSubmit(id: MapId, draft: string): void {

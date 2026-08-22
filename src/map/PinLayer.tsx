@@ -193,7 +193,7 @@ export const PinLayer = memo(function PinLayer({
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
     setPendingDelete(null)
     dispatch({ kind: 'dialogue/deleted', dialogueId: dialogue.id })
-    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
+    navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
 
     // Every file the dialogue owned, not just the first: nothing names them once the dialogue
     // is gone, and an orphan in media/ is invisible from inside the app.
@@ -317,7 +317,7 @@ const PinMapGroup = memo(function PinMapGroup({
  */
 function select(id: DialogueId): void {
   dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-  navigate({ kind: 'canvas', dialogueId: id, focusMapId: null })
+  navigate({ kind: 'canvas', dialogueId: id, focus: null })
 }
 
 /** One shared empty array, so a pin in no quest is handed the same reference every render. */

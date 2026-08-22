@@ -1,20 +1,27 @@
 import { useSyncExternalStore } from 'react'
-import { asDialogueId, asMapId, asQuestId } from '../project/ids.ts'
-import type { DialogueId, MapId, QuestId } from '../project/types.ts'
+import { asDialogueId, asMapId, asQuestId, asZoneId } from '../project/ids.ts'
+import type { DialogueId, MapId, QuestId, ZoneId } from '../project/types.ts'
 
 // Hash routing, not history routing: Pages serves static files, so history routing would
 // need a `404.html` copy of `index.html`. The URL carries view state only, never data.
+
+/**
+ * What the canvas jumps to — a map (`MapList`) or a zone (`ZoneList`). One union rather than
+ * two parallel one-shot fields, so a second sidebar list reaches for the same `focus` channel
+ * instead of growing its own.
+ */
+export type FocusTarget = { kind: 'map'; id: MapId } | { kind: 'zone'; id: ZoneId }
 
 export type Route =
   | {
       kind: 'canvas'
       dialogueId: DialogueId | null
       /**
-       * A one-shot navigation intent, not view state: the canvas jumps to this map once and
+       * A one-shot navigation intent, not view state: the canvas jumps to this target once and
        * then clears the parameter with a replacing navigation. Left in the hash it would
        * fight a user who immediately pans away, re-focusing on every render.
        */
-      focusMapId: MapId | null
+      focus: FocusTarget | null
     }
   | {
       kind: 'quests'
@@ -29,7 +36,7 @@ export type Route =
   | { kind: 'insights' }
 
 /** Shared reference, so an unparseable hash keeps returning the identical object. */
-const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focusMapId: null }
+const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focus: null }
 
 export function parseRoute(hash: string): Route {
   const withoutHash = hash.startsWith('#') ? hash.slice(1) : hash
@@ -50,16 +57,28 @@ export function parseRoute(hash: string): Route {
     case 'map': {
       const params = new URLSearchParams(query)
       const dialogueParam = params.get('dialogue')
-      const focusParam = params.get('focus')
       return {
         kind: 'canvas',
         dialogueId: dialogueParam ? asDialogueId(dialogueParam) : null,
-        focusMapId: focusParam ? asMapId(focusParam) : null,
+        focus: parseFocus(params.get('focus')),
       }
     }
     default:
       return FALLBACK
   }
+}
+
+/** `map:<id>` or `zone:<id>`. An unrecognised or missing prefix is no focus at all. */
+function parseFocus(raw: string | null): FocusTarget | null {
+  if (raw === null) return null
+  const [kind, id] = raw.split(':', 2)
+  if (kind === 'map' && id !== undefined) return { kind: 'map', id: asMapId(id) }
+  if (kind === 'zone' && id !== undefined) return { kind: 'zone', id: asZoneId(id) }
+  return null
+}
+
+function formatFocus(focus: FocusTarget): string {
+  return `${focus.kind}:${focus.id}`
 }
 
 export function formatRoute(route: Route): string {
@@ -71,7 +90,7 @@ export function formatRoute(route: Route): string {
     case 'canvas': {
       const params = new URLSearchParams()
       if (route.dialogueId !== null) params.set('dialogue', route.dialogueId)
-      if (route.focusMapId !== null) params.set('focus', route.focusMapId)
+      if (route.focus !== null) params.set('focus', formatFocus(route.focus))
       const query = params.toString()
       return query === '' ? '#/canvas' : `#/canvas?${query}`
     }

@@ -26,7 +26,11 @@ export function DialogueRow({
   return (
     <a
       className="dialogue-row"
-      href={formatRoute({ kind: 'canvas', dialogueId: dialogue.id, focusMapId: dialogue.mapId })}
+      href={formatRoute({
+        kind: 'canvas',
+        dialogueId: dialogue.id,
+        focus: { kind: 'map', id: dialogue.mapId },
+      })}
     >
       <ContentGlyph kind={dialogueContentKind(dialogue)} />
       <span className="dialogue-row__npc">{npcLabel(npcKey(dialogue))}</span>

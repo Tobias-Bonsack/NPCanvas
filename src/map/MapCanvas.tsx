@@ -1,5 +1,6 @@
 import type {
   CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   ReactElement,
   ReactNode,
@@ -15,9 +16,11 @@ import type {
   MapId,
   Point,
   Polygon,
+  Selection,
   Zone,
   ZoneId,
 } from '../project/types.ts'
+import type { FocusTarget } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import {
   MAX_MAP_SCALE,
@@ -28,6 +31,7 @@ import {
   mapCanvasRect,
   mapsBounds,
   zoneAtCanvasPoint,
+  zoneCanvasRect,
 } from './canvas-layout.ts'
 import type { DragGesture } from './drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
@@ -35,6 +39,7 @@ import type { Rect, Size } from './geometry.ts'
 import { inflate, rectBetween, rectToPolygon, translatePolygon } from './geometry.ts'
 import { MapImage } from './MapImage.tsx'
 import { mapGroupStyle } from './map-group-style.ts'
+import { isTextFieldFocused } from './text-field-focus.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
 import { normalizeDelta, wheelZoomFactor } from './wheel-zoom.ts'
@@ -61,11 +66,22 @@ const CULL_MARGIN = 0.15
 /** Where the viewport lands when a project has no maps to fit to. */
 const EMPTY_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 }
 
-/** One press of the scale control. A ratio, so a step feels the same at every size. */
+/** One press of the scale control, or one `+`/`−` keypress. A ratio, so a step feels the same
+ *  at every size. */
 const SCALE_STEP = 1.25
 
 /** How long a rejected gesture explains itself before the canvas is quiet again. */
 const NOTICE_MS = 4000
+
+/** One arrow-key pan, in screen pixels — enough to read as a nudge rather than a jump. */
+const PAN_STEP = 48
+/** `Shift`+arrow. A ratio to `PAN_STEP` rather than a second constant to keep in step with it. */
+const PAN_STEP_FAST = 8
+
+/** One arrow-key nudge of the selected pin or zone, in that entity's own map-local pixels. */
+const NUDGE_STEP = 1
+/** `Shift`+arrow. Ten map-local pixels reads as a step at every scale a zone is drawn at. */
+const NUDGE_STEP_FAST = 10
 
 /**
  * A map being dragged, in canvas coordinates. It is a *preview*: `map/moved` is dispatched
@@ -163,9 +179,11 @@ function isCanvasChrome(target: EventTarget): boolean {
 export function MapCanvas({
   maps,
   zones,
+  dialogues,
+  selection,
   tool,
   selectedMapId,
-  focusMapId,
+  focus,
   onFocusApplied,
   onMapDrag,
   onZoneDrag,
@@ -180,10 +198,14 @@ export function MapCanvas({
    * pan starting inside it.
    */
   zones: readonly Zone[]
+  /** For the same reason `zones` is here: nudging the selected pin needs its live position. */
+  dialogues: readonly Dialogue[]
+  /** What the keyboard nudges — only a dialogue or a zone has a map-local position to nudge. */
+  selection: Selection
   tool: CanvasTool
   selectedMapId: MapId | null
-  /** A map to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
-  focusMapId: MapId | null
+  /** A map or a zone to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
+  focus: FocusTarget | null
   onFocusApplied: () => void
   /**
    * Reports the live drag position upwards, because the pin layer is a sibling and its maps
@@ -319,19 +341,20 @@ export function MapCanvas({
 
   // Focus is a one-shot intent, so it is consumed and cleared rather than held: leaving it
   // in the hash would re-run this on every render and fight a user who panned away. An
-  // unknown id — a link to a map since deleted — is still cleared, so the hash never sticks.
+  // unknown id — a link to a map or zone since deleted — is still cleared, so the hash never
+  // sticks.
   useEffect(() => {
-    if (focusMapId === null) return
+    if (focus === null) return
     if (container.width === 0 || container.height === 0) return
-    const target = maps.find((map) => map.id === focusMapId)
-    if (target !== undefined) {
-      // Suppresses the fit-on-mount below: arriving at #/canvas?focus=<id> should land on
-      // that map, not fit everything and then jump.
+    const rect = focusRect(focus, maps, zones)
+    if (rect !== null) {
+      // Suppresses the fit-on-mount below: arriving at #/canvas?focus=<target> should land on
+      // it, not fit everything and then jump.
       fitted.current = true
-      applyViewport(fitRectToContainer(mapCanvasRect(target), container))
+      applyViewport(fitRectToContainer(rect, container))
     }
     onFocusApplied()
-  }, [focusMapId, maps, container, onFocusApplied, applyViewport])
+  }, [focus, maps, zones, container, onFocusApplied, applyViewport])
 
   // Every viewport change restarts the timer, so a pan or a zoom publishes exactly once, when
   // it stops. `setTimeout` rather than `requestIdleCallback`: the delay is the point, and idle
@@ -638,18 +661,25 @@ export function MapCanvas({
       case 'move-map':
         // A click on bare canvas is how a selection is dismissed.
         dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-        navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
+        navigate({ kind: 'canvas', dialogueId: null, focus: null })
         return
 
       // Pins stop propagation, so a click reaching here missed every pin: what is left under
-      // the cursor is a zone, or nothing.
+      // the cursor is a zone, the map underneath it, or bare canvas. A map hit is what makes
+      // `MapScaleControl` reachable without switching to `move-map`.
       case 'inspect': {
-        const hit = zoneAtCanvasPoint(maps, zones, screenToWorld(at, anchor))
-        dispatch({
-          kind: 'selection/set',
-          selection: hit === null ? { kind: 'none' } : { kind: 'zone', id: hit.id },
-        })
-        navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
+        const canvasPoint = screenToWorld(at, anchor)
+        const hitZone = zoneAtCanvasPoint(maps, zones, canvasPoint)
+        if (hitZone !== null) {
+          dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: hitZone.id } })
+        } else {
+          const hitMap = mapAtCanvasPoint(maps, canvasPoint)
+          dispatch({
+            kind: 'selection/set',
+            selection: hitMap === null ? { kind: 'none' } : { kind: 'map', id: hitMap.id },
+          })
+        }
+        navigate({ kind: 'canvas', dialogueId: null, focus: null })
         return
       }
 
@@ -672,7 +702,7 @@ export function MapCanvas({
         }
         dispatch({ kind: 'dialogue/added', dialogue })
         dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
-        navigate({ kind: 'canvas', dialogueId: dialogue.id, focusMapId: null })
+        navigate({ kind: 'canvas', dialogueId: dialogue.id, focus: null })
         return
       }
 
@@ -684,12 +714,119 @@ export function MapCanvas({
     }
   }
 
+  function zoomByFactor(factor: number): void {
+    if (container.width === 0 || container.height === 0) return
+    const anchor = { x: container.width / 2, y: container.height / 2 }
+    applyViewport(zoomAt(viewportRef.current, anchor, factor))
+  }
+
+  /** `0`: the readout's own click target too — zoom to 100% about the centre, not a re-fit. */
+  function zoomToOne(): void {
+    zoomByFactor(1 / viewportRef.current.scale)
+  }
+
+  function panBy(direction: Point, step: number): void {
+    const view = viewportRef.current
+    applyViewport({
+      x: view.x + (direction.x * step) / view.scale,
+      y: view.y + (direction.y * step) / view.scale,
+      scale: view.scale,
+    })
+  }
+
+  /** Only a dialogue or a zone has a map-local position — a selected map is not nudged. */
+  function nudgeSelection(direction: Point, step: number): void {
+    const dx = direction.x * step
+    const dy = direction.y * step
+    if (selection.kind === 'dialogue') {
+      const dialogue = dialogues.find((candidate) => candidate.id === selection.id)
+      if (dialogue === undefined) return
+      dispatch({
+        kind: 'dialogue/moved',
+        dialogueId: dialogue.id,
+        position: { x: dialogue.position.x + dx, y: dialogue.position.y + dy },
+      })
+      return
+    }
+    if (selection.kind === 'zone') {
+      const target = zones.find((candidate) => candidate.id === selection.id)
+      if (target === undefined) return
+      dispatch({
+        kind: 'zone/moved',
+        zoneId: target.id,
+        polygon: translatePolygon(target.polygon, { x: dx, y: dy }),
+      })
+    }
+  }
+
+  /**
+   * Everything here is scoped by React's own bubbling: it only fires while focus is inside
+   * this container, so a text field anywhere else in the app — `DialoguePanel`'s line, a
+   * sidebar rename input — is never a descendant and never sees it. `isTextFieldFocused` is
+   * kept as a second guard anyway, for a text field a future canvas overlay adds inside this
+   * subtree, and because every new shortcut this issue adds must honour it uniformly.
+   */
+  function onCanvasKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (isTextFieldFocused()) return
+
+    switch (event.key) {
+      case 'Escape':
+        dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
+        return
+
+      case '+':
+      case '=':
+        event.preventDefault()
+        zoomByFactor(SCALE_STEP)
+        return
+
+      case '-':
+        event.preventDefault()
+        zoomByFactor(1 / SCALE_STEP)
+        return
+
+      case '0':
+        event.preventDefault()
+        zoomToOne()
+        return
+
+      case 'f':
+      case 'F':
+        event.preventDefault()
+        fitToMaps()
+        return
+
+      case 'ArrowUp':
+      case 'ArrowDown':
+      case 'ArrowLeft':
+      case 'ArrowRight': {
+        event.preventDefault()
+        const direction = arrowDelta(event.key)
+        if (selection.kind === 'dialogue' || selection.kind === 'zone') {
+          nudgeSelection(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP)
+        } else {
+          panBy(direction, event.shiftKey ? PAN_STEP * PAN_STEP_FAST : PAN_STEP)
+        }
+        return
+      }
+
+      default:
+        return
+    }
+  }
+
   return (
     <div
       className="map-canvas"
       data-tool={tool.kind}
       data-panning={panning ? 'true' : undefined}
       ref={containerRef}
+      // Focusable and keyboard-operable in its own right — Tab reaches it (and past it, to a
+      // pin), Escape/arrows/zoom/fit all bubble here from whatever inside it has focus.
+      tabIndex={0}
+      role="group"
+      aria-label="Map canvas"
+      onKeyDown={onCanvasKeyDown}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -727,9 +864,42 @@ export function MapCanvas({
 
       <div className="map-canvas__hud" data-canvas-ui>
         {selectedMap !== null && <MapScaleControl map={selectedMap} />}
-        <span className="map-canvas__zoom" aria-label="Zoom level">
-          {Math.round(viewport.scale * 100)}%
-        </span>
+        <div className="map-canvas__zoom-group" role="group" aria-label="Canvas zoom">
+          <button
+            type="button"
+            className="map-canvas__reset"
+            aria-label="Zoom out"
+            title="Zoom out (−)"
+            onClick={() => zoomByFactor(1 / SCALE_STEP)}
+          >
+            −
+          </button>
+          <button
+            type="button"
+            className="map-canvas__reset map-canvas__zoom"
+            title="Zoom to 100% (0)"
+            onClick={zoomToOne}
+          >
+            {Math.round(viewport.scale * 100)}%
+          </button>
+          <button
+            type="button"
+            className="map-canvas__reset"
+            aria-label="Zoom in"
+            title="Zoom in (+)"
+            onClick={() => zoomByFactor(SCALE_STEP)}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="map-canvas__reset"
+            title="Fit every map (F)"
+            onClick={fitToMaps}
+          >
+            Fit
+          </button>
+        </div>
         <button type="button" className="map-canvas__reset" onClick={fitToMaps}>
           Reset view
         </button>
@@ -779,6 +949,43 @@ function ZoneDraft({
 function anchorOf(event: { clientX: number; clientY: number }, origin: Point): Point {
   return { x: event.clientX - origin.x, y: event.clientY - origin.y }
 }
+
+/**
+ * The rectangle the one-shot `focus` intent fits the viewport to — a map's own footprint, or
+ * the zone's, resolved through the map it is drawn on. `null` for a target that named a map or
+ * zone since deleted, which the caller treats as "nothing to jump to" rather than an error.
+ */
+function focusRect(
+  focus: FocusTarget,
+  maps: readonly GameMap[],
+  zones: readonly Zone[],
+): Rect | null {
+  if (focus.kind === 'map') {
+    const map = maps.find((candidate) => candidate.id === focus.id)
+    return map === undefined ? null : mapCanvasRect(map)
+  }
+  const zone = zones.find((candidate) => candidate.id === focus.id)
+  if (zone === undefined) return null
+  const map = maps.find((candidate) => candidate.id === zone.mapId)
+  return map === undefined ? null : zoneCanvasRect(map, zone)
+}
+
+/** A unit vector for the arrow key pressed, or the zero vector for anything else. */
+function arrowDelta(key: string): Point {
+  switch (key) {
+    case 'ArrowUp':
+      return { x: 0, y: -1 }
+    case 'ArrowDown':
+      return { x: 0, y: 1 }
+    case 'ArrowLeft':
+      return { x: -1, y: 0 }
+    case 'ArrowRight':
+      return { x: 1, y: 0 }
+    default:
+      return { x: 0, y: 0 }
+  }
+}
+
 
 /**
  * `--map-zoom` is written here, once per frame, so that pins can counter-scale in CSS

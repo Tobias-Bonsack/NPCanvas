@@ -1,5 +1,5 @@
-import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
@@ -20,6 +20,7 @@ import { MapCanvas } from './MapCanvas.tsx'
 import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
+import { isTextFieldFocused } from './text-field-focus.ts'
 import { ZoneLayer } from './ZoneLayer.tsx'
 import { ZoneList } from './ZoneList.tsx'
 import {
@@ -59,6 +60,23 @@ export function MapScreen({
   // property, so it lives here with the tool and the drag previews.
   const [questFilter, setQuestFilter] = useState(false)
 
+  // Global, not scoped to the canvas: `ToolPicker` sits in the header bar above it, so a
+  // listener on the canvas container alone would never see these. Guarded on a text field the
+  // same way `MapCanvas`'s own shortcuts are, since an unmodified letter is exactly what a
+  // dialogue's NPC name or a zone rename is made of.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (isTextFieldFocused()) return
+      const entry = TOOLS.find((candidate) => candidate.key === event.key.toLowerCase())
+      if (entry === undefined) return
+      event.preventDefault()
+      setTool(entry.tool)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
   const placedMaps = useMemo(() => withDragPreview(project.maps, mapDrag), [project.maps, mapDrag])
@@ -71,7 +89,7 @@ export function MapScreen({
   // — and a stable identity, because the canvas consumes it from an effect.
   const dialogueId = route.dialogueId
   const onFocusApplied = useCallback(() => {
-    navigate({ kind: 'canvas', dialogueId, focusMapId: null }, { replace: true })
+    navigate({ kind: 'canvas', dialogueId, focus: null }, { replace: true })
   }, [dialogueId])
 
   // A cold load of #/canvas?dialogue=<id> arrives with the hash naming a dialogue and the
@@ -88,7 +106,7 @@ export function MapScreen({
       dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogueId } })
       return
     }
-    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null }, { replace: true })
+    navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
   }, [dialogueId, dialogues])
 
   // The derived locations, computed once per state change rather than per render. Built from
@@ -149,7 +167,7 @@ export function MapScreen({
   // the parameter behind would reopen it on the next render pass through the effect above.
   const onCloseDialogue = useCallback(() => {
     dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-    navigate({ kind: 'canvas', dialogueId: null, focusMapId: null })
+    navigate({ kind: 'canvas', dialogueId: null, focus: null })
   }, [])
 
   if (project.maps.length === 0) {
@@ -203,9 +221,11 @@ export function MapScreen({
           <MapCanvas
             maps={placedMaps}
             zones={drawnZones}
+            dialogues={project.dialogues}
+            selection={selection}
             tool={tool}
             selectedMapId={selection.kind === 'map' ? selection.id : null}
-            focusMapId={route.focusMapId}
+            focus={route.focus}
             onFocusApplied={onFocusApplied}
             onMapDrag={setMapDrag}
             onZoneDrag={setZoneDrag}
@@ -276,21 +296,43 @@ function withZonePreview(zones: Zone[], drag: ZoneDragPreview | null): readonly 
   return zones.map((zone) => (zone.id === drag.id ? { ...zone, polygon: drag.polygon } : zone))
 }
 
-const TOOLS: readonly { tool: CanvasTool; label: string; hint: string }[] = [
-  { tool: { kind: 'inspect' }, label: 'Inspect', hint: 'Pan the canvas and select pins or zones' },
+/**
+ * `key` is a single letter, unmodified — see the global listener in `MapScreen` — and it is
+ * also what `ToolPicker` prints on the button, per #42's "discoverable without documentation".
+ */
+const TOOLS: readonly { tool: CanvasTool; label: string; hint: string; key: string }[] = [
+  {
+    tool: { kind: 'inspect' },
+    label: 'Inspect',
+    hint: 'Pan the canvas and select pins or zones',
+    key: 'i',
+  },
   {
     tool: { kind: 'place-dialogue' },
     label: 'Place dialogue',
     hint: 'Click a map to log a line',
+    key: 'p',
   },
   {
     tool: { kind: 'draw-zone' },
     label: 'Draw zone',
     hint: 'Drag a rectangle on a map, or drag an existing zone to move it',
+    key: 'z',
   },
-  { tool: { kind: 'move-map' }, label: 'Move map', hint: 'Drag a map to arrange the canvas' },
+  {
+    tool: { kind: 'move-map' },
+    label: 'Move map',
+    hint: 'Drag a map to arrange the canvas',
+    key: 'm',
+  },
 ]
 
+/**
+ * A mutually exclusive set, so `radiogroup`/`radio` is the correct role — not the plain
+ * `group` this used to carry — and roving tabindex is what makes the tools reachable by
+ * keyboard at all: Tab lands once, on whichever is checked, and the arrows move both the
+ * selection and the focus together, exactly like a native radio group.
+ */
 function ToolPicker({
   tool,
   onChange,
@@ -298,20 +340,44 @@ function ToolPicker({
   tool: CanvasTool
   onChange: (tool: CanvasTool) => void
 }): ReactElement {
+  const buttons = useRef<Partial<Record<CanvasTool['kind'], HTMLButtonElement | null>>>({})
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
+    const step = arrowStep(event.key)
+    if (step === null) return
+    event.preventDefault()
+    const next = TOOLS[(index + step + TOOLS.length) % TOOLS.length]
+    onChange(next.tool)
+    buttons.current[next.tool.kind]?.focus()
+  }
+
   return (
-    <div className="tool-picker" role="group" aria-label="Canvas tool">
-      {TOOLS.map((entry) => (
+    <div className="tool-picker" role="radiogroup" aria-label="Canvas tool">
+      {TOOLS.map((entry, index) => (
         <button
           key={entry.tool.kind}
+          ref={(element) => {
+            buttons.current[entry.tool.kind] = element
+          }}
           type="button"
+          role="radio"
           className="tool-picker__button"
-          aria-pressed={entry.tool.kind === tool.kind}
-          title={entry.hint}
+          aria-checked={entry.tool.kind === tool.kind}
+          tabIndex={entry.tool.kind === tool.kind ? 0 : -1}
+          title={`${entry.hint} (${entry.key.toUpperCase()})`}
           onClick={() => onChange(entry.tool)}
+          onKeyDown={(event) => onKeyDown(event, index)}
         >
-          {entry.label}
+          {entry.label} <span className="tool-picker__key">{entry.key.toUpperCase()}</span>
         </button>
       ))}
     </div>
   )
+}
+
+/** `ArrowRight`/`ArrowDown` move forward, `ArrowLeft`/`ArrowUp` back; anything else is `null`. */
+function arrowStep(key: string): number | null {
+  if (key === 'ArrowRight' || key === 'ArrowDown') return 1
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return -1
+  return null
 }
