@@ -301,6 +301,21 @@ export type Selection =
   | { kind: 'zone'; id: ZoneId }
   | { kind: 'map'; id: MapId }
 
+/**
+ * Document snapshots to step back to or forward to, over `ProjectFile` references rather than
+ * copies — the reducer already returns a fresh one for anything that changed, which is what
+ * makes pushing cheap. `coalesceKey` names the field the most recent push was for; the next
+ * action that reports the same key extends that step instead of pushing a new one, so a burst
+ * of keystrokes into one field undoes as a single step. `null` after `history/undo` and
+ * `history/redo`, so stepping and then immediately editing the same field again does not
+ * silently merge into the step just landed on.
+ */
+export type History = {
+  undo: readonly ProjectFile[]
+  redo: readonly ProjectFile[]
+  coalesceKey: string | null
+}
+
 export type AppState =
   | { kind: 'unsupported' }
   | { kind: 'disconnected' }
@@ -319,6 +334,7 @@ export type AppState =
       repairs: ProjectRepairs
       save: SaveState
       selection: Selection
+      history: History
     }
 
 /**

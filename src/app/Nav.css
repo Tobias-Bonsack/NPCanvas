@@ -33,13 +33,40 @@
   color: var(--text);
 }
 
-/* Pushed right with the save indicator: the two together say which folder is open and
-   whether it is up to date, which is one fact in two halves. */
+.nav__history {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.nav__history-button {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.nav__history-button:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.nav__history-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* No `margin-left: auto` of its own — `.nav__history` is the first item that claims the free
+   space, and a second auto margin here would split that space instead of sitting flush after
+   it. */
 .nav__project {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-left: auto;
   padding: var(--space-1) var(--space-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-2);

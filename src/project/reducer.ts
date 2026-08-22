@@ -12,6 +12,7 @@ import type {
   DialogueMedia,
   GameMap,
   Glyph,
+  History,
   MapId,
   MediaId,
   Point,
@@ -80,13 +81,26 @@ export type Action =
     }
   | { kind: 'capture-profile/glyphs-learned'; profileId: CaptureProfileId; glyphs: readonly Glyph[] }
   | { kind: 'capture-profile/deleted'; profileId: CaptureProfileId }
+  | { kind: 'history/undo' }
+  | { kind: 'history/redo' }
 
 /**
  * Pure. Returns the *same* reference for a no-op, which is how `dispatch` skips notifying
  * subscribers. Never throws: async IO in storage/ dispatches steps that may land after the
  * state has already moved on, and a reducer crash there would take the whole app down.
+ *
+ * History bookkeeping is layered on top of `applyAction` rather than folded into its switch:
+ * every case there already returns a fresh `project` reference for a real change and the
+ * identical one for a no-op, which is exactly the signal history needs, so one generic wrapper
+ * covers all of them instead of forty repeated pushes.
  */
 export function reduce(state: AppState, action: Action): AppState {
+  const next = applyAction(state, action)
+  if (next === state) return next
+  return trackHistory(state, next, action)
+}
+
+function applyAction(state: AppState, action: Action): AppState {
   switch (action.kind) {
     case 'project/unsupported':
       return state.kind === 'unsupported' ? state : { kind: 'unsupported' }
@@ -116,6 +130,9 @@ export function reduce(state: AppState, action: Action): AppState {
         // Freshly read from disk, so the document and the file agree as of `savedAt`.
         save: { kind: 'saved', at: action.project.savedAt },
         selection: { kind: 'none' },
+        // Undoing across a project switch must be impossible: a step here would land the
+        // document holding one project back into the state of a different one.
+        history: EMPTY_HISTORY,
       }
 
     case 'project/load-failed':
@@ -557,8 +574,143 @@ export function reduce(state: AppState, action: Action): AppState {
       }
     }
 
+    // Both step through `state.history` and leave every other field alone. A drag or an edit
+    // that landed after this document was pushed is not this action's business to worry about:
+    // whatever the stack holds is exactly what `trackHistory` recorded for it.
+    case 'history/undo': {
+      if (state.kind !== 'ready') return state
+      const stepped = stepHistory(state.history.undo, state.history.redo, state.project)
+      if (stepped === null) return state
+      return {
+        ...state,
+        project: stepped.project,
+        history: { undo: stepped.remaining, redo: stepped.carried, coalesceKey: null },
+        selection: pruneSelection(state.selection, stepped.project),
+      }
+    }
+
+    case 'history/redo': {
+      if (state.kind !== 'ready') return state
+      const stepped = stepHistory(state.history.redo, state.history.undo, state.project)
+      if (stepped === null) return state
+      return {
+        ...state,
+        project: stepped.project,
+        history: { undo: stepped.carried, redo: stepped.remaining, coalesceKey: null },
+        selection: pruneSelection(state.selection, stepped.project),
+      }
+    }
+
     default:
       return assertNever(action)
+  }
+}
+
+/**
+ * What `history/undo` and `history/redo` are the same operation over — pop the top of `from`,
+ * push the document being left onto `to`. `null` when `from` is empty, so both cases can treat
+ * "nothing to step to" as the ordinary no-op every other case returns for.
+ */
+function stepHistory(
+  from: readonly ProjectFile[],
+  to: readonly ProjectFile[],
+  current: ProjectFile,
+): { project: ProjectFile; remaining: readonly ProjectFile[]; carried: readonly ProjectFile[] } | null {
+  if (from.length === 0) return null
+  return {
+    project: from[from.length - 1],
+    remaining: from.slice(0, -1),
+    carried: [...to, current],
+  }
+}
+
+/** Bounded so a long session's history does not hold every document version it ever produced. */
+const MAX_HISTORY = 100
+
+const EMPTY_HISTORY: History = { undo: [], redo: [], coalesceKey: null }
+
+/**
+ * Runs after `applyAction` for anything that actually changed `state`. Undo and redo already
+ * computed their own `history` above and must not be pushed onto themselves; `project/loaded`
+ * already reset it. Everything else pushes `previous`'s project when the project itself moved —
+ * a selection or save-state change alone leaves `next.project === previous.project` and pushes
+ * nothing, which is what keeps the stack scoped to *document* actions.
+ */
+function trackHistory(previous: AppState, next: AppState, action: Action): AppState {
+  if (action.kind === 'history/undo' || action.kind === 'history/redo') return next
+  if (action.kind === 'project/loaded') return next
+  if (previous.kind !== 'ready' || next.kind !== 'ready') return next
+  if (previous.project === next.project) return next
+  return { ...next, history: pushHistory(next.history, previous.project, action) }
+}
+
+/**
+ * Records `previous` as the step to return to, unless `action` continues the field edit the most
+ * recent push was already for — see `History` in types.ts. Drops the oldest entry past
+ * `MAX_HISTORY` rather than rejecting the push, so the stack is always the most recent steps.
+ */
+function pushHistory(history: History, previous: ProjectFile, action: Action): History {
+  const key = coalesceKeyFor(action)
+  if (key !== null && key === history.coalesceKey) return history
+  const undo =
+    history.undo.length >= MAX_HISTORY
+      ? [...history.undo.slice(1), previous]
+      : [...history.undo, previous]
+  return { undo, redo: [], coalesceKey: key }
+}
+
+/**
+ * Which field `action` edits, for the handful of action kinds a single user gesture can dispatch
+ * many of in a row — typing into a text box, dragging a hue slider. `null` is the default and
+ * means every dispatch of that kind is its own undo step, which is correct for anything that is
+ * not a continuous field edit (adding a zone, deleting a dialogue, and so on).
+ */
+function coalesceKeyFor(action: Action): string | null {
+  switch (action.kind) {
+    case 'map/renamed':
+      return `map/renamed:${action.mapId}`
+    case 'zone/renamed':
+      return `zone/renamed:${action.zoneId}`
+    case 'zone/hue-set':
+      return `zone/hue-set:${action.zoneId}`
+    case 'dialogue/npc-named':
+      return `dialogue/npc-named:${action.dialogueId}`
+    case 'dialogue/text-set':
+      return `dialogue/text-set:${action.dialogueId}`
+    case 'dialogue/spoken-at-set':
+      return `dialogue/spoken-at-set:${action.dialogueId}`
+    case 'quest/renamed':
+      return `quest/renamed:${action.questId}`
+    case 'quest/note-set':
+      return `quest/note-set:${action.questId}`
+    case 'quest/hue-set':
+      return `quest/hue-set:${action.questId}`
+    case 'capture-profile/renamed':
+      return `capture-profile/renamed:${action.profileId}`
+    default:
+      return null
+  }
+}
+
+/**
+ * Undo or redo can land on a document where the current selection resolves to nothing — a zone
+ * deleted and then restored by undo does not get its old id back. A selection pointing at a
+ * gone entity would render a detail panel for nothing, same as `dropDeletedSelection` above.
+ */
+function pruneSelection(selection: Selection, project: ProjectFile): Selection {
+  switch (selection.kind) {
+    case 'none':
+      return selection
+    case 'dialogue':
+      return project.dialogues.some((dialogue) => dialogue.id === selection.id)
+        ? selection
+        : { kind: 'none' }
+    case 'zone':
+      return project.zones.some((zone) => zone.id === selection.id) ? selection : { kind: 'none' }
+    case 'map':
+      return project.maps.some((map) => map.id === selection.id) ? selection : { kind: 'none' }
+    default:
+      return assertNever(selection)
   }
 }
 

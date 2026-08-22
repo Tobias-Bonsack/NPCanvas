@@ -1,7 +1,8 @@
+import { useEffect } from 'react'
 import type { ReactElement } from 'react'
 import { assertNever } from '../assert-never.ts'
-import type { SaveState } from '../project/types.ts'
-import { useSaveState } from '../project/store.ts'
+import type { History, SaveState } from '../project/types.ts'
+import { dispatch, useHistoryState, useSaveState } from '../project/store.ts'
 import { saveNow } from '../storage/autosave.ts'
 import { connectToNewDirectory } from '../storage/project-directory.ts'
 import type { Route } from './route.ts'
@@ -31,6 +32,7 @@ export function Nav({
   // Its own subscription, not a prop: a save cycle then re-renders this indicator and nothing
   // else. `App` deliberately subscribes to the state *without* `save` for the same reason.
   const save = useSaveState()
+  const history = useHistoryState()
   return (
     <nav className="nav" aria-label="Views">
       <span className="nav__brand">NPCanvas</span>
@@ -47,6 +49,7 @@ export function Nav({
           </li>
         ))}
       </ul>
+      {history !== null && <HistoryControls history={history} />}
       <ProjectSwitch directoryName={directoryName} />
       {/* One region for the whole session, its contents swapped underneath. A live region only
           announces what changes *inside* it — mounting one that already holds the new text says
@@ -55,6 +58,50 @@ export function Nav({
         {save !== null && <SaveIndicator save={save} onReview={onReviewSaveFailure} />}
       </div>
     </nav>
+  )
+}
+
+/**
+ * Undo/redo, both as a Ctrl/Cmd+Z-family shortcut and as buttons whose disabled state mirrors
+ * the stacks. No target check on the shortcut — Ctrl+Z fires even while a text field has focus,
+ * which is deliberate: the reducer coalesces a burst of keystrokes into one step (see
+ * `coalesceKeyFor` in reducer.ts), so app-level undo already behaves like the field's own undo
+ * would, and a native browser undo racing it against a different snapshot is worse.
+ */
+function HistoryControls({ history }: { history: History }): ReactElement {
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return
+      event.preventDefault()
+      dispatch({ kind: event.shiftKey ? 'history/redo' : 'history/undo' })
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  return (
+    <div className="nav__history">
+      <button
+        type="button"
+        className="nav__history-button"
+        disabled={history.undo.length === 0}
+        onClick={() => dispatch({ kind: 'history/undo' })}
+        aria-label="Undo"
+        title="Undo (Ctrl+Z)"
+      >
+        Undo
+      </button>
+      <button
+        type="button"
+        className="nav__history-button"
+        disabled={history.redo.length === 0}
+        onClick={() => dispatch({ kind: 'history/redo' })}
+        aria-label="Redo"
+        title="Redo (Ctrl+Shift+Z)"
+      >
+        Redo
+      </button>
+    </div>
   )
 }
 

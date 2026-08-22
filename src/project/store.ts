@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { AppState, Dialogue, DialogueId, SaveState } from './types.ts'
+import type { AppState, Dialogue, DialogueId, History, SaveState } from './types.ts'
 import type { Action } from './reducer.ts'
 import { reduce } from './reducer.ts'
 
@@ -95,6 +95,20 @@ export function useSaveState(): SaveState | null {
 
 function getSaveState(): SaveState | null {
   return state.kind === 'ready' ? state.save : null
+}
+
+/**
+ * The undo/redo stacks on their own subscription, mirroring `useSaveState` — the Nav's history
+ * controls are the only reader, and a field of `AppState` is a stable return per the
+ * `useSyncExternalStore` contract in CLAUDE.md, so this hands back the field itself rather than
+ * deriving `canUndo`/`canRedo` into a fresh object on every call.
+ */
+export function useHistoryState(): History | null {
+  return useSyncExternalStore(subscribe, getHistoryState)
+}
+
+function getHistoryState(): History | null {
+  return state.kind === 'ready' ? state.history : null
 }
 
 /**

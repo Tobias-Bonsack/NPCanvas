@@ -16,6 +16,7 @@ function ready(project: ProjectFile, save: SaveState = { kind: 'saved', at: proj
     repairs: { kind: 'none' },
     save,
     selection: { kind: 'none' },
+    history: { undo: [], redo: [], coalesceKey: null },
   }
 }
 

@@ -17,6 +17,7 @@ import type {
   Dialogue,
   DialogueMedia,
   GameMap,
+  History,
   MapId,
   ProjectFile,
   Quest,
@@ -25,7 +26,12 @@ import type {
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
-function ready(project: ProjectFile = createEmptyProject('Harbour')): ReadyState {
+const EMPTY_HISTORY: History = { undo: [], redo: [], coalesceKey: null }
+
+function ready(
+  project: ProjectFile = createEmptyProject('Harbour'),
+  history: History = EMPTY_HISTORY,
+): ReadyState {
   return {
     kind: 'ready',
     directoryName: 'Harbour',
@@ -33,6 +39,7 @@ function ready(project: ProjectFile = createEmptyProject('Harbour')): ReadyState
     repairs: { kind: 'none' },
     save: { kind: 'saved', at: project.savedAt },
     selection: { kind: 'none' },
+    history,
   }
 }
 
@@ -217,6 +224,8 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     calibration: CALIBRATION,
   },
   { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') },
+  { kind: 'history/undo' },
+  { kind: 'history/redo' },
 ]
 
 describe('reduce: connection actions', () => {
@@ -285,6 +294,7 @@ describe('reduce: connection actions', () => {
       repairs: { kind: 'none' },
       save: { kind: 'saved', at: project.savedAt },
       selection: { kind: 'none' },
+      history: EMPTY_HISTORY,
     })
   })
 
@@ -1236,5 +1246,202 @@ describe('reduce: capture profiles', () => {
         profileId: asCaptureProfileId('missing'),
       }),
     ).toBe(state)
+  })
+})
+
+describe('reduce: history', () => {
+  const HARBOUR = asMapId('harbour')
+
+  function withTwoDialogues(): ReadyState {
+    return ready({
+      ...createEmptyProject('Harbour'),
+      maps: [gameMap('harbour')],
+      dialogues: [dialogue('dialogue-1', HARBOUR), dialogue('dialogue-2', HARBOUR)],
+    })
+  }
+
+  it('pushes the project before a document action, and only a document action', () => {
+    const state = withTwoDialogues()
+    const beforeProject = state.project
+
+    // Not a document action: no push, so there is nothing to undo back to.
+    const selected = readyOf(
+      reduce(state, {
+        kind: 'selection/set',
+        selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') },
+      }),
+    )
+    expect(selected.history.undo).toEqual([])
+
+    const edited = readyOf(
+      reduce(selected, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-1'),
+        text: 'Hello',
+      }),
+    )
+    expect(edited.history.undo).toEqual([beforeProject])
+  })
+
+  it('undo restores the previous project and pushes the current one onto redo', () => {
+    const state = withTwoDialogues()
+    const before = state.project
+    const edited = readyOf(
+      reduce(state, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-1'),
+        text: 'Hello',
+      }),
+    )
+    const after = edited.project
+
+    const undone = readyOf(reduce(edited, { kind: 'history/undo' }))
+    expect(undone.project).toBe(before)
+    expect(undone.history).toEqual({ undo: [], redo: [after], coalesceKey: null })
+
+    const redone = readyOf(reduce(undone, { kind: 'history/redo' }))
+    expect(redone.project).toBe(after)
+    expect(redone.history).toEqual({ undo: [before], redo: [], coalesceKey: null })
+  })
+
+  it('is a no-op with nothing to undo or redo', () => {
+    const state = withTwoDialogues()
+    expect(reduce(state, { kind: 'history/undo' })).toBe(state)
+    expect(reduce(state, { kind: 'history/redo' })).toBe(state)
+  })
+
+  it('clears the redo stack once a new document action lands after an undo', () => {
+    const state = withTwoDialogues()
+    const editedOnce = reduce(state, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'Hello',
+    })
+    const undone = reduce(editedOnce, { kind: 'history/undo' })
+    expect(readyOf(undone).history.redo.length).toBe(1)
+
+    const editedAgain = readyOf(
+      reduce(undone, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-2'),
+        text: 'Ahoy',
+      }),
+    )
+    expect(editedAgain.history.redo).toEqual([])
+  })
+
+  it('a new project/loaded clears both stacks', () => {
+    const state = withTwoDialogues()
+    const edited = reduce(state, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'Hello',
+    })
+    const undone = reduce(edited, { kind: 'history/undo' })
+    expect(readyOf(undone).history.redo.length).toBe(1)
+
+    const project = createEmptyProject('Cliffs')
+    const reloaded = readyOf(
+      reduce(undone, {
+        kind: 'project/loaded',
+        directoryName: 'Cliffs',
+        project,
+        repairs: { kind: 'none' },
+      }),
+    )
+    expect(reloaded.history).toEqual(EMPTY_HISTORY)
+  })
+
+  it('coalesces consecutive edits to the same field into one undo step', () => {
+    const state = withTwoDialogues()
+    const step1 = reduce(state, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'H',
+    })
+    const step2 = reduce(step1, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'He',
+    })
+    const step3 = readyOf(
+      reduce(step2, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-1'),
+        text: 'Hel',
+      }),
+    )
+    expect(step3.history.undo).toEqual([state.project])
+
+    const undone = readyOf(reduce(step3, { kind: 'history/undo' }))
+    expect(undone.project).toBe(state.project)
+  })
+
+  it('does not coalesce across a different field, even on the same entity', () => {
+    const state = withTwoDialogues()
+    const textEdited = reduce(state, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'Hello',
+    })
+    const nameEdited = reduce(textEdited, {
+      kind: 'dialogue/npc-named',
+      dialogueId: asDialogueId('dialogue-1'),
+      npcName: 'Ferryman',
+    })
+    const textEditedAgain = readyOf(
+      reduce(nameEdited, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-1'),
+        text: 'Hello there',
+      }),
+    )
+    expect(textEditedAgain.history.undo.length).toBe(3)
+  })
+
+  it('does not coalesce the same field on two different entities', () => {
+    const state = withTwoDialogues()
+    const first = reduce(state, {
+      kind: 'dialogue/text-set',
+      dialogueId: asDialogueId('dialogue-1'),
+      text: 'Hello',
+    })
+    const second = readyOf(
+      reduce(first, {
+        kind: 'dialogue/text-set',
+        dialogueId: asDialogueId('dialogue-2'),
+        text: 'Ahoy',
+      }),
+    )
+    expect(second.history.undo.length).toBe(2)
+  })
+
+  it('bounds the undo stack, dropping the oldest step past the limit', () => {
+    let state = withTwoDialogues()
+    const ids = [asDialogueId('dialogue-1'), asDialogueId('dialogue-2')]
+    // Alternating the target defeats coalescing (each push's key differs from the last), so
+    // every one of the 150 edits below is its own step.
+    for (let i = 0; i < 150; i++) {
+      state = readyOf(
+        reduce(state, {
+          kind: 'dialogue/text-set',
+          dialogueId: ids[i % 2],
+          text: `line ${i}`,
+        }),
+      )
+    }
+    expect(state.history.undo.length).toBe(100)
+  })
+
+  it('undo prunes a selection that no longer resolves in the restored project', () => {
+    const state = withTwoDialogues()
+    const withZone = reduce(state, { kind: 'zone/added', zone: zone('zone-1', HARBOUR) })
+    const selected = reduce(withZone, {
+      kind: 'selection/set',
+      selection: { kind: 'zone', id: asZoneId('zone-1') },
+    })
+    const undone = readyOf(reduce(selected, { kind: 'history/undo' }))
+    expect(undone.project.zones).toEqual([])
+    expect(undone.selection).toEqual({ kind: 'none' })
   })
 })

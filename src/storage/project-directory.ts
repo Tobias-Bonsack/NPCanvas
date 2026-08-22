@@ -14,7 +14,17 @@ import { isFileSystemAccessSupported } from './file-system-support.ts'
 // asynchronous ever reaches the reducer: no thunks, no middleware, no promises in state.
 
 const DATA_FILE_NAME = 'data.json'
+const BACKUP_FILE_NAME = 'data.json.bak'
 const MEDIA_DIRECTORY_NAME = 'media'
+
+/**
+ * Whether the pre-session `data.json.bak` has been written yet for the connected folder. One
+ * generation, not a rotation: only the *first* write of a session backs up what was on disk when
+ * the session started, so a bad edit stays recoverable even after autosave has since overwritten
+ * `data.json` many times with it. Reset on every `openProject`, which is what "a session" means
+ * here — reconnecting to the same folder later backs it up again from whatever is on disk then.
+ */
+let backedUpThisSession = false
 
 /**
  * The live handle for the connected project folder. Module-level rather than in the store
@@ -206,10 +216,30 @@ export async function regrantConnectedDirectory(): Promise<boolean> {
 export async function writeProjectFile(project: ProjectFile): Promise<string> {
   const handle = directoryHandle
   if (handle === null) throw new Error('No project folder is connected')
+  await backUpBeforeFirstWrite(handle)
   await writeDataFile(handle, project)
   // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
   // Reading it back out of the JSON just to display it is not worth the parse.
   return new Date().toISOString()
+}
+
+/**
+ * Copies whatever `data.json` held into `data.json.bak`, once per session and before that
+ * session's first write touches it. A folder with no `data.json` yet — a brand-new project,
+ * already bootstrapped by `readOrCreateProjectFile` through `writeDataFile` directly rather than
+ * through here — has nothing to back up, which is success, not failure.
+ */
+async function backUpBeforeFirstWrite(handle: FileSystemDirectoryHandle): Promise<void> {
+  if (backedUpThisSession) return
+  backedUpThisSession = true
+  let existing: File
+  try {
+    existing = await (await handle.getFileHandle(DATA_FILE_NAME)).getFile()
+  } catch (error) {
+    if (isNotFoundError(error)) return
+    throw error
+  }
+  await writeTextFile(handle, BACKUP_FILE_NAME, await existing.text())
 }
 
 /** Takes the folder explicitly, so a caller can name one that is not (yet) the connected one. */
@@ -217,10 +247,18 @@ async function writeDataFile(
   handle: FileSystemDirectoryHandle,
   project: ProjectFile,
 ): Promise<void> {
-  const fileHandle = await handle.getFileHandle(DATA_FILE_NAME, { create: true })
+  await writeTextFile(handle, DATA_FILE_NAME, serializeProject(project))
+}
+
+async function writeTextFile(
+  handle: FileSystemDirectoryHandle,
+  name: string,
+  contents: string,
+): Promise<void> {
+  const fileHandle = await handle.getFileHandle(name, { create: true })
   const writable = await fileHandle.createWritable()
   try {
-    await writable.write(serializeProject(project))
+    await writable.write(contents)
     await writable.close()
   } catch (error) {
     // abort(), not close(): close() would commit the half-written swap file over the
@@ -296,6 +334,9 @@ async function getMediaDirectory(options: {
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   const generation = beginLoad()
   directoryHandle = handle
+  // A new session over this folder: its first write should back up what is on disk *now*,
+  // not skip the backup because some earlier session already took one.
+  backedUpThisSession = false
   // After the handle, never before: the cache re-reads its live entries immediately, and they
   // must resolve against the folder being opened. Necessary at all because the cache is keyed
   // on the file name alone — a copied project folder holds the same names with other bytes.
