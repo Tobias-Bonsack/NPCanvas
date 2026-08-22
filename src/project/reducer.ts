@@ -81,6 +81,11 @@ export type Action =
     }
   | { kind: 'capture-profile/glyphs-learned'; profileId: CaptureProfileId; glyphs: readonly Glyph[] }
   | { kind: 'capture-profile/deleted'; profileId: CaptureProfileId }
+  | { kind: 'relevance-tag/added'; tag: RelevanceTag }
+  | { kind: 'relevance-tag/renamed'; tagId: RelevanceTagId; name: string }
+  | { kind: 'relevance-tag/hue-set'; tagId: RelevanceTagId; hue: number }
+  | { kind: 'relevance-tag/reordered'; tagId: RelevanceTagId; toIndex: number }
+  | { kind: 'relevance-tag/deleted'; tagId: RelevanceTagId }
   | { kind: 'history/undo' }
   | { kind: 'history/redo' }
 
@@ -574,6 +579,83 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
+    case 'relevance-tag/added': {
+      if (state.kind !== 'ready') return state
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          relevanceTags: [...state.project.relevanceTags, action.tag],
+        },
+      }
+    }
+
+    case 'relevance-tag/renamed': {
+      if (state.kind !== 'ready') return state
+      const target = findRelevanceTag(state.project, action.tagId)
+      if (target === null || target.name === action.name) return state
+      return withRelevanceTag(state, target, { ...target, name: action.name })
+    }
+
+    case 'relevance-tag/hue-set': {
+      if (state.kind !== 'ready') return state
+      const target = findRelevanceTag(state.project, action.tagId)
+      if (target === null || target.hue === action.hue) return state
+      return withRelevanceTag(state, target, { ...target, hue: action.hue })
+    }
+
+    // The array order is the canonical order `normalizeRelevance` sorts against, so moving a
+    // tag changes what a *correct* `relevance` array looks like for every dialogue that carries
+    // it — left alone, the next `readRelevance` would silently rewrite them, the whole-file diff
+    // the byte-stability tests exist to prevent. The index is clamped rather than rejected, like
+    // `moveMedium`'s `toIndex`, so a malformed reorder is simply "last" instead of a no-op.
+    case 'relevance-tag/reordered': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      const from = project.relevanceTags.findIndex((tag) => tag.id === action.tagId)
+      if (from === -1) return state
+      const to = Math.min(Math.max(Math.trunc(action.toIndex), 0), project.relevanceTags.length - 1)
+      if (from === to) return state
+
+      const relevanceTags = [...project.relevanceTags]
+      const [moved] = relevanceTags.splice(from, 1)
+      relevanceTags.splice(to, 0, moved)
+
+      const dialogues = project.dialogues.map((dialogue) => {
+        const relevance = normalizeRelevance(dialogue.relevance, relevanceTags)
+        return isSameRelevance(dialogue.relevance, relevance) ? dialogue : { ...dialogue, relevance }
+      })
+      const unchanged = dialogues.every((dialogue, index) => dialogue === project.dialogues[index])
+
+      return {
+        ...state,
+        project: {
+          ...project,
+          relevanceTags,
+          dialogues: unchanged ? project.dialogues : dialogues,
+        },
+      }
+    }
+
+    // A relevance tag is referenced by `Dialogue.relevance` from the other direction a quest
+    // references dialogues: leaving the id behind would put a dangling reference into a document
+    // whose whole invariant is that it cannot hold one. Dialogues are never deleted, only pruned.
+    case 'relevance-tag/deleted': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (!project.relevanceTags.some((tag) => tag.id === action.tagId)) return state
+
+      const removed = new Set<RelevanceTagId>([action.tagId])
+      return {
+        ...state,
+        project: {
+          ...project,
+          relevanceTags: project.relevanceTags.filter((tag) => tag.id !== action.tagId),
+          dialogues: pruneDialogueRelevance(project.dialogues, removed),
+        },
+      }
+    }
+
     // Both step through `state.history` and leave every other field alone. A drag or an edit
     // that landed after this document was pushed is not this action's business to worry about:
     // whatever the stack holds is exactly what `trackHistory` recorded for it.
@@ -687,6 +769,10 @@ function coalesceKeyFor(action: Action): string | null {
       return `quest/hue-set:${action.questId}`
     case 'capture-profile/renamed':
       return `capture-profile/renamed:${action.profileId}`
+    case 'relevance-tag/renamed':
+      return `relevance-tag/renamed:${action.tagId}`
+    case 'relevance-tag/hue-set':
+      return `relevance-tag/hue-set:${action.tagId}`
     default:
       return null
   }
@@ -783,6 +869,21 @@ function withCaptureProfile(
   }
 }
 
+/** Replaces one relevance tag by reference identity, mirroring `withMap`. */
+function withRelevanceTag(
+  state: ReadyState,
+  target: RelevanceTag,
+  replacement: RelevanceTag,
+): AppState {
+  return {
+    ...state,
+    project: {
+      ...state.project,
+      relevanceTags: state.project.relevanceTags.map((tag) => (tag === target ? replacement : tag)),
+    },
+  }
+}
+
 /** The map a `dialogue/added` or `zone/added` claims to sit on has to be a real one. */
 function hasMap(project: ProjectFile, id: MapId): boolean {
   return project.maps.some((map) => map.id === id)
@@ -802,6 +903,10 @@ function findQuest(project: ProjectFile, id: QuestId): Quest | null {
 
 function findCaptureProfile(project: ProjectFile, id: CaptureProfileId): CaptureProfile | null {
   return project.captureProfiles.find((profile) => profile.id === id) ?? null
+}
+
+function findRelevanceTag(project: ProjectFile, id: RelevanceTagId): RelevanceTag | null {
+  return project.relevanceTags.find((tag) => tag.id === id) ?? null
 }
 
 /**
@@ -852,6 +957,22 @@ function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>):
     quest.dialogueIds.some((id) => removed.has(id))
       ? { ...quest, dialogueIds: quest.dialogueIds.filter((id) => !removed.has(id)) }
       : quest,
+  )
+}
+
+/**
+ * A relevance tag is referenced by `Dialogue.relevance` from the other direction
+ * `pruneQuestDialogues` prunes: a dialogue points at the tag, not the other way round. Mirrors
+ * it exactly, pruning the id out of every dialogue that carried it rather than removing anything.
+ */
+function pruneDialogueRelevance(
+  dialogues: Dialogue[],
+  removed: ReadonlySet<RelevanceTagId>,
+): Dialogue[] {
+  return dialogues.map((dialogue) =>
+    dialogue.relevance.some((id) => removed.has(id))
+      ? { ...dialogue, relevance: dialogue.relevance.filter((id) => !removed.has(id)) }
+      : dialogue,
   )
 }
 

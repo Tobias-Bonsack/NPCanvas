@@ -243,6 +243,11 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     calibration: CALIBRATION,
   },
   { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') },
+  { kind: 'relevance-tag/added', tag: relevanceTag('lore', 'Lore', 10) },
+  { kind: 'relevance-tag/renamed', tagId: asRelevanceTagId('other'), name: 'Lore' },
+  { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('other'), hue: 10 },
+  { kind: 'relevance-tag/reordered', tagId: asRelevanceTagId('other'), toIndex: 0 },
+  { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('other') },
   { kind: 'history/undo' },
   { kind: 'history/redo' },
 ]
@@ -1094,6 +1099,151 @@ describe('reduce: quests', () => {
       }),
     ).toBe(state)
     expect(reduce(state, { kind: 'quest/deleted', questId: asQuestId('missing') })).toBe(state)
+  })
+})
+
+describe('reduce: relevance tags', () => {
+  const tagId = WORLDBUILDING.id
+
+  function edited(state: AppState): RelevanceTag {
+    const found = readyOf(state).project.relevanceTags.find((tag) => tag.id === tagId)
+    if (found === undefined) throw new Error('expected the edited tag to survive')
+    return found
+  }
+
+  it('adds a relevance tag without touching anything else', () => {
+    const before = twoMapProject()
+    const added = relevanceTag('lore', 'Lore', 10)
+    const next = reduce(ready(before), { kind: 'relevance-tag/added', tag: added })
+    expect(readyOf(next).project.relevanceTags.map((tag) => tag.id)).toEqual([
+      OUT_OF_WORLD.id,
+      WORLDBUILDING.id,
+      PEOPLEBUILDING.id,
+      OTHER.id,
+      'lore',
+    ])
+    expect(readyOf(next).project.dialogues).toBe(before.dialogues)
+  })
+
+  it('renames a tag and recolours it', () => {
+    const renamed = reduce(ready(twoMapProject()), {
+      kind: 'relevance-tag/renamed',
+      tagId,
+      name: 'Lore',
+    })
+    expect(edited(renamed).name).toBe('Lore')
+
+    const recoloured = reduce(renamed, { kind: 'relevance-tag/hue-set', tagId, hue: 10 })
+    expect(edited(recoloured).hue).toBe(10)
+    expect(edited(recoloured).name).toBe('Lore')
+  })
+
+  it('reorders a tag and rewrites every dialogue’s relevance into the new canonical order', () => {
+    const project = twoMapProject()
+    const harbourId = asDialogueId('dialogue-harbour')
+    const forestId = asDialogueId('dialogue-forest')
+    const before: ProjectFile = {
+      ...project,
+      dialogues: project.dialogues.map((d) =>
+        d.id === harbourId
+          ? { ...d, relevance: [WORLDBUILDING.id, OTHER.id] }
+          : { ...d, relevance: [OUT_OF_WORLD.id] },
+      ),
+    }
+
+    // 'other' moves from the last position to the front.
+    const next = reduce(ready(before), {
+      kind: 'relevance-tag/reordered',
+      tagId: OTHER.id,
+      toIndex: 0,
+    })
+    const state = readyOf(next)
+    expect(state.project.relevanceTags.map((tag) => tag.id)).toEqual([
+      OTHER.id,
+      OUT_OF_WORLD.id,
+      WORLDBUILDING.id,
+      PEOPLEBUILDING.id,
+    ])
+    expect(state.project.dialogues.find((d) => d.id === harbourId)?.relevance).toEqual([
+      OTHER.id,
+      WORLDBUILDING.id,
+    ])
+    // A single-tag dialogue has nothing to reorder, so it keeps its exact reference.
+    expect(state.project.dialogues.find((d) => d.id === forestId)).toBe(
+      before.dialogues.find((d) => d.id === forestId),
+    )
+  })
+
+  it('returns the same dialogues array reference when no dialogue’s order actually changed', () => {
+    const before = twoMapProject()
+    const next = reduce(ready(before), {
+      kind: 'relevance-tag/reordered',
+      tagId: PEOPLEBUILDING.id,
+      toIndex: 0,
+    })
+    // Neither dialogue carries any tag at all, so reordering the vocabulary changes nothing
+    // about them.
+    expect(readyOf(next).project.dialogues).toBe(before.dialogues)
+  })
+
+  it('deletes a relevance tag, prunes it from every dialogue, and leaves the dialogues in place', () => {
+    const project = twoMapProject()
+    const harbourId = asDialogueId('dialogue-harbour')
+    const forestId = asDialogueId('dialogue-forest')
+    const before: ProjectFile = {
+      ...project,
+      dialogues: project.dialogues.map((d) =>
+        d.id === harbourId
+          ? { ...d, relevance: [WORLDBUILDING.id, OTHER.id] }
+          : { ...d, relevance: [WORLDBUILDING.id] },
+      ),
+    }
+
+    const next = reduce(ready(before), { kind: 'relevance-tag/deleted', tagId: WORLDBUILDING.id })
+    const state = readyOf(next)
+    expect(state.project.relevanceTags.map((tag) => tag.id)).toEqual([
+      OUT_OF_WORLD.id,
+      PEOPLEBUILDING.id,
+      OTHER.id,
+    ])
+    expect(state.project.dialogues).toHaveLength(2)
+    expect(state.project.dialogues.find((d) => d.id === harbourId)?.relevance).toEqual([OTHER.id])
+    expect(state.project.dialogues.find((d) => d.id === forestId)?.relevance).toEqual([])
+  })
+
+  it('returns the identical state for an edit that changes nothing', () => {
+    const state = ready(twoMapProject())
+    const current = WORLDBUILDING
+    expect(
+      reduce(state, { kind: 'relevance-tag/renamed', tagId: current.id, name: current.name }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'relevance-tag/hue-set', tagId: current.id, hue: current.hue }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'relevance-tag/renamed',
+        tagId: asRelevanceTagId('missing'),
+        name: 'x',
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('missing'), hue: 1 }),
+    ).toBe(state)
+    // Already at index 1, so this is a no-op reorder rather than a round trip to the same place.
+    expect(
+      reduce(state, { kind: 'relevance-tag/reordered', tagId: current.id, toIndex: 1 }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'relevance-tag/reordered',
+        tagId: asRelevanceTagId('missing'),
+        toIndex: 0,
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('missing') }),
+    ).toBe(state)
   })
 })
 
