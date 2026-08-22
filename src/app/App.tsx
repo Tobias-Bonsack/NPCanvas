@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { ReactElement } from 'react'
 import { InsightsScreen } from '../insights/InsightsScreen.tsx'
 import { MapScreen } from '../map/MapScreen.tsx'
@@ -11,6 +11,8 @@ import { RepairNotice } from './RepairNotice.tsx'
 import { SaveFailureBanner } from './SaveFailureBanner.tsx'
 import type { Route } from './route.ts'
 import { useRoute } from './route.ts'
+import type { CanvasViewState, InsightsViewState, QuestsViewState } from './view-state.ts'
+import { INITIAL_VIEW_STATE } from './view-state.ts'
 import './App.css'
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
@@ -37,6 +39,25 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
   const repairs =
     state.repairs.kind === 'repaired' && state.repairs !== dismissedRepairs ? state.repairs : null
 
+  // Each view's transient state — the insights filter, the open dossier and timeline bucket,
+  // the quest board's open card, the canvas tool/quest filter/viewport — held one level above
+  // the route switch below, which is what makes it survive a switch away and back. See
+  // CLAUDE.md's view-state note: this is not store state, and it never touches `data.json`.
+  const [viewState, setViewState] = useState(INITIAL_VIEW_STATE)
+  const onCanvasStateChange = useCallback(
+    (update: (prev: CanvasViewState) => CanvasViewState) =>
+      setViewState((prev) => ({ ...prev, canvas: update(prev.canvas) })),
+    [],
+  )
+  const onInsightsStateChange = useCallback(
+    (insights: InsightsViewState) => setViewState((prev) => ({ ...prev, insights })),
+    [],
+  )
+  const onQuestsStateChange = useCallback(
+    (quests: QuestsViewState) => setViewState((prev) => ({ ...prev, quests })),
+    [],
+  )
+
   return (
     <div className="app-shell">
       <Nav directoryName={state.directoryName} onReviewSaveFailure={() => setDismissed(null)} />
@@ -44,21 +65,63 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
       {repairs !== null && (
         <RepairNotice repairs={repairs} onDismiss={() => setDismissedRepairs(repairs)} />
       )}
-      <ReadyView state={state} route={route} />
+      <ReadyView
+        state={state}
+        route={route}
+        viewState={viewState}
+        onCanvasStateChange={onCanvasStateChange}
+        onInsightsStateChange={onInsightsStateChange}
+        onQuestsStateChange={onQuestsStateChange}
+      />
     </div>
   )
 }
 
 /** Exhaustive over `Route`; the `ReactElement` return type rejects a new view silently added. */
-function ReadyView({ state, route }: { state: ReadyState; route: Route }): ReactElement {
+function ReadyView({
+  state,
+  route,
+  viewState,
+  onCanvasStateChange,
+  onInsightsStateChange,
+  onQuestsStateChange,
+}: {
+  state: ReadyState
+  route: Route
+  viewState: { canvas: CanvasViewState; insights: InsightsViewState; quests: QuestsViewState }
+  onCanvasStateChange: (update: (prev: CanvasViewState) => CanvasViewState) => void
+  onInsightsStateChange: (insights: InsightsViewState) => void
+  onQuestsStateChange: (quests: QuestsViewState) => void
+}): ReactElement {
   switch (route.kind) {
     case 'canvas':
-      return <MapScreen project={state.project} selection={state.selection} route={route} />
+      return (
+        <MapScreen
+          project={state.project}
+          selection={state.selection}
+          route={route}
+          viewState={viewState.canvas}
+          onViewStateChange={onCanvasStateChange}
+        />
+      )
 
     case 'quests':
-      return <QuestBoard project={state.project} route={route} />
+      return (
+        <QuestBoard
+          project={state.project}
+          route={route}
+          viewState={viewState.quests}
+          onViewStateChange={onQuestsStateChange}
+        />
+      )
 
     case 'insights':
-      return <InsightsScreen project={state.project} />
+      return (
+        <InsightsScreen
+          project={state.project}
+          viewState={viewState.insights}
+          onViewStateChange={onInsightsStateChange}
+        />
+      )
   }
 }

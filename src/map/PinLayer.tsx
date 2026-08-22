@@ -317,7 +317,9 @@ const PinMapGroup = memo(function PinMapGroup({
  */
 function select(id: DialogueId): void {
   dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-  navigate({ kind: 'canvas', dialogueId: id, focus: null })
+  // `replace`: selecting a pin refines what the panel shows rather than opening a new page, so
+  // ten pins clicked in a row must not push ten history entries — see CLAUDE.md's view-state note.
+  navigate({ kind: 'canvas', dialogueId: id, focus: null }, { replace: true })
 }
 
 /** One shared empty array, so a pin in no quest is handed the same reference every render. */

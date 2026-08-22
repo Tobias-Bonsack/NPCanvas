@@ -1,25 +1,40 @@
 import type { ReactElement } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
+import type { InsightsViewState } from '../app/view-state.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
 import type { ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import { FilterBar } from './FilterBar.tsx'
 import { NpcDossier } from './NpcDossier.tsx'
 import { RelevanceBreakdown } from './RelevanceBreakdown.tsx'
 import { Timeline } from './Timeline.tsx'
-import type { DialogueFilter } from './filters.ts'
-import { EMPTY_FILTER, applyFilter, isEmptyFilter } from './filters.ts'
+import { applyFilter, isEmptyFilter } from './filters.ts'
 import './InsightsScreen.css'
 
 /**
  * The third-priority view: the collection along every axis that is not position on the map.
  *
- * The filter is component state, not store state — it is transient view state, like the canvas
- * viewport and the active tool (see CLAUDE.md § Store scope). It lives here rather than inside
- * `FilterBar` so every panel below reads the same narrowed set, and so a chart segment can
- * write back into it.
+ * The filter, the open dossier and the open timeline bucket are lifted to `App` — not store
+ * state, still transient view state like the canvas viewport and the active tool (see
+ * CLAUDE.md § Store scope), just held one level higher so a view switch does not lose them.
+ * `filter` lives here rather than inside `FilterBar` so every panel below reads the same
+ * narrowed set, and so a chart segment can write back into it.
  */
-export function InsightsScreen({ project }: { project: ProjectFile }): ReactElement {
-  const [filter, setFilter] = useState<DialogueFilter>(EMPTY_FILTER)
+export function InsightsScreen({
+  project,
+  viewState,
+  onViewStateChange,
+}: {
+  project: ProjectFile
+  viewState: InsightsViewState
+  onViewStateChange: (viewState: InsightsViewState) => void
+}): ReactElement {
+  const { filter, dossierKey, timelineActive } = viewState
+  const setFilter = (filter: InsightsViewState['filter']): void =>
+    onViewStateChange({ ...viewState, filter })
+  const setDossierKey = (dossierKey: InsightsViewState['dossierKey']): void =>
+    onViewStateChange({ ...viewState, dossierKey })
+  const setTimelineActive = (timelineActive: InsightsViewState['timelineActive']): void =>
+    onViewStateChange({ ...viewState, timelineActive })
 
   // Locations are derived here exactly as the canvas and the board derive them — and through
   // the same cached index, so arriving on this screen rebuilds nothing.
@@ -66,6 +81,8 @@ export function InsightsScreen({ project }: { project: ProjectFile }): ReactElem
             zoneIndex={zoneIndex}
             filter={filter}
             onChange={setFilter}
+            active={timelineActive}
+            onActiveChange={setTimelineActive}
           />
           <RelevanceBreakdown
             dialogues={dialogues}
@@ -79,6 +96,8 @@ export function InsightsScreen({ project }: { project: ProjectFile }): ReactElem
             quests={project.quests}
             zonesById={zonesById}
             zoneIndex={zoneIndex}
+            selectedKey={dossierKey}
+            onSelectedKeyChange={setDossierKey}
           />
         </>
       )}

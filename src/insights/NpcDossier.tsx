@@ -44,17 +44,21 @@ export function NpcDossier({
   quests,
   zonesById,
   zoneIndex,
+  selectedKey,
+  onSelectedKeyChange,
 }: {
   dialogues: readonly Dialogue[]
   quests: readonly Quest[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  /** The open NPC's key — lifted to `App` so it survives a switch away and back. */
+  selectedKey: string | null
+  onSelectedKeyChange: (key: string | null) => void
 }): ReactElement {
   const profiles = useMemo(
     () => buildProfiles(dialogues, quests, zonesById, zoneIndex),
     [dialogues, quests, zonesById, zoneIndex],
   )
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // A key naming an NPC the filter (or a rename) has since removed falls back to the top of the
   // list rather than leaving the panel blank.
@@ -87,7 +91,7 @@ export function NpcDossier({
                   type="button"
                   className="npc-dossier__entry"
                   aria-pressed={profile === selected}
-                  onClick={() => setSelectedKey(profile.key)}
+                  onClick={() => onSelectedKeyChange(profile.key)}
                 >
                   <span className="npc-dossier__name">{profile.label}</span>
                   <span className="npc-dossier__lines">{profile.dialogues.length}</span>
@@ -106,7 +110,7 @@ export function NpcDossier({
               knownKeys={profiles.map((profile) => profile.key)}
               zonesById={zonesById}
               zoneIndex={zoneIndex}
-              onRenamed={setSelectedKey}
+              onRenamed={onSelectedKeyChange}
             />
           )}
         </div>
@@ -184,7 +188,7 @@ function Dossier({
                 <a
                   className="npc-dossier__quest"
                   style={questAccentStyle(quest)}
-                  href={formatRoute({ kind: 'quests', editQuestId: null })}
+                  href={formatRoute({ kind: 'quests', editQuestId: quest.id })}
                 >
                   {quest.name.trim() === '' ? 'Untitled quest' : quest.name}
                 </a>

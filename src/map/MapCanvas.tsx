@@ -188,6 +188,8 @@ export function MapCanvas({
   onMapDrag,
   onZoneDrag,
   onVisibleRectChange,
+  initialViewport,
+  onViewportChange,
   children,
 }: {
   /** Already carrying any in-progress drag preview — see `MapScreen`. */
@@ -219,18 +221,29 @@ export function MapCanvas({
    * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
    */
   onVisibleRectChange: (rect: Rect) => void
+  /**
+   * The last viewport this canvas settled on, persisted one level up so a switch away and back
+   * lands where the user left it — see CLAUDE.md's view-state note. `null` on a project's very
+   * first visit, which is what the fit-on-mount effect below treats as "nothing to restore".
+   * Read only at mount: this component owns the live value from then on and reports back
+   * through `onViewportChange`, so a value pushed from outside after mount is never round-tripped
+   * back down into a fresh `useState` initializer.
+   */
+  initialViewport: Viewport | null
+  /** Published once the view settles — see `SETTLE_MS` — never per frame of a gesture. */
+  onViewportChange: (viewport: Viewport) => void
   /** Rendered inside the world element, so children position in canvas coordinates. */
   children?: ReactNode
 }): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null)
   const [container, setContainer] = useState<Size>({ width: 0, height: 0 })
-  const [viewport, setViewport] = useState<Viewport>(EMPTY_VIEWPORT)
+  const [viewport, setViewport] = useState<Viewport>(() => initialViewport ?? EMPTY_VIEWPORT)
   /**
    * The viewport every in-flight gesture computes against — the one on screen *now*, not the
    * one at pointerdown, because the wheel keeps zooming while a gesture is held. State drives
    * the render; this drives the handlers, and `applyViewport` is the only writer of either.
    */
-  const viewportRef = useRef<Viewport>(EMPTY_VIEWPORT)
+  const viewportRef = useRef<Viewport>(viewport)
   /**
    * The container's position in client coordinates, cached because it only changes when the
    * container is resized — and read on every wheel event, every click, and every pointermove
@@ -328,8 +341,9 @@ export function MapCanvas({
   // would yank the view out from under a user dragging the window edge, and not when a map
   // is imported or moved, which must leave the view where the user put it. The first
   // measurement arrives a frame after mount, when the container is still zero-sized, so the
-  // size is a gate rather than a dependency.
-  const fitted = useRef(false)
+  // size is a gate rather than a dependency. Already `true` when a viewport was restored from
+  // `initialViewport`: a switch back to the canvas must land where the user left it, not re-fit.
+  const fitted = useRef(initialViewport !== null)
   useEffect(() => {
     if (fitted.current) return
     if (container.width === 0 || container.height === 0) return
@@ -358,14 +372,17 @@ export function MapCanvas({
 
   // Every viewport change restarts the timer, so a pan or a zoom publishes exactly once, when
   // it stops. `setTimeout` rather than `requestIdleCallback`: the delay is the point, and idle
-  // time during a gesture arrives every frame.
+  // time during a gesture arrives every frame. The viewport itself piggybacks on the same
+  // timer, for the same reason: `onViewportChange` writes one level up, and a per-frame write
+  // there would re-render `MapScreen` on every pointermove of a pan.
   useEffect(() => {
     if (container.width === 0 || container.height === 0) return
     const timer = setTimeout(() => {
       onVisibleRectChange(inflate(visibleWorldRect(viewport, container), CULL_MARGIN))
+      onViewportChange(viewport)
     }, SETTLE_MS)
     return () => clearTimeout(timer)
-  }, [viewport, container, onVisibleRectChange])
+  }, [viewport, container, onVisibleRectChange, onViewportChange])
 
   // Bound by hand with { passive: false }: React's onWheel is passive, so preventDefault()
   // there silently does nothing and the page scrolls instead of the map zooming.
@@ -659,9 +676,11 @@ export function MapCanvas({
   function onCanvasClick(anchor: Point, at: Viewport): void {
     switch (tool.kind) {
       case 'move-map':
-        // A click on bare canvas is how a selection is dismissed.
+        // A click on bare canvas is how a selection is dismissed. `replace`, like every
+        // selection change below: it refines what is on screen rather than opening a new page,
+        // so Back should leave the canvas instead of walking selection by selection.
         dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-        navigate({ kind: 'canvas', dialogueId: null, focus: null })
+        navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
         return
 
       // Pins stop propagation, so a click reaching here missed every pin: what is left under
@@ -679,7 +698,7 @@ export function MapCanvas({
             selection: hitMap === null ? { kind: 'none' } : { kind: 'map', id: hitMap.id },
           })
         }
-        navigate({ kind: 'canvas', dialogueId: null, focus: null })
+        navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
         return
       }
 
@@ -702,7 +721,7 @@ export function MapCanvas({
         }
         dispatch({ kind: 'dialogue/added', dialogue })
         dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
-        navigate({ kind: 'canvas', dialogueId: dialogue.id, focus: null })
+        navigate({ kind: 'canvas', dialogueId: dialogue.id, focus: null }, { replace: true })
         return
       }
 

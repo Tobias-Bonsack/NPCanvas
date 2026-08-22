@@ -61,7 +61,7 @@ export function DialogueQuestLinks({
               <a
                 className="dialogue-quests__link"
                 style={questAccentStyle(quest)}
-                href={formatRoute({ kind: 'quests', editQuestId: null })}
+                href={formatRoute({ kind: 'quests', editQuestId: quest.id })}
               >
                 {questName(quest)}
               </a>

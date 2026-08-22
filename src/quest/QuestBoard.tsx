@@ -1,7 +1,8 @@
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { formatRoute, navigate } from '../app/route.ts'
+import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
@@ -29,7 +30,7 @@ import './QuestBoard.css'
  * confirming a delete. Component state, never the store: see CLAUDE.md § Store scope. One
  * mode for the whole board rather than one per card, because only one card can be mid-edit.
  */
-type QuestBoardMode =
+export type QuestBoardMode =
   | { kind: 'idle' }
   | { kind: 'editing'; id: QuestId }
   | { kind: 'recolouring'; id: QuestId }
@@ -52,16 +53,26 @@ const STATUS_TOGGLE: Record<QuestStatus, { to: QuestStatus; label: string }> = {
 export function QuestBoard({
   project,
   route,
+  viewState,
+  onViewStateChange,
 }: {
   project: ProjectFile
   route: Extract<Route, { kind: 'quests' }>
+  viewState: QuestsViewState
+  onViewStateChange: (viewState: QuestsViewState) => void
 }): ReactElement {
-  const [mode, setMode] = useState<QuestBoardMode>({ kind: 'idle' })
+  const { mode } = viewState
+  const setMode = useCallback(
+    (mode: QuestBoardMode): void => onViewStateChange({ mode }),
+    [onViewStateChange],
+  )
 
-  // `?edit=<id>` is how the dialogue panel creates a quest and lands the caret in its name
-  // field, which lives here. A one-shot intent, so it is cleared with a replacing navigation
-  // before the editor opens — left in the hash it would reopen on every render and fight a
-  // user who closed it. An id naming a quest that no longer exists is simply dropped.
+  // `?edit=<id>` is how the dialogue panel and the dossier open a quest's editor directly, and
+  // land the caret in its name field, which lives here. A one-shot intent, so it is cleared with
+  // a replacing navigation before the editor opens — left in the hash it would reopen on every
+  // render and fight a user who closed it. An id naming a quest that no longer exists is simply
+  // dropped. The card is also scrolled into view: an id landing at the top of an unscrolled
+  // board with no highlight leaves no indication which quest was meant.
   const editQuestId = route.editQuestId
   const quests = project.quests
   useEffect(() => {
@@ -69,8 +80,9 @@ export function QuestBoard({
     navigate({ kind: 'quests', editQuestId: null }, { replace: true })
     if (quests.some((quest) => quest.id === editQuestId)) {
       setMode({ kind: 'editing', id: editQuestId })
+      document.getElementById(questCardElementId(editQuestId))?.scrollIntoView({ block: 'center' })
     }
-  }, [editQuestId, quests])
+  }, [editQuestId, quests, setMode])
 
   // Resolved once per document change rather than once per linked row: a quest holds ids, and
   // a card with twenty of them would otherwise scan the dialogue array twenty times.
@@ -203,7 +215,12 @@ function QuestCard({
   const toggle = STATUS_TOGGLE[quest.status]
 
   return (
-    <article className="quest-card" data-status={quest.status} style={questAccentStyle(quest)}>
+    <article
+      id={questCardElementId(quest.id)}
+      className="quest-card"
+      data-status={quest.status}
+      style={questAccentStyle(quest)}
+    >
       <header className="quest-card__header">
         <h3 className="quest-card__name">{quest.name.trim() === '' ? 'Untitled quest' : quest.name}</h3>
         <span className="quest-card__linked-count">
@@ -555,6 +572,11 @@ function locationsOf(
     const zone = zonesById.get(id)
     return zone === undefined ? [] : [zone]
   })
+}
+
+/** The DOM id a quest's card is scrolled to when `?edit=<id>` names it. */
+function questCardElementId(questId: QuestId): string {
+  return `quest-card-${questId}`
 }
 
 function npcNameOf(dialogue: Dialogue): string {

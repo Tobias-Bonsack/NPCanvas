@@ -40,15 +40,21 @@ export function Timeline({
   zoneIndex,
   filter,
   onChange,
+  active,
+  onActiveChange,
 }: {
   dialogues: readonly Dialogue[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
   filter: DialogueFilter
   onChange: (filter: DialogueFilter) => void
+  /** The open bucket's index — lifted to `App` so it survives a switch away and back. */
+  active: number | null
+  onActiveChange: (active: number | null) => void
 }): ReactElement {
   const { unit, buckets } = useMemo(() => bucketDialogues(dialogues), [dialogues])
-  const [active, setActive] = useState<number | null>(null)
+  // A brush in flight cannot outlive the pointer gesture that draws it, so unlike `active` it
+  // stays local — there is nothing to restore across a view switch.
   const [brush, setBrush] = useState<Brush | null>(null)
 
   const hasRange = filter.from !== null || filter.to !== null
@@ -149,7 +155,7 @@ export function Timeline({
             width={slot}
             scale={scale}
             outside={hasRange && !intersectsRange(bucket, from, to)}
-            onOpen={() => setActive(index)}
+            onOpen={() => onActiveChange(index)}
           />
         ))}
 
@@ -177,11 +183,11 @@ export function Timeline({
             const index = indexAt(event)
             event.currentTarget.setPointerCapture(event.pointerId)
             setBrush({ from: index, to: index })
-            setActive(index)
+            onActiveChange(index)
           }}
           onPointerMove={(event) => {
             const index = indexAt(event)
-            setActive(index)
+            onActiveChange(index)
             setBrush((current) => (current === null ? null : { ...current, to: index }))
           }}
           onPointerUp={(event) => {
@@ -190,7 +196,7 @@ export function Timeline({
             setBrush(null)
           }}
           onPointerLeave={() => {
-            if (brush === null) setActive(null)
+            if (brush === null) onActiveChange(null)
           }}
         />
       </svg>

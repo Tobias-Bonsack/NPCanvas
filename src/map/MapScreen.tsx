@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
+import type { CanvasViewState } from '../app/view-state.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
@@ -17,6 +18,7 @@ import type {
 import type { Rect } from './geometry.ts'
 import type { MapDragPreview, ZoneDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
+import type { Viewport } from './viewport.ts'
 import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
@@ -37,13 +39,33 @@ export function MapScreen({
   project,
   selection,
   route,
+  viewState,
+  onViewStateChange,
 }: {
   project: ProjectFile
   selection: Selection
   route: CanvasRoute
+  viewState: CanvasViewState
+  onViewStateChange: (update: (prev: CanvasViewState) => CanvasViewState) => void
 }): ReactElement {
-  // Which tool the canvas is in is transient UI, so it lives here and not in the store.
-  const [tool, setTool] = useState<CanvasTool>({ kind: 'inspect' })
+  // Tool, quest filter and viewport are lifted to `App` so a switch away and back leaves the
+  // canvas exactly as it was — see CLAUDE.md's view-state note. Every setter below is a stable
+  // functional update rather than a closure over `viewState`, which is what keeps the global
+  // keydown listener correct without needing `viewState` itself in its dependency list.
+  const { tool, questFilter, viewport } = viewState
+  const setTool = useCallback(
+    (tool: CanvasTool) => onViewStateChange((prev) => ({ ...prev, tool })),
+    [onViewStateChange],
+  )
+  const toggleQuestFilter = useCallback(
+    () => onViewStateChange((prev) => ({ ...prev, questFilter: !prev.questFilter })),
+    [onViewStateChange],
+  )
+  const setViewport = useCallback(
+    (viewport: Viewport) => onViewStateChange((prev) => ({ ...prev, viewport })),
+    [onViewStateChange],
+  )
+
   // A map drag in progress. It lives here, above both world-space layers, because the image
   // and its pins have to move together in the same frame — and it stays out of the store,
   // which would push a document-shaped update through autosave on every pointermove.
@@ -56,9 +78,6 @@ export function MapScreen({
   // both are children of this screen, and it changes only when the view settles — `setState`
   // is passed straight down, so the callback identity is stable for MapCanvas's effect.
   const [visibleRect, setVisibleRect] = useState<Rect | null>(null)
-  // Whether the canvas is filtered down to quest-linked pins. A view filter, not a document
-  // property, so it lives here with the tool and the drag previews.
-  const [questFilter, setQuestFilter] = useState(false)
 
   // Global, not scoped to the canvas: `ToolPicker` sits in the header bar above it, so a
   // listener on the canvas container alone would never see these. Guarded on a text field the
@@ -75,7 +94,7 @@ export function MapScreen({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [setTool])
 
   // Identical to `project.maps` whenever no drag is in flight, so `PinLayer`'s memo holds
   // and panning still costs no pin render.
@@ -167,7 +186,7 @@ export function MapScreen({
   // the parameter behind would reopen it on the next render pass through the effect above.
   const onCloseDialogue = useCallback(() => {
     dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-    navigate({ kind: 'canvas', dialogueId: null, focus: null })
+    navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
   }, [])
 
   if (project.maps.length === 0) {
@@ -203,7 +222,7 @@ export function MapScreen({
                 ? 'No dialogue is attached to a quest yet'
                 : 'Dim every pin no quest names'
             }
-            onClick={() => setQuestFilter((on) => !on)}
+            onClick={toggleQuestFilter}
           >
             Quest pins only
           </button>
@@ -230,6 +249,8 @@ export function MapScreen({
             onMapDrag={setMapDrag}
             onZoneDrag={setZoneDrag}
             onVisibleRectChange={setVisibleRect}
+            initialViewport={viewport}
+            onViewportChange={setViewport}
           >
             {/* Before the pins in the DOM, and therefore beneath them: a zone is the ground a
                 dialogue was heard on, never something that can cover its pin. */}
