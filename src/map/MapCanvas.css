@@ -268,12 +268,17 @@
   overflow: visible;
 }
 
-/* The stroke width is in screen pixels rather than canvas units thanks to vector-effect on the
-   element. Round joins because the line turns hard at every pin it passes through. */
+/* Divided by the same product everything else in the world element counter-scales by, NOT left to
+   vector-effect: `non-scaling-stroke` normalises against the svg's own viewport, and the canvas
+   zoom is a CSS transform on an HTML ancestor *outside* it, so the attribute does not see it.
+   Measured in Chromium on an otherwise identical probe path: with the attribute the stroke
+   rendered 0.5px at zoom 0.25, 8.5px at zoom 4 and 16.5px at zoom 8; with this calc it held ~2px
+   across all four. A fat line at high zoom also swallowed the direction arrows, which are counter-
+   scaled and therefore stayed 10px. Round joins because the line turns hard at every pin. */
 .trail-layer__path {
   fill: none;
   stroke: var(--trail);
-  stroke-width: 2;
+  stroke-width: calc(2px / (var(--map-zoom) * var(--map-scale)));
   stroke-linejoin: round;
   stroke-linecap: round;
 }
@@ -291,6 +296,14 @@
   transform-box: view-box;
   transform-origin: 0 0;
   transform: var(--arrow-place) scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
+  /* The head must read against the line it sits on as well as against arbitrary map imagery, and
+     the line is the same colour by design. A halo rather than a second colour, so the trail stays
+     one subject. The counter-scale above means one unit here is already one screen pixel, so this
+     needs no division of its own. */
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
 }
 
 /* ---- pins ---- */

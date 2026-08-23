@@ -89,13 +89,11 @@ export const TrailLayer = memo(function TrailLayer({
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
         aria-hidden="true"
       >
-        {/* `vector-effect` is what keeps the line a constant width on screen at any zoom without
-            a single line of JS — the stroke is simply not scaled by the ancestor transforms. */}
-        <polyline
-          className="trail-layer__path"
-          points={pointsAttribute(drawn)}
-          vectorEffect="non-scaling-stroke"
-        />
+        {/* No `vector-effect`: it normalises against this svg's own viewport, and the canvas zoom
+            is a CSS transform on an HTML ancestor outside it, so the attribute never sees it. The
+            constant on-screen width comes from a counter-scaled `stroke-width` in the stylesheet
+            instead — see `.trail-layer__path`, which records the measurement. */}
+        <polyline className="trail-layer__path" points={pointsAttribute(drawn)} />
         {/* A bare polyline is symmetric: it shows the pins are in a sequence and nothing about
             which end of it is the earliest, which is the one claim this feature makes. */}
         {arrows.map((arrow, index) => (

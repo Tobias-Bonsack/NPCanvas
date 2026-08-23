@@ -180,7 +180,13 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `mapsBounds` with a `viewBox` carrying the same offset — which keeps canvas coordinates verbatim in
   `points`, so `src/map/trail-path.ts`'s `mapLocalToCanvas` call is still the only conversion in the
   feature. `--map-scale` is declared as `1` on `.map-canvas__world` itself, so the usual counter-scale
-  expression stays valid outside a map group. And the trail is deliberately **not** culled against
+  expression stays valid outside a map group — which the trail needs, because
+  **`vector-effect="non-scaling-stroke"` does not survive this app's transform chain.** It
+  normalises against the nearest SVG viewport, and the canvas zoom is a CSS transform on an HTML
+  ancestor *outside* every `<svg>` here, so the attribute never sees it: measured in Chromium, an
+  otherwise identical probe stroke rendered 0.5px at zoom 0.25 and 16.5px at zoom 8, while
+  `stroke-width: calc(2px / (var(--map-zoom) * var(--map-scale)))` held ~2px throughout. Reach for
+  the `calc`, not the attribute, and do not "simplify" it back. And the trail is deliberately **not** culled against
   `visibleRect`: a segment whose two endpoints are both off screen can still cross the viewport, so
   culling would tear the line rather than save work.
 - **World-space layers must stay viewport-independent.** `PinLayer` is `memo`'d and receives no prop
