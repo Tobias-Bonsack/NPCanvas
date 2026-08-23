@@ -3,7 +3,6 @@ import { asCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile, Glyph } from '../project/types.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 import {
-  DEFAULT_MAX_DISTANCE,
   binarise,
   inkThreshold,
   matchGlyph,
@@ -166,48 +165,51 @@ describe('matchGlyph', () => {
     expect(matchGlyph(tile, ALPHABET)?.char).toBe('D')
   })
 
-  it('matches under noise inside the tolerance', () => {
-    const noisy = { ...tile, rows: flipBits(D, [[3, 6], [5, 7]]) }
-
-    expect(matchGlyph(noisy, ALPHABET)?.char).toBe('D')
-  })
-
   it('refuses a bitmap nothing is close to', () => {
     const nothing = { ...tile, rows: mustParse('ffffffffffffffff') }
 
     expect(matchGlyph(nothing, ALPHABET)).toBe(null)
   })
 
-  it('refuses when a noisy tile sits between two candidates', () => {
-    const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
+  it('refuses a tile one pixel off rather than reading the glyph beside it', () => {
     const noisy = { ...tile, rows: flipBits(D, [[4, 2]]) }
 
-    expect(matchGlyph(noisy, [...ALPHABET, nearlyD])).toBe(null)
+    expect(matchGlyph(noisy, ALPHABET)).toBe(null)
   })
 
-  // The Gen 1 font's own `o` and `c` are one pixel apart; without the exemption neither is ever
-  // readable, and the learner reopens on the tile it was just taught.
-  it('matches a bit-exact tile even with a candidate one bit away', () => {
+  // The bitmaps a Yellow capture actually produced. Under a four-bit tolerance an alphabet holding
+  // `P` and `e` but not these read "PPOPESSOP!" for "PROFESSOR!" — the regression this pins.
+  it('refuses a character close to one it knows instead of reading that one', () => {
+    const known: Glyph[] = [
+      { char: 'P', bits: 'fc8282fc80808000' },
+      { char: 'e', bits: '00003c427e403e00' },
+    ]
+    const unlearned = { R: 'fc8282fc88848200', F: 'fe8080fc80808000', 'é': '08103c427e403e00' }
+
+    for (const bits of Object.values(unlearned)) {
+      expect(matchGlyph({ column: 0, row: 0, rows: mustParse(bits) }, known)).toBe(null)
+    }
+  })
+
+  // The Gen 1 font's own `o` and `c` are one pixel apart, and both have to stay readable.
+  it('matches a bit-exact tile with a candidate one bit away', () => {
     const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
     expect(matchGlyph(tile, [...ALPHABET, nearlyD])?.char).toBe('D')
   })
 
-  it('does not treat a re-learned bitmap as an ambiguity', () => {
+  it('reads a re-learned bitmap as the character it was taught', () => {
     const relearned: Glyph = { char: 'D', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
-    expect(matchGlyph(tile, [...ALPHABET, relearned])?.char).toBe('D')
+    expect(matchGlyph({ ...tile, rows: mustParse(relearned.bits) }, [...ALPHABET, relearned])?.char).toBe('D')
   })
 
   it('ignores a bitmap that is not 16 hex characters', () => {
     expect(matchGlyph(tile, [{ char: 'X', bits: 'nonsense' }])).toBe(null)
   })
 
-  it('honours a tighter tolerance', () => {
-    const noisy = { ...tile, rows: flipBits(D, [[3, 6], [5, 7]]) }
-
-    expect(matchGlyph(noisy, ALPHABET, DEFAULT_MAX_DISTANCE)?.char).toBe('D')
-    expect(matchGlyph(noisy, ALPHABET, 1)).toBe(null)
+  it('reads a bitmap written in upper case hex', () => {
+    expect(matchGlyph(tile, [{ char: 'D', bits: D.toUpperCase() }])?.char).toBe('D')
   })
 })
 

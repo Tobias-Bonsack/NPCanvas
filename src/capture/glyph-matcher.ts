@@ -54,23 +54,6 @@ export type TextBoxReading = {
   unknown: UnknownTile[]
 }
 
-/**
- * How many of a tile's 64 bits may differ and still count as the same glyph.
- *
- * Not zero: the emulator scales by a non-integer factor and may smooth as it does, so a stroke's
- * outermost pixel can land on either side of the sample point. Well below the distance between
- * two real glyphs of a 8 × 8 font, which is what keeps this a tolerance rather than a guess.
- */
-export const DEFAULT_MAX_DISTANCE = 4
-
-/**
- * How close the runner-up may come before a match is refused.
- *
- * One bit of noise must never be able to turn the best candidate into the second best — if it
- * could, the answer is unknown, and asking is cheaper than a wrong character.
- */
-const AMBIGUITY_MARGIN = 1
-
 /** Stands in for an unrecognised tile in `UnknownTile.context`. Never enters a transcript. */
 export const UNKNOWN_MARK = '▯'
 
@@ -212,44 +195,30 @@ export function readTiles(bits: Uint8Array, nativeWidth: number, textRect: Pixel
 /**
  * The glyph a tile is, or `null` for "ask".
  *
- * Refused on two counts: nothing close enough, and two candidates so close that the difference
- * between them is within the noise the tolerance exists to absorb. Candidates spelling the same
- * character do not compete — re-learning a tile is a correction, not an ambiguity.
+ * Bit-exact, or nothing. A Game Boy font is a tile set drawn without anti-aliasing, so a correctly
+ * sampled cell *is* the bitmap the hardware drew — every character of a real capture matches at
+ * distance zero, and the ones that do not are the ones the alphabet has never been taught.
  *
- * A bit-exact hit is exempt from the ambiguity test, and must be: the Gen 1 font puts `o` and `c`
- * one pixel apart, so under the margin alone neither could ever be read — and because the learner
- * stores the tile's own bitmap, the very tile just named would come back unknown, reopening the
- * learner forever. Nothing is lost by the exemption: `mergeGlyphs` replaces on identical bits, so
- * at most one glyph can sit at distance zero.
+ * A tolerance therefore does not absorb noise, it invents characters, and silently: the Gen 1 font
+ * puts `R` and `F` three bits from `P` and `é` two from `e`, so a four-bit tolerance read
+ * "PPOPESSOP!" for "PROFESSOR!" — every letter it had not learned yet resolved to the nearest one
+ * it had, with nothing downstream able to tell a guess from a reading. Refusing costs one prompt
+ * from the learner; guessing costs a transcript that looks complete and is wrong.
+ *
+ * The refusal is self-healing, which is what lets it be this strict: a tile the emulator did smudge
+ * is simply learned again, and two bitmaps may spell the same character. `mergeGlyphs` replaces on
+ * identical bits, so at most one glyph can ever match — the first hit is the only hit.
  */
-export function matchGlyph(
-  tile: TileMask,
-  glyphs: readonly Glyph[],
-  maxDistance: number = DEFAULT_MAX_DISTANCE,
-): Glyph | null {
-  let best: Glyph | null = null
-  let bestDistance = Number.POSITIVE_INFINITY
-  const distances: { glyph: Glyph; distance: number }[] = []
-
+export function matchGlyph(tile: TileMask, glyphs: readonly Glyph[]): Glyph | null {
+  const bits = toGlyphBits(tile.rows)
   for (const glyph of glyphs) {
+    // Compared as parsed bytes rather than as strings: a bitmap hand-edited into `data.json` in
+    // upper case names the same tile, and one that is not 16 hex characters names none.
     const rows = parseGlyphBits(glyph.bits)
-    // A bitmap that is not 16 hex characters was hand-edited into `data.json`; it names no tile.
     if (rows === null) continue
-    const distance = hammingDistance(tile.rows, rows)
-    distances.push({ glyph, distance })
-    if (distance < bestDistance) {
-      bestDistance = distance
-      best = glyph
-    }
+    if (toGlyphBits(rows) === bits) return glyph
   }
-
-  if (best === null || bestDistance > maxDistance) return null
-  if (bestDistance === 0) return best
-  for (const candidate of distances) {
-    if (candidate.glyph.char === best.char) continue
-    if (candidate.distance - bestDistance <= AMBIGUITY_MARGIN) return null
-  }
-  return best
+  return null
 }
 
 /**
@@ -350,22 +319,6 @@ export function isGlyphPixelSet(rows: Uint8Array, column: number, row: number): 
 
 function isEmpty(tile: TileMask): boolean {
   return tile.rows.every((row) => row === 0)
-}
-
-function hammingDistance(left: Uint8Array, right: Uint8Array): number {
-  let distance = 0
-  for (let row = 0; row < TILE_SIZE; row++) distance += popcount(left[row] ^ right[row])
-  return distance
-}
-
-function popcount(byte: number): number {
-  let bits = byte
-  let count = 0
-  while (bits !== 0) {
-    bits &= bits - 1
-    count++
-  }
-  return count
 }
 
 /** Rec. 601 luma, in integers: the same weighting a CRT applied, which is what these fonts assume. */
