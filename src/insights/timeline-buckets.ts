@@ -23,29 +23,43 @@ export type TimeBucket = {
   dialogues: Dialogue[]
 }
 
-export type BucketedTimeline = {
-  unit: BucketUnit
-  buckets: TimeBucket[]
-}
-
 /**
  * Above this the bars are thinner than the gaps between them and the axis labels collide.
- * The ladder is coarse, so landing in the 30–60 band is a target rather than a guarantee: a
- * ten-day project gets ten day-buckets, because 240 hour-buckets would be worse in every way.
+ * The ladder is coarse, so landing in the 30–60 band is a target rather than a guarantee.
  */
 const MAX_BUCKETS = 60
 
-/** Nominal lengths, used only to pick the unit; the real boundaries are calendar-derived. */
-const APPROXIMATE_MS: Record<BucketUnit, number> = {
-  hour: 3_600_000,
-  day: 86_400_000,
-  week: 604_800_000,
-  month: 2_592_000_000,
+/**
+ * The finest unit whose *occupied* buckets stay under the ceiling — the default the grain picker
+ * calls "Auto".
+ *
+ * Counting occupied buckets rather than the elapsed span is the consequence of a bucket only
+ * existing where something was said: two hours a day for ten days spans 240 hours but draws
+ * twenty bars, and coarsening that to ten day-bars throws away detail the axis had room for.
+ */
+export function autoBucketUnit(dialogues: readonly Dialogue[]): BucketUnit {
+  const instants = datedInstants(dialogues)
+  // Nothing datable is nothing to size against, and 'day' is the unit the empty caption names.
+  if (instants.length === 0) return 'day'
+  return BUCKET_UNITS.find((unit) => occupiedBuckets(instants, unit) <= MAX_BUCKETS) ?? 'month'
 }
 
-/** The finest unit that keeps the bar count under the ceiling. Chosen from the data, never set. */
-export function chooseBucketUnit(spanMs: number): BucketUnit {
-  return BUCKET_UNITS.find((unit) => spanMs / APPROXIMATE_MS[unit] <= MAX_BUCKETS) ?? 'month'
+function occupiedBuckets(instants: readonly number[], unit: BucketUnit): number {
+  const starts = new Set<number>()
+  for (const at of instants) starts.add(floorTo(new Date(at), unit).getTime())
+  return starts.size
+}
+
+/**
+ * A dialogue whose `spokenAt` will not parse has no place on a time axis and is dropped; a
+ * hand-edited `data.json` is the user's to fix, and inventing an instant would file the line
+ * under a date nobody wrote.
+ */
+function datedInstants(dialogues: readonly Dialogue[]): number[] {
+  return dialogues.flatMap((dialogue) => {
+    const at = Date.parse(dialogue.spokenAt)
+    return Number.isNaN(at) ? [] : [at]
+  })
 }
 
 /**
@@ -59,25 +73,21 @@ export function chooseBucketUnit(spanMs: number): BucketUnit {
  * Boundaries are local-time calendar boundaries, so a "day" is the user's day — 23 or 25 hours
  * across a DST change, which is exactly what the axis label claims it is.
  *
- * A dialogue whose `spokenAt` will not parse has no place on a time axis and is dropped; a
- * hand-edited `data.json` is the user's to fix, and inventing an instant would file the line
- * under a date nobody wrote.
+ * The unit is an argument rather than a derivation: it is the reader's to choose, and `Timeline`
+ * hands in either the picker's answer or `autoBucketUnit`'s.
+ *
+ * A dialogue whose `spokenAt` will not parse is dropped — see `datedInstants` for why.
  */
-export function bucketDialogues(dialogues: readonly Dialogue[]): BucketedTimeline {
+export function bucketDialogues(
+  dialogues: readonly Dialogue[],
+  unit: BucketUnit,
+): TimeBucket[] {
   const dated = dialogues
     .flatMap((dialogue) => {
       const at = Date.parse(dialogue.spokenAt)
       return Number.isNaN(at) ? [] : [{ dialogue, at }]
     })
     .sort((a, b) => a.at - b.at)
-
-  const first = dated[0]
-  const last = dated[dated.length - 1]
-  if (first === undefined || last === undefined) return { unit: 'day', buckets: [] }
-
-  // One instant is a span of zero, which picks the finest unit and produces a single bucket —
-  // no division by a zero range anywhere, because nothing here divides by the span.
-  const unit = chooseBucketUnit(last.at - first.at)
 
   // `dated` is sorted, so a bucket is only ever extended while it is the last one — one pass
   // builds the whole ascending run, and no bucket is created that nothing goes into.
@@ -96,7 +106,7 @@ export function bucketDialogues(dialogues: readonly Dialogue[]): BucketedTimelin
     })
   }
 
-  return { unit, buckets }
+  return buckets
 }
 
 /** The start of the calendar unit containing `date`, in local time. Weeks start on Monday. */

@@ -30,13 +30,18 @@ export function InsightsScreen({
   viewState: InsightsViewState
   onViewStateChange: (viewState: InsightsViewState) => void
 }): ReactElement {
-  const { filter, dossierKey, timelineActive } = viewState
+  const { filter, dossierKey, timelineActive, timelineUnit } = viewState
   const setFilter = (filter: InsightsViewState['filter']): void =>
     onViewStateChange({ ...viewState, filter })
   const setDossierKey = (dossierKey: InsightsViewState['dossierKey']): void =>
     onViewStateChange({ ...viewState, dossierKey })
   const setTimelineActive = (timelineActive: InsightsViewState['timelineActive']): void =>
     onViewStateChange({ ...viewState, timelineActive })
+  // Changing the grain closes the open bucket in the same update: `timelineActive` is an instant
+  // matched against a bucket's `start`, and an hour's start is not a day's, so it would point at
+  // nothing after the switch. One update, so the pair can never be seen half-applied.
+  const setTimelineUnit = (timelineUnit: InsightsViewState['timelineUnit']): void =>
+    onViewStateChange({ ...viewState, timelineUnit, timelineActive: null })
 
   // Locations are derived here exactly as the canvas and the board derive them — and through
   // the same cached index, so arriving on this screen rebuilds nothing.
@@ -95,6 +100,8 @@ export function InsightsScreen({
             onChange={setFilter}
             active={timelineActive}
             onActiveChange={setTimelineActive}
+            unit={timelineUnit}
+            onUnitChange={setTimelineUnit}
           />
           <RelevanceBreakdown
             dialogues={dialogues}

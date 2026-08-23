@@ -1,5 +1,6 @@
 import { EMPTY_FILTER } from '../insights/filters.ts'
 import type { DialogueFilter } from '../insights/filters.ts'
+import type { BucketUnit } from '../insights/timeline-buckets.ts'
 import type { Viewport } from '../map/viewport.ts'
 import type { CanvasTool } from '../project/types.ts'
 import type { QuestBoardMode } from '../quest/QuestBoard.tsx'
@@ -30,6 +31,8 @@ export type InsightsViewState = {
   dossierKey: string | null
   /** The open bucket's `start` instant (ms) — not an index, see `Timeline` — `null` shows no detail. */
   timelineActive: number | null
+  /** The grain the timeline is read at; `null` is "Auto", deferring to `autoBucketUnit`. */
+  timelineUnit: BucketUnit | null
 }
 
 export type QuestsViewState = {
@@ -38,6 +41,6 @@ export type QuestsViewState = {
 
 export const INITIAL_VIEW_STATE: ViewState = {
   canvas: { tool: { kind: 'inspect' }, questFilter: false, viewport: null, panelWidth: null },
-  insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null },
+  insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null, timelineUnit: null },
   quests: { mode: { kind: 'idle' } },
 }

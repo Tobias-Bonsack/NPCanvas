@@ -1,5 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useChartWidth } from './chart-width.ts'
 import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
@@ -9,7 +9,13 @@ import type { DialogueFilter } from './filters.ts'
 import type { SegmentKey } from './relevance-segments.ts'
 import { segmentColor, segmentKeys, tallyOf, totalOf } from './relevance-segments.ts'
 import type { BucketUnit, TimeBucket } from './timeline-buckets.ts'
-import { bucketDialogues, describeBucket, formatBucketStart } from './timeline-buckets.ts'
+import {
+  BUCKET_UNITS,
+  autoBucketUnit,
+  bucketDialogues,
+  describeBucket,
+  formatBucketStart,
+} from './timeline-buckets.ts'
 
 // viewBox units — and, since `useChartWidth` feeds the svg's own measured width back in as its
 // viewBox width, one viewBox unit *is* one real CSS pixel. See the comment on `chart-width.ts`.
@@ -44,6 +50,8 @@ export function Timeline({
   onChange,
   active,
   onActiveChange,
+  unit,
+  onUnitChange,
 }: {
   dialogues: readonly Dialogue[]
   zonesById: ReadonlyMap<ZoneId, Zone>
@@ -60,9 +68,19 @@ export function Timeline({
    */
   active: number | null
   onActiveChange: (active: number | null) => void
+  /** The grain to read the axis at; `null` is Auto, which `autoBucketUnit` answers. */
+  unit: BucketUnit | null
+  onUnitChange: (unit: BucketUnit | null) => void
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
-  const { unit, buckets } = useMemo(() => bucketDialogues(dialogues), [dialogues])
+  const derived = useMemo(() => autoBucketUnit(dialogues), [dialogues])
+  // Everything below — the buckets, the captions, the labels, the accessible names — reads the
+  // *resolved* unit, so the picker and the axis can never describe different things.
+  const resolvedUnit = unit ?? derived
+  const buckets = useMemo(
+    () => bucketDialogues(dialogues, resolvedUnit),
+    [dialogues, resolvedUnit],
+  )
   const segmentKeysList = useMemo(() => segmentKeys(relevanceTags), [relevanceTags])
   const colors = useMemo(() => segmentColor(relevanceTags), [relevanceTags])
   // A brush in flight cannot outlive the pointer gesture that draws it, so unlike `active` it
@@ -101,7 +119,14 @@ export function Timeline({
 
   if (buckets.length === 0) {
     return (
-      <TimelinePanel unit={unit} hasRange={hasRange} onClearRange={clearRange}>
+      <TimelinePanel
+        unit={resolvedUnit}
+        selected={unit}
+        derived={derived}
+        onUnitChange={onUnitChange}
+        hasRange={hasRange}
+        onClearRange={clearRange}
+      >
         <p className="insights__empty">
           {/* Two ways to have no axis, and they call for different fixes: widen the filter, or
               go and repair a spokenAt that will not parse. */}
@@ -177,13 +202,20 @@ export function Timeline({
   const activeBucket = activeIndex === -1 ? null : buckets[activeIndex]
 
   return (
-    <TimelinePanel unit={unit} hasRange={hasRange} onClearRange={clearRange}>
+    <TimelinePanel
+        unit={resolvedUnit}
+        selected={unit}
+        derived={derived}
+        onUnitChange={onUnitChange}
+        hasRange={hasRange}
+        onClearRange={clearRange}
+      >
       <svg
         ref={svgRef}
         className="insights__svg timeline__svg"
         viewBox={`0 0 ${width} ${HEIGHT}`}
         role="img"
-        aria-label={`Tag occurrences per ${unit}`}
+        aria-label={`Tag occurrences per ${resolvedUnit}`}
       >
         <SegmentDefs idPrefix="timeline" tags={relevanceTags} />
 
@@ -209,7 +241,7 @@ export function Timeline({
           <TimelineBar
             key={bucket.start}
             bucket={bucket}
-            unit={unit}
+            unit={resolvedUnit}
             counts={tallies[index].counts}
             keys={segmentKeysList}
             colors={colors}
@@ -231,7 +263,7 @@ export function Timeline({
             y={AXIS_Y + 14}
             textAnchor="middle"
           >
-            {formatBucketStart(buckets[index].start, unit)}
+            {formatBucketStart(buckets[index].start, resolvedUnit)}
           </text>
         ))}
 
@@ -275,7 +307,7 @@ export function Timeline({
 
       <BucketDetail
         bucket={activeBucket}
-        unit={unit}
+        unit={resolvedUnit}
         zonesById={zonesById}
         zoneIndex={zoneIndex}
       />
@@ -290,14 +322,21 @@ const UNIT_NOTE: Record<BucketUnit, string> = {
   month: 'One bar per month that holds something.',
 }
 
-/** The frame, so the empty state and the chart carry the same heading and the same control. */
+/** The frame, so the empty state and the chart carry the same heading and the same controls. */
 function TimelinePanel({
   unit,
+  selected,
+  derived,
+  onUnitChange,
   hasRange,
   onClearRange,
   children,
 }: {
+  /** The grain actually drawn — `selected`, or `derived` when that is Auto. */
   unit: BucketUnit
+  selected: BucketUnit | null
+  derived: BucketUnit
+  onUnitChange: (unit: BucketUnit | null) => void
   hasRange: boolean
   onClearRange: () => void
   children: ReactNode
@@ -313,6 +352,7 @@ function TimelinePanel({
           inspect it; drag across several, or focus one and press Shift+arrow then Enter, to filter
           to that stretch of time.
         </p>
+        <GrainPicker selected={selected} derived={derived} onChange={onUnitChange} />
         <button type="button" className="button" disabled={!hasRange} onClick={onClearRange}>
           Clear range
         </button>
@@ -320,6 +360,74 @@ function TimelinePanel({
       {children}
     </section>
   )
+}
+
+const GRAIN_LABEL: Record<BucketUnit, string> = {
+  hour: 'Hour',
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+}
+
+/** `null` first, then the ladder — the order the buttons sit in and the arrows travel. */
+const GRAIN_OPTIONS: readonly (BucketUnit | null)[] = [null, ...BUCKET_UNITS]
+
+/**
+ * The grain is the reader's to choose: comparing two evenings wants hours and comparing two
+ * months wants months, from the same lines, and no derivation from the data answers both.
+ *
+ * A mutually exclusive set, so `radiogroup`/`radio` and a roving tabindex — the same shape as
+ * `MapScreen`'s `ToolPicker`, and for the same reason: Tab lands once, on whichever is checked,
+ * and the arrows move selection and focus together.
+ */
+function GrainPicker({
+  selected,
+  derived,
+  onChange,
+}: {
+  selected: BucketUnit | null
+  derived: BucketUnit
+  onChange: (unit: BucketUnit | null) => void
+}): ReactElement {
+  const buttons = useRef<Partial<Record<string, HTMLButtonElement | null>>>({})
+
+  function onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
+    const step = arrowStep(event.key)
+    if (step === null) return
+    event.preventDefault()
+    const next = GRAIN_OPTIONS[(index + step + GRAIN_OPTIONS.length) % GRAIN_OPTIONS.length]
+    onChange(next)
+    buttons.current[grainKey(next)]?.focus()
+  }
+
+  return (
+    <div className="grain-picker" role="radiogroup" aria-label="Timeline grain">
+      {GRAIN_OPTIONS.map((option, index) => (
+        <button
+          key={grainKey(option)}
+          ref={(element) => {
+            buttons.current[grainKey(option)] = element
+          }}
+          type="button"
+          role="radio"
+          className="grain-picker__button"
+          aria-checked={option === selected}
+          tabIndex={option === selected ? 0 : -1}
+          // Auto names the unit it currently resolves to, so the control and the axis below can
+          // never be read as claiming different grains.
+          aria-label={option === null ? `Auto — currently ${derived}` : undefined}
+          onClick={() => onChange(option)}
+          onKeyDown={(event) => onKeyDown(event, index)}
+        >
+          {option === null ? 'Auto' : GRAIN_LABEL[option]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function grainKey(unit: BucketUnit | null): string {
+  return unit ?? 'auto'
 }
 
 function TimelineBar({
@@ -473,9 +581,9 @@ function capitalize(text: string): string {
 }
 
 /** `ArrowRight` moves forward, `ArrowLeft` back; anything else is `null` — see `MapScreen`'s
- *  identical `arrowStep` for the tool picker's radiogroup. Up/Down are left alone: the timeline
- *  is a one-dimensional axis, and claiming the vertical arrows would fight the page's own
- *  scrolling. */
+ *  near-identical `arrowStep` for the tool picker's radiogroup. Shared here by the bars and the
+ *  grain picker. Up/Down are left alone: both are one-dimensional rows, and claiming the vertical
+ *  arrows would fight the page's own scrolling. */
 function arrowStep(key: string): number | null {
   if (key === 'ArrowRight') return 1
   if (key === 'ArrowLeft') return -1

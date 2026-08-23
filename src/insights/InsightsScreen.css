@@ -410,6 +410,46 @@
 
 /* ---- timeline ---- */
 
+/* The same segmented shape as the canvas's `.tool-picker`, because it is the same kind of
+   control: one mutually exclusive choice, sitting in a header rather than a form. Smaller,
+   because it shares the panel head with a title, a paragraph and a button. */
+.grain-picker {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.grain-picker__button {
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.grain-picker__button:first-child {
+  border-radius: var(--radius-2) 0 0 var(--radius-2);
+}
+
+.grain-picker__button:last-child {
+  border-radius: 0 var(--radius-2) var(--radius-2) 0;
+}
+
+.grain-picker__button[aria-checked='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.grain-picker__button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
 .timeline__svg {
   touch-action: none;
 }
