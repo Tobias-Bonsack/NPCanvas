@@ -442,10 +442,6 @@
   opacity: 0.28;
 }
 
-.timeline__empty-bucket {
-  fill: var(--border);
-}
-
 .timeline__brush {
   fill: var(--accent);
   opacity: 0.18;

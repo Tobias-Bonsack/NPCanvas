@@ -284,10 +284,10 @@ export function Timeline({
 }
 
 const UNIT_NOTE: Record<BucketUnit, string> = {
-  hour: 'One bar per hour.',
-  day: 'One bar per day.',
-  week: 'One bar per week, starting Monday.',
-  month: 'One bar per month.',
+  hour: 'One bar per hour that holds something.',
+  day: 'One bar per day that holds something.',
+  week: 'One bar per week that holds something, starting Monday.',
+  month: 'One bar per month that holds something.',
 }
 
 /** The frame, so the empty state and the chart carry the same heading and the same control. */
@@ -307,10 +307,11 @@ function TimelinePanel({
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Timeline</h2>
         <p className="insights__panel-note">
-          {UNIT_NOTE[unit]} A bar's height is tag occurrences, so a doubly tagged line counts
-          twice — exactly as in the Relevance panel below. Click a bar to inspect it; drag across
-          several, or focus one and press Shift+arrow then Enter, to filter to that stretch of
-          time.
+          {UNIT_NOTE[unit]} A stretch nothing was said in gets no bar at all, so the bars sit
+          side by side however far apart in time they are. A bar's height is tag occurrences, so a
+          doubly tagged line counts twice — exactly as in the Relevance panel below. Click a bar to
+          inspect it; drag across several, or focus one and press Shift+arrow then Enter, to filter
+          to that stretch of time.
         </p>
         <button type="button" className="button" disabled={!hasRange} onClick={onClearRange}>
           Clear range
@@ -398,17 +399,6 @@ function TimelineBar({
           </g>
         )
       })}
-      {/* An empty bucket still needs something to focus and hover, or a gap would be a hole in
-          the keyboard order as well as in the chart. */}
-      {bucket.dialogues.length === 0 && (
-        <rect
-          className="timeline__empty-bucket"
-          x={left}
-          y={PLOT_TOP + PLOT_HEIGHT - 1}
-          width={barWidth}
-          height={1}
-        />
-      )}
     </g>
   )
 }
@@ -444,20 +434,16 @@ function BucketDetail({
         {bucket.dialogues.length} {bucket.dialogues.length === 1 ? 'dialogue' : 'dialogues'} in{' '}
         {describeBucket(bucket, unit)}
       </p>
-      {bucket.dialogues.length === 0 ? (
-        <p className="insights__empty">Nothing was logged in this one.</p>
-      ) : (
-        <ul className="insights__rows">
-          {bucket.dialogues.slice(0, DETAIL_LIMIT).map((dialogue) => (
-            <li key={dialogue.id}>
-              <DialogueRow
-                dialogue={dialogue}
-                zones={resolveZones(dialogue.id, zoneIndex, zonesById)}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul className="insights__rows">
+        {bucket.dialogues.slice(0, DETAIL_LIMIT).map((dialogue) => (
+          <li key={dialogue.id}>
+            <DialogueRow
+              dialogue={dialogue}
+              zones={resolveZones(dialogue.id, zoneIndex, zonesById)}
+            />
+          </li>
+        ))}
+      </ul>
       {bucket.dialogues.length > DETAIL_LIMIT && (
         <p className="insights__empty">
           …and {bucket.dialogues.length - DETAIL_LIMIT} more in this {unit}.

@@ -9,7 +9,14 @@ import type { Dialogue } from '../project/types.ts'
 export const BUCKET_UNITS = ['hour', 'day', 'week', 'month'] as const
 export type BucketUnit = (typeof BUCKET_UNITS)[number]
 
-/** Half-open `[start, end)`, in epoch milliseconds. Empty buckets are kept — a gap is data. */
+/**
+ * Half-open `[start, end)`, in epoch milliseconds, and never empty.
+ *
+ * Buckets are strictly ascending but **not** contiguous: `end` need not equal the next bucket's
+ * `start`, because a unit in which nothing was said produces no bucket at all. The x axis a
+ * caller draws from these is therefore ordinal — one slot per bucket — rather than proportional
+ * to elapsed time.
+ */
 export type TimeBucket = {
   start: number
   end: number
@@ -42,7 +49,12 @@ export function chooseBucketUnit(spanMs: number): BucketUnit {
 }
 
 /**
- * Every dialogue placed on a contiguous run of buckets covering the first to the last.
+ * Every dialogue placed on one bucket per calendar unit that holds at least one of them.
+ *
+ * A unit nothing was said in gets no bucket. The alternative — a slot, a label and a focus stop
+ * spent on an empty hour — is a third of a chart carrying no measurement, and the chart is read
+ * for where the lines *are*. The cost is that the axis no longer reads as elapsed time; the
+ * caller's slots are equal width whatever the gap between two buckets.
  *
  * Boundaries are local-time calendar boundaries, so a "day" is the user's day — 23 or 25 hours
  * across a DST change, which is exactly what the axis label claims it is.
@@ -67,19 +79,21 @@ export function bucketDialogues(dialogues: readonly Dialogue[]): BucketedTimelin
   // no division by a zero range anywhere, because nothing here divides by the span.
   const unit = chooseBucketUnit(last.at - first.at)
 
+  // `dated` is sorted, so a bucket is only ever extended while it is the last one — one pass
+  // builds the whole ascending run, and no bucket is created that nothing goes into.
   const buckets: TimeBucket[] = []
-  let start = floorTo(new Date(first.at), unit)
-  while (start.getTime() <= last.at) {
-    const end = advance(start, unit)
-    buckets.push({ start: start.getTime(), end: end.getTime(), dialogues: [] })
-    start = end
-  }
-
-  // Both sides are sorted, so one pass places every dialogue — no search per line.
-  let index = 0
   for (const entry of dated) {
-    while (index < buckets.length - 1 && entry.at >= buckets[index].end) index += 1
-    buckets[index].dialogues.push(entry.dialogue)
+    const start = floorTo(new Date(entry.at), unit)
+    const open = buckets[buckets.length - 1]
+    if (open !== undefined && open.start === start.getTime()) {
+      open.dialogues.push(entry.dialogue)
+      continue
+    }
+    buckets.push({
+      start: start.getTime(),
+      end: advance(start, unit).getTime(),
+      dialogues: [entry.dialogue],
+    })
   }
 
   return { unit, buckets }

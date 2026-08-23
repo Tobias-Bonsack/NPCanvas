@@ -51,17 +51,23 @@ describe('bucketDialogues', () => {
     expect(new Date(buckets[0].start).getMinutes()).toBe(0)
   })
 
-  it('keeps empty buckets, so a quiet stretch reads as a gap', () => {
+  it('skips a unit nothing was said in, rather than drawing it empty', () => {
     const { unit, buckets } = bucketDialogues([at('2026-08-01T09:00'), at('2026-08-05T09:00')])
     expect(unit).toBe('day')
-    expect(buckets).toHaveLength(5)
-    expect(buckets.map((bucket) => bucket.dialogues.length)).toEqual([1, 0, 0, 0, 1])
+    expect(buckets).toHaveLength(2)
+    expect(buckets.map((bucket) => bucket.dialogues.length)).toEqual([1, 1])
   })
 
-  it('covers the range contiguously, every bucket starting where the last one ended', () => {
-    const { buckets } = bucketDialogues([at('2026-08-01T09:00'), at('2026-08-04T09:00')])
-    for (let index = 1; index < buckets.length; index += 1) {
-      expect(buckets[index].start).toBe(buckets[index - 1].end)
+  it('returns ascending, non-empty, half-open buckets — the invariant the axis draws from', () => {
+    const { buckets } = bucketDialogues([
+      at('2026-08-01T09:00'),
+      at('2026-08-04T09:00'),
+      at('2026-08-04T11:00'),
+    ])
+    for (const [index, bucket] of buckets.entries()) {
+      expect(bucket.dialogues.length).toBeGreaterThan(0)
+      expect(bucket.start).toBeLessThan(bucket.end)
+      if (index > 0) expect(bucket.start).toBeGreaterThanOrEqual(buckets[index - 1].end)
     }
   })
 
@@ -73,7 +79,7 @@ describe('bucketDialogues', () => {
       at('2026-08-03T09:00'),
     ]
     const { buckets } = bucketDialogues(dialogues)
-    expect(buckets.map((bucket) => bucket.dialogues.length)).toEqual([2, 0, 1, 0, 1])
+    expect(buckets.map((bucket) => bucket.dialogues.length)).toEqual([2, 1, 1])
     expect(buckets.flatMap((bucket) => bucket.dialogues)).toHaveLength(dialogues.length)
   })
 
