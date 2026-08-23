@@ -51,7 +51,7 @@ export type Action =
   | { kind: 'zone/added'; zone: Zone }
   | { kind: 'zone/renamed'; zoneId: ZoneId; name: string }
   | { kind: 'zone/hue-set'; zoneId: ZoneId; hue: number }
-  | { kind: 'zone/moved'; zoneId: ZoneId; polygon: Polygon }
+  | { kind: 'zone/reshaped'; zoneId: ZoneId; polygon: Polygon }
   | { kind: 'zone/deleted'; zoneId: ZoneId }
   | { kind: 'dialogue/added'; dialogue: Dialogue }
   | { kind: 'dialogue/moved'; dialogueId: DialogueId; position: Point }
@@ -271,10 +271,12 @@ function applyAction(state: AppState, action: Action): AppState {
       return withZone(state, target, { ...target, hue: action.hue })
     }
 
-    // Fires once per drag, on pointerup, like `map/moved` and `dialogue/moved`. Nothing here
-    // touches a `Dialogue`: which zone a dialogue is in is derived from the geometry on every
-    // read, so moving a zone reclassifies its contents with zero writes. See CLAUDE.md.
-    case 'zone/moved': {
+    // One action for both zone gestures — a move and a resize each hand over the polygon they
+    // ended on, and a zone is nothing but its polygon. Fires once per drag, on pointerup, like
+    // `map/moved` and `dialogue/moved`. Nothing here touches a `Dialogue`: which zone a
+    // dialogue is in is derived from the geometry on every read, so reshaping a zone
+    // reclassifies its contents with zero writes. See CLAUDE.md.
+    case 'zone/reshaped': {
       if (state.kind !== 'ready') return state
       const target = findZone(state.project, action.zoneId)
       if (target === null || isSamePolygon(target.polygon, action.polygon)) return state

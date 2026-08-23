@@ -112,6 +112,15 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   may disagree with a full build — `zone-index.test.ts` pins that. A cached FK would silently go stale when a zone moves. If an
   explicit override is ever needed, add `locationOverride: ZoneId | null` — never a cache.
 - **Zones are polygons only.** Rectangles are 4-point polygons. Do not introduce a shape union.
+  Resizing one is therefore a *scale of every vertex* about the opposite edge or corner
+  (`src/map/zone-resize.ts`), never an edit of a single vertex: the eight grips are the
+  bounding box's, so a hand-drawn outline stretches instead of acquiring a dent, and a
+  rectangle stays a rectangle. Moving and resizing both end in one `zone/reshaped` action,
+  because a zone is nothing but its polygon and the reducer cannot tell — nor need to tell —
+  which gesture produced it. The grips are drawn only for the selected zone and only under the
+  zone tool, and they are the one world-space element that **takes** pointer events: purely to
+  carry a resize cursor, with no handler of their own, so the press still bubbles to the canvas
+  and `handleAtCanvasPoint` decides geometrically which grip it was.
 - **A dialogue is a line and its pictures.** `Dialogue.text` and `Dialogue.media: DialogueMedia[]`
   are orthogonal fields, not an exclusive union: a line that ran over five text boxes is one thing
   said and five frames proving it, and a capture appends both. `text` may be empty (a picture not

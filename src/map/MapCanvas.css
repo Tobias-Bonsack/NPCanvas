@@ -245,6 +245,49 @@
   pointer-events: none;
 }
 
+/* The resize grips of the selected zone, one per bounding-box corner and edge midpoint.
+   Counter-scaled against the same product the pins and the zone labels use, so a grip — and
+   the border inside its scaled box — is a constant handful of screen pixels at every zoom.
+
+   The scale is written *before* the translate, and transform-origin is the element's own
+   top-left, because the grip is positioned by its top-left and has to end up centred on the
+   vertex: scaling first and shifting by half the unscaled box afterwards is the only order
+   that lands the centre on the point at every zoom. Reversed, the offset would be scaled too
+   and the grips would drift off their corners as the canvas zoomed. */
+.map-canvas__zone-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  transform-origin: 0 0;
+  transform: scale(calc(1 / (var(--map-zoom) * var(--map-scale)))) translate(-50%, -50%);
+  background: var(--text);
+  border: 1px solid var(--surface-0);
+  border-radius: var(--radius-1);
+}
+
+/* Unlike every other world-space element, a grip takes the pointer — but only to carry this
+   cursor. It has no handler of its own: the press bubbles to the canvas, which decides which
+   grip it was geometrically, the way it hit-tests zones. */
+.map-canvas__zone-handle[data-handle='nw'],
+.map-canvas__zone-handle[data-handle='se'] {
+  cursor: nwse-resize;
+}
+
+.map-canvas__zone-handle[data-handle='ne'],
+.map-canvas__zone-handle[data-handle='sw'] {
+  cursor: nesw-resize;
+}
+
+.map-canvas__zone-handle[data-handle='n'],
+.map-canvas__zone-handle[data-handle='s'] {
+  cursor: ns-resize;
+}
+
+.map-canvas__zone-handle[data-handle='e'],
+.map-canvas__zone-handle[data-handle='w'] {
+  cursor: ew-resize;
+}
+
 /* ---- trail ---- */
 
 /* The one world-space layer drawn in canvas space rather than in per-map groups: a segment

@@ -45,6 +45,8 @@ import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
 import { normalizeDelta, wheelZoomFactor } from './wheel-zoom.ts'
 import { nextZoneName } from './zone-name.ts'
+import type { ZoneHandle } from './zone-resize.ts'
+import { handleAtMapLocalPoint, resizePolygon, zoneHandlePoints } from './zone-resize.ts'
 import { nextZoneHue } from './zone-style.ts'
 import './MapCanvas.css'
 
@@ -93,7 +95,7 @@ export type MapDragPreview = { id: MapId; origin: Point }
 
 /**
  * A zone being dragged, in that zone's own map-local space. A preview for the same reason
- * `MapDragPreview` is: `zone/moved` lands once, on pointerup.
+ * `MapDragPreview` is: `zone/reshaped` lands once, on pointerup.
  */
 export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }
 
@@ -126,6 +128,16 @@ type ZoneGesture =
       grabbed: Point
       latest: Polygon | null
     }
+  | {
+      kind: 'resize'
+      target: Zone
+      map: GameMap
+      /** Which grip of the bounding box the press took. */
+      handle: ZoneHandle
+      /** Where the press landed, so the polygon follows the pointer's travel, not the grip. */
+      grabbed: Point
+      latest: Polygon | null
+    }
 
 /** What a map drag snapshots. Same contract as `ZoneGesture`: a preview plus its commit value. */
 type MapDragGesture = {
@@ -149,6 +161,16 @@ type MapDragGesture = {
  * map pixels is a rectangle you can see and drag out, and at 5% it is a twitch.
  */
 const MIN_ZONE_SIZE = 8
+
+/**
+ * **Screen** pixels around a resize grip that count as a press on it. Screen rather than
+ * map-local for the reason `MIN_ZONE_SIZE` is: a fixed map-local radius would be untouchable
+ * at 5% zoom and would swallow half the zone at 8x.
+ *
+ * A shade larger than the grip is drawn, so the grip is easier to hit than to see rather than
+ * the other way round.
+ */
+const ZONE_HANDLE_HIT_RADIUS = 9
 
 /**
  * Controls layered over the map — the HUD, a pin's delete confirmation — carry
@@ -278,6 +300,18 @@ export function MapCanvas({
     () => maps.find((map) => map.id === selectedMapId) ?? null,
     [maps, selectedMapId],
   )
+
+  // The zone whose resize grips are on screen, with the map they are expressed on. Memoized
+  // for the reason `selectedMap` is — this runs on every frame of a pan — and carrying the
+  // map because every grip coordinate is map-local and needs it to reach the screen. The
+  // zone is taken from `zones`, so a drag preview moves the grips with the shape.
+  const selectedZone = useMemo(() => {
+    if (selection.kind !== 'zone') return null
+    const zone = zones.find((candidate) => candidate.id === selection.id)
+    if (zone === undefined) return null
+    const map = maps.find((candidate) => candidate.id === zone.mapId)
+    return map === undefined ? null : { zone, map }
+  }, [selection, zones, maps])
 
   const applyViewport = useCallback((next: Viewport): void => {
     viewportRef.current = next
@@ -521,6 +555,23 @@ export function MapCanvas({
   /** True when the zone tool took the press; false leaves it to the pan. */
   function beginZoneGesture(event: ReactPointerEvent<HTMLDivElement>): boolean {
     const canvasPoint = screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current))
+
+    // Tested before the map is: a grip sitting on the very edge of a zone that was dragged
+    // past the map's border is still a grip, and asking `mapAtCanvasPoint` first would hand
+    // that press to the pan. It is also tested before the zone under the cursor, because
+    // every grip of a zone lies on or inside its own bounding box.
+    const grip = handleAtCanvasPoint(canvasPoint)
+    if (grip !== null) {
+      return beginDrag(zone, event, {
+        kind: 'resize',
+        target: grip.zone,
+        map: grip.map,
+        handle: grip.handle,
+        grabbed: canvasToMapLocal(grip.map, canvasPoint),
+        latest: null,
+      })
+    }
+
     const map = mapAtCanvasPoint(maps, canvasPoint)
     if (map === null) return false
 
@@ -559,10 +610,19 @@ export function MapCanvas({
       return
     }
 
-    const polygon = translatePolygon(gesture.target.polygon, {
-      x: local.x - gesture.grabbed.x,
-      y: local.y - gesture.grabbed.y,
-    })
+    const travel: Point = { x: local.x - gesture.grabbed.x, y: local.y - gesture.grabbed.y }
+    // Both reshape the same zone from the polygon it had at pointerdown, never from the
+    // previous frame's: accumulating frame by frame would compound the floor `resizePolygon`
+    // clamps at, so a drag that overshot the minimum and came back would not come back.
+    const polygon =
+      gesture.kind === 'move'
+        ? translatePolygon(gesture.target.polygon, travel)
+        : resizePolygon(
+            gesture.target.polygon,
+            gesture.handle,
+            travel,
+            minZoneSizeIn(gesture.map),
+          )
     gesture.latest = polygon
     onZoneDrag({ id: gesture.target.id, polygon })
   }
@@ -573,7 +633,7 @@ export function MapCanvas({
     setPanning(false)
     const gesture = end.data
 
-    if (gesture.kind === 'move') {
+    if (gesture.kind !== 'draw') {
       const final = gesture.latest
       onZoneDrag(null)
       if (!end.moved || final === null) {
@@ -581,7 +641,9 @@ export function MapCanvas({
         dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: gesture.target.id } })
         return
       }
-      dispatch({ kind: 'zone/moved', zoneId: gesture.target.id, polygon: final })
+      // One action for both, because a zone is its polygon however that polygon was arrived
+      // at — see the reducer.
+      dispatch({ kind: 'zone/reshaped', zoneId: gesture.target.id, polygon: final })
       return
     }
 
@@ -609,6 +671,38 @@ export function MapCanvas({
     }
     dispatch({ kind: 'zone/added', zone: created })
     dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: created.id } })
+  }
+
+  /**
+   * The grip of the selected zone under a canvas point, or `null`. Only the selected zone has
+   * grips — they are drawn for it alone, and a hit test that answered for zones nobody can see
+   * grips on would resize a shape the user never aimed at.
+   */
+  function handleAtCanvasPoint(
+    canvasPoint: Point,
+  ): { zone: Zone; map: GameMap; handle: ZoneHandle } | null {
+    if (selectedZone === null) return null
+    const { zone: target, map } = selectedZone
+    const handle = handleAtMapLocalPoint(
+      target.polygon,
+      canvasToMapLocal(map, canvasPoint),
+      ZONE_HANDLE_HIT_RADIUS / screenScaleOf(map),
+    )
+    return handle === null ? null : { zone: target, map, handle }
+  }
+
+  /** Screen pixels per map-local pixel: the viewport's zoom and the map's own scale, live. */
+  function screenScaleOf(map: GameMap): number {
+    return viewportRef.current.scale * map.scale
+  }
+
+  /**
+   * The smallest a zone may be squeezed to, in that map's own pixels. Expressed through the
+   * live screen scale so it is the same rejection `MIN_ZONE_SIZE` makes when a zone is drawn:
+   * a region has to stay big enough to see, select and rename.
+   */
+  function minZoneSizeIn(map: GameMap): number {
+    return MIN_ZONE_SIZE / screenScaleOf(map)
   }
 
   // The map drag mirrors the pan above: the bookkeeping lives in a ref so a sub-threshold
@@ -786,11 +880,31 @@ export function MapCanvas({
       const target = zones.find((candidate) => candidate.id === selection.id)
       if (target === undefined) return
       dispatch({
-        kind: 'zone/moved',
+        kind: 'zone/reshaped',
         zoneId: target.id,
         polygon: translatePolygon(target.polygon, { x: dx, y: dy }),
       })
     }
+  }
+
+  /**
+   * The keyboard's half of resizing: one axis per press, through the same grips and the same
+   * floor the pointer drags through, so a stretch nobody can do with a mouse cannot be done
+   * with the arrows either.
+   */
+  function resizeSelectedZone(direction: Point, step: number): void {
+    if (selectedZone === null) return
+    const { zone: target, map } = selectedZone
+    dispatch({
+      kind: 'zone/reshaped',
+      zoneId: target.id,
+      polygon: resizePolygon(
+        target.polygon,
+        direction.x === 0 ? 's' : 'e',
+        { x: direction.x * step, y: direction.y * step },
+        minZoneSizeIn(map),
+      ),
+    })
   }
 
   /**
@@ -836,7 +950,12 @@ export function MapCanvas({
       case 'ArrowRight': {
         event.preventDefault()
         const direction = arrowDelta(event.key)
-        if (selection.kind === 'dialogue' || selection.kind === 'zone') {
+        // Ctrl is what turns a nudge into a stretch, and only a zone has a size to stretch.
+        // The east and south edges are the ones that move, so the shape follows the arrow:
+        // right and down grow it, left and up shrink it.
+        if (event.ctrlKey && selection.kind === 'zone') {
+          resizeSelectedZone(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP)
+        } else if (selection.kind === 'dialogue' || selection.kind === 'zone') {
           nudgeSelection(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP)
         } else {
           panBy(direction, event.shiftKey ? PAN_STEP * PAN_STEP_FAST : PAN_STEP)
@@ -888,6 +1007,11 @@ export function MapCanvas({
         ))}
         {children}
         <ZoneDraft draft={draft} maps={maps} />
+        {/* Only under the zone tool, and only for the selected zone: grips that were always
+            on screen would advertise a gesture every other tool refuses. */}
+        {tool.kind === 'draw-zone' && selectedZone !== null && (
+          <ZoneHandles zone={selectedZone.zone} map={selectedZone.map} />
+        )}
       </div>
 
       {notice !== null && (
@@ -968,6 +1092,30 @@ function ZoneDraft({
           height: `${draft.rect.height}px`,
         }}
       />
+    </div>
+  )
+}
+
+/**
+ * The eight grips of the selected zone's bounding box, drawn inside that zone's map group so
+ * each one is positioned by a map-local coordinate verbatim — the same contract `ZoneDraft`
+ * follows, and the reason neither lives in the memo'd `ZoneLayer`.
+ *
+ * They take the pointer only to carry a resize cursor: which grip a press actually claims is
+ * decided geometrically in `handleAtCanvasPoint`, the way every other canvas hit test is. A
+ * press here still bubbles to the canvas, which owns the gesture.
+ */
+function ZoneHandles({ zone, map }: { zone: Zone; map: GameMap }): ReactElement {
+  return (
+    <div className="map-canvas__zone-group" style={mapGroupStyle(map)}>
+      {zoneHandlePoints(zone.polygon).map(({ handle, point }) => (
+        <div
+          key={handle}
+          className="map-canvas__zone-handle"
+          data-handle={handle}
+          style={{ left: `${point.x}px`, top: `${point.y}px` }}
+        />
+      ))}
     </div>
   )
 }

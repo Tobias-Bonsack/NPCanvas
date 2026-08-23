@@ -210,7 +210,7 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'zone/renamed', zoneId: asZoneId('zone-1'), name: 'Docks' },
   { kind: 'zone/hue-set', zoneId: asZoneId('zone-1'), hue: 40 },
   {
-    kind: 'zone/moved',
+    kind: 'zone/reshaped',
     zoneId: asZoneId('zone-1'),
     polygon: [
       { x: 1, y: 1 },
@@ -937,7 +937,7 @@ describe('reduce: zone actions', () => {
     const state = withOneZone()
     const before = readyOf(state).project.dialogues
     const moved = reduce(state, {
-      kind: 'zone/moved',
+      kind: 'zone/reshaped',
       zoneId: asZoneId('zone-1'),
       polygon: [
         { x: 5, y: 5 },
@@ -973,9 +973,9 @@ describe('reduce: zone actions', () => {
       state,
     )
     expect(reduce(state, { kind: 'zone/hue-set', zoneId: current.id, hue: current.hue })).toBe(state)
-    expect(reduce(state, { kind: 'zone/moved', zoneId: current.id, polygon: current.polygon })).toBe(
-      state,
-    )
+    expect(
+      reduce(state, { kind: 'zone/reshaped', zoneId: current.id, polygon: current.polygon }),
+    ).toBe(state)
     expect(reduce(state, { kind: 'zone/deleted', zoneId: asZoneId('missing') })).toBe(state)
   })
 })

@@ -436,7 +436,7 @@ const TOOLS: readonly { tool: CanvasTool; label: string; hint: string; key: stri
   {
     tool: { kind: 'draw-zone' },
     label: 'Draw zone',
-    hint: 'Drag a rectangle on a map, or drag an existing zone to move it',
+    hint: 'Drag out a rectangle, drag a zone to move it, or its grips to resize it',
     key: 'z',
   },
   {
