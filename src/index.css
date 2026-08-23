@@ -27,6 +27,14 @@
      regardless, so "in a quest" still never reads as "selected". */
   --quest: #f2c14e;
 
+  /* The chronological trail on the canvas, and the toggle that draws it. Deliberately *not*
+     darkened in the light theme the way --quest is: --quest is also ink on a page surface
+     (InsightsScreen.css), whereas this is only ever a mark over map imagery and a fill behind
+     --ink-on-hue, both of which want the same light, saturated colour in either theme. Kept off
+     --accent's blue and --quest's gold, so a line of time is not mistaken for a selection or a
+     quest. */
+  --trail: #4fd6c0;
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;

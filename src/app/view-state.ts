@@ -19,6 +19,8 @@ export type ViewState = {
 export type CanvasViewState = {
   tool: CanvasTool
   questFilter: boolean
+  /** Whether the chronological trail is drawn through the pins — see `TrailLayer`. */
+  trail: boolean
   /** `null` until the canvas has fitted itself once — see `MapCanvas`'s `initialViewport`. */
   viewport: Viewport | null
   /** `null` until the panel's resize handle is dragged once — the width the stylesheet gives it. */
@@ -40,7 +42,13 @@ export type QuestsViewState = {
 }
 
 export const INITIAL_VIEW_STATE: ViewState = {
-  canvas: { tool: { kind: 'inspect' }, questFilter: false, viewport: null, panelWidth: null },
+  canvas: {
+    tool: { kind: 'inspect' },
+    questFilter: false,
+    trail: false,
+    viewport: null,
+    panelWidth: null,
+  },
   insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null, timelineUnit: null },
   quests: { mode: { kind: 'idle' } },
 }

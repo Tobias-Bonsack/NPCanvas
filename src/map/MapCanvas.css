@@ -245,6 +245,39 @@
   pointer-events: none;
 }
 
+/* ---- trail ---- */
+
+/* The one world-space layer drawn in canvas space rather than in per-map groups: a segment
+   joining two lines heard on two different maps exists in neither map's coordinates. See
+   trail-path.ts for why, and TrailLayer.tsx for why it is not culled. */
+.trail-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Laid on mapsBounds, with a viewBox carrying the same offset so canvas coordinates reach the
+   points attribute verbatim. Overflow is visible for the reason .zone-layer__svg's is: a pin
+   dragged past its map's edge must still be joined to the line. */
+.trail-layer__svg {
+  position: absolute;
+  display: block;
+  overflow: visible;
+}
+
+/* The stroke width is in screen pixels rather than canvas units thanks to vector-effect on the
+   element. Round joins because the line turns hard at every pin it passes through. */
+.trail-layer__path {
+  fill: none;
+  stroke: var(--trail);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
 /* ---- pins ---- */
 
 /* A zero-size layer: it exists only to give the pins a positioning context that is not

@@ -173,6 +173,16 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `addEventListener(..., { passive: false })` — React's `onWheel` is passive and `preventDefault()`
   silently fails there. If pin counts exceed ~2000, cull to the visible world rect before considering
   `<canvas>`.
+- **The trail is the one layer drawn in canvas space.** Every other world-space layer emits a group
+  per map through `mapGroupStyle` and writes stored map-local coordinates verbatim. `TrailLayer`
+  cannot: time crosses maps, so a segment joining two lines heard on two different images belongs to
+  neither one's map-local space. Its single `<svg>` is a direct child of the world element, laid on
+  `mapsBounds` with a `viewBox` carrying the same offset — which keeps canvas coordinates verbatim in
+  `points`, so `src/map/trail-path.ts`'s `mapLocalToCanvas` call is still the only conversion in the
+  feature. `--map-scale` is declared as `1` on `.map-canvas__world` itself, so the usual counter-scale
+  expression stays valid outside a map group. And the trail is deliberately **not** culled against
+  `visibleRect`: a segment whose two endpoints are both off screen can still cross the viewport, so
+  culling would tear the line rather than save work.
 - **World-space layers must stay viewport-independent.** `PinLayer` is `memo`'d and receives no prop
   derived from the `Viewport`, which is what keeps panning from re-rendering every pin. A layer that
   needs the current scale reads `--map-zoom` off its own computed style at `pointerdown` — passing a

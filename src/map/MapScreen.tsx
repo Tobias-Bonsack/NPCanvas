@@ -24,6 +24,7 @@ import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import { isTextFieldFocused } from '../text-field-focus.ts'
+import { TrailLayer } from './TrailLayer.tsx'
 import { ZoneLayer } from './ZoneLayer.tsx'
 import { ZoneList } from './ZoneList.tsx'
 import {
@@ -53,13 +54,17 @@ export function MapScreen({
   // canvas exactly as it was — see CLAUDE.md's view-state note. Every setter below is a stable
   // functional update rather than a closure over `viewState`, which is what keeps the global
   // keydown listener correct without needing `viewState` itself in its dependency list.
-  const { tool, questFilter, viewport, panelWidth } = viewState
+  const { tool, questFilter, trail, viewport, panelWidth } = viewState
   const setTool = useCallback(
     (tool: CanvasTool) => onViewStateChange((prev) => ({ ...prev, tool })),
     [onViewStateChange],
   )
   const toggleQuestFilter = useCallback(
     () => onViewStateChange((prev) => ({ ...prev, questFilter: !prev.questFilter })),
+    [onViewStateChange],
+  )
+  const toggleTrail = useCallback(
+    () => onViewStateChange((prev) => ({ ...prev, trail: !prev.trail })),
     [onViewStateChange],
   )
   const setViewport = useCallback(
@@ -277,6 +282,23 @@ export function MapScreen({
           >
             Quest pins only
           </button>
+          {/* Sits beside the quest filter because both change what the canvas draws, but it is a
+              layer rather than a filter: it adds the order the pins were heard in without
+              touching which of them are dimmed. */}
+          <button
+            type="button"
+            className="trail-toggle"
+            aria-pressed={trail}
+            disabled={project.dialogues.length < 2}
+            title={
+              project.dialogues.length < 2
+                ? 'Two lines have to be logged before there is an order to draw'
+                : 'Draw a line through the pins, earliest line to latest'
+            }
+            onClick={toggleTrail}
+          >
+            Time trail
+          </button>
         </div>
         <CanvasLegend relevanceTags={project.relevanceTags} />
       </header>
@@ -312,6 +334,15 @@ export function MapScreen({
               selectedId={selectedZoneId}
               visibleRect={visibleRect}
             />
+            {/* Between the two, so the line runs over the ground a dialogue was heard on and
+                under the pins it threads. */}
+            {trail && (
+              <TrailLayer
+                maps={placedMaps}
+                dialogues={project.dialogues}
+                highlighted={highlighted}
+              />
+            )}
             <PinLayer
               maps={placedMaps}
               dialogues={project.dialogues}

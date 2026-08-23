@@ -315,11 +315,13 @@
   flex-wrap: wrap;
 }
 
-/* ---- quest filter ---- */
+/* ---- canvas toggles ---- */
 
-/* Pressed, it takes the quest colour rather than --accent: the pins it keeps are flagged in
-   that colour, so the toggle and its effect on the canvas are visibly the same subject. */
-.quest-filter {
+/* One shape for every on/off control in the canvas bar; only the pressed colour differs, and it
+   is always the colour of what the toggle puts on the canvas — the toggle and its effect are
+   visibly the same subject, rather than every one of them reading as --accent. */
+.quest-filter,
+.trail-toggle {
   font: inherit;
   font-size: var(--text-sm);
   color: var(--text);
@@ -331,9 +333,10 @@
 }
 
 /* Excludes the pressed state explicitly: `:hover:not(:disabled)` outweighs the attribute
-   selector below on specificity, so without this the toggle loses its gold the moment the
+   selector below on specificity, so without this a toggle loses its colour the moment the
    pointer that just pressed it is still resting on it — which is always. */
-.quest-filter:not(:disabled):not([aria-pressed='true']):hover {
+.quest-filter:not(:disabled):not([aria-pressed='true']):hover,
+.trail-toggle:not(:disabled):not([aria-pressed='true']):hover {
   background: var(--surface-3);
 }
 
@@ -343,7 +346,14 @@
   border-color: var(--quest);
 }
 
-.quest-filter:disabled {
+.trail-toggle[aria-pressed='true'] {
+  color: var(--ink-on-hue);
+  background: var(--trail);
+  border-color: var(--trail);
+}
+
+.quest-filter:disabled,
+.trail-toggle:disabled {
   opacity: 0.45;
   cursor: default;
 }
