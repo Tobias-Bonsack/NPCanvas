@@ -20,7 +20,8 @@ import type { UnknownTile } from '../capture/glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
-import { MediaView } from '../media/MediaView.tsx'
+import { resolveGalleryIndex } from '../media/gallery-index.ts'
+import { MediaGallery } from '../media/MediaGallery.tsx'
 import type { DragGesture } from '../map/drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
@@ -31,6 +32,7 @@ import type {
   Dialogue,
   DialogueMedia,
   Glyph,
+  MediaId,
   ProjectFile,
   RelevanceTagId,
   Zone,
@@ -138,6 +140,10 @@ export function DialoguePanel({
   const [importState, setImportState] = useState<ImportState>({ kind: 'idle' })
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
   const [dropTarget, setDropTarget] = useState(false)
+  // Which frame the gallery is showing — an id, never an index, so a reorder keeps *that*
+  // picture on screen rather than whatever slid into its place. `null` is the first frame; see
+  // `resolveGalleryIndex`.
+  const [currentMediaId, setCurrentMediaId] = useState<MediaId | null>(null)
   const pickerId = useId()
   const asideRef = useRef<HTMLElement>(null)
   // Filled by `DialogueForm`. The line field is a draft that only reaches the store on blur or
@@ -299,7 +305,13 @@ export function DialoguePanel({
     setImportState({ kind: 'idle' })
     setCaptureState({ kind: 'idle' })
     setDropTarget(false)
+    setCurrentMediaId(null)
   }, [dialogueId])
+
+  // Resolved on every render rather than stored: the list is what moved, and an index kept in
+  // state would go stale the moment a frame is reordered or removed.
+  const currentIndex = resolveGalleryIndex(dialogue.media, currentMediaId)
+  const currentMedium = dialogue.media[currentIndex] ?? null
 
   const npcNames = useMemo(() => npcNamesIn(project.dialogues), [project.dialogues])
   const map = project.maps.find((candidate) => candidate.id === dialogue.mapId) ?? null
@@ -431,7 +443,14 @@ export function DialoguePanel({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  async function removeMedium(medium: DialogueMedia): Promise<void> {
+  /**
+   * The frame that goes when the current one is removed: the one after it, or the one before it
+   * at the end of the list. Chosen here rather than left to `resolveGalleryIndex`'s fallback,
+   * which only knows that an id is gone, not which neighbour the reader was heading towards.
+   */
+  async function removeMedium(medium: DialogueMedia, index: number): Promise<void> {
+    const neighbour = dialogue.media[index + 1] ?? dialogue.media[index - 1] ?? null
+    setCurrentMediaId(neighbour?.id ?? null)
     dispatch({ kind: 'dialogue/media-removed', dialogueId: dialogue.id, mediaId: medium.id })
     setImportState({ kind: 'idle' })
     // After the dispatch nothing in the document names the file, so it would sit in media/
@@ -440,6 +459,10 @@ export function DialoguePanel({
   }
 
   function moveMedium(medium: DialogueMedia, toIndex: number): void {
+    // Pinned by id before the list moves under it: without this a frame moved from position 0
+    // would leave `currentMediaId` at `null`, which resolves to position 0 — the frame that
+    // just took its place.
+    setCurrentMediaId(medium.id)
     dispatch({
       kind: 'dialogue/media-reordered',
       dialogueId: dialogue.id,
@@ -544,48 +567,49 @@ export function DialoguePanel({
         <section className="dialogue-media">
           <h3 className="micro-label">Media</h3>
 
-          {/* An ordered list because the order is the content: the first entry is what the pin
-              wears. Position is moved one step at a time rather than dragged — a drag inside a
-              panel that is itself a drop target for files would have to fight it for the gesture. */}
-          {dialogue.media.length > 0 && (
-            <ol className="dialogue-media__list">
-              {dialogue.media.map((medium, index) => (
-                <li key={medium.id} className="dialogue-media__item">
-                  <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
-                  <p className="dialogue-media__position">
-                    {index === 0 ? 'First — the pin shows this one' : `Picture ${index + 1}`}
-                  </p>
-                  <div className="dialogue-media__controls">
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={index === 0}
-                      onClick={() => moveMedium(medium, index - 1)}
-                    >
-                      Move up
-                    </button>
-                    <button
-                      type="button"
-                      className="button"
-                      disabled={index === dialogue.media.length - 1}
-                      onClick={() => moveMedium(medium, index + 1)}
-                    >
-                      Move down
-                    </button>
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={() => void removeMedium(medium)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
+          {/* One frame at a time, paged — five stamps in a column push the form that produced
+            them off screen. The reorder and remove controls sit under the gallery and act on
+            whatever it is showing, which is why the selection lives here and not in it. */}
+        {currentMedium !== null && (
+          <>
+            <MediaGallery
+              media={dialogue.media}
+              label={dialogue.npcName || 'Dialogue media'}
+              selectedId={currentMediaId}
+              onSelect={setCurrentMediaId}
+            />
+            {currentIndex === 0 && (
+              <p className="dialogue-media__first">First — the pin shows this one</p>
+            )}
+            <div className="dialogue-media__controls">
+              <button
+                type="button"
+                className="button"
+                disabled={currentIndex === 0}
+                onClick={() => moveMedium(currentMedium, currentIndex - 1)}
+              >
+                Move earlier
+              </button>
+              <button
+                type="button"
+                className="button"
+                disabled={currentIndex === dialogue.media.length - 1}
+                onClick={() => moveMedium(currentMedium, currentIndex + 1)}
+              >
+                Move later
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => void removeMedium(currentMedium, currentIndex)}
+              >
+                Remove
+              </button>
+            </div>
+          </>
+        )}
 
-          <div className="dialogue-media__actions">
+        <div className="dialogue-media__actions">
             {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
                 cannot be restyled, and a button would need a ref plus a synthetic click. */}
             <label

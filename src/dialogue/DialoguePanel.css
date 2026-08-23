@@ -162,51 +162,11 @@
   border-top: 1px solid var(--border);
 }
 
-/* An ordered list carrying no marker: the position is stated in words under each picture,
-   and a decimal counter beside a thumbnail reads as part of the picture. */
-.dialogue-media__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  /* Same reason as `.dialogue-panel__content > *`: a flex child compressed below its content overlaps
-     the next one instead of scrolling, which is what several media did to the form. */
-  flex: none;
-}
-
-.dialogue-media__list > * {
-  flex: none;
-}
-
-/* One medium with its position and its controls, stacked — several of these sit under each
-   other, so the group has to stay together rather than flowing into the section's own column. */
-.dialogue-media__item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-/* A rule between entries rather than a card around each: the pictures are the content, and a
-   border per item would box every one of five frames of the same line. */
-.dialogue-media__item + .dialogue-media__item {
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
-
-.dialogue-media__position {
+/* The frame the pin wears, said in words under it. Not muted like the hints below: which
+   picture the canvas shows is a property of the dialogue, not advice about this panel. */
+.dialogue-media__first {
   margin: 0;
   font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
-
-/* The first entry is the one the pin wears, which is worth reading before the picture is
-   scrolled past. */
-.dialogue-media__item:first-child .dialogue-media__position {
-  color: var(--text);
 }
 
 .dialogue-media__controls {

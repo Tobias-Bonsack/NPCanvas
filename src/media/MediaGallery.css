@@ -1,0 +1,61 @@
+/* min-width: 0 so a wide picture cannot push the column it sits in — the panel and the dossier
+   both scroll vertically and neither may ever scroll sideways. */
+.media-gallery {
+  align-self: stretch;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.media-gallery__frame {
+  min-width: 0;
+}
+
+.media-gallery__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Between the two arrows rather than under them: the count is what the arrows move. */
+.media-gallery__count {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+/* The one thing in here that scrolls, and it scrolls *inside itself* — twelve frames of one
+   line must not widen the column. */
+.media-gallery__strip {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.media-gallery__thumb {
+  flex: none;
+  display: block;
+  width: 4rem;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  cursor: pointer;
+}
+
+.media-gallery__thumb:hover {
+  background: var(--surface-3);
+}
+
+/* The frame being shown, marked on the strip rather than only in the counter — the strip is
+   how a reader jumps, so it has to say where they are. */
+.media-gallery__thumb[aria-current='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.media-gallery__thumb-media {
+  display: block;
+}
