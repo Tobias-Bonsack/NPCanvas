@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId } from '../project/ids.ts'
 import type { Dialogue, GameMap, MapId, Point } from '../project/types.ts'
-import { trailVertices } from './trail-path.ts'
+import { trailArrows, trailVertices } from './trail-path.ts'
 
 const HARBOUR = asMapId('harbour')
 const CAVES = asMapId('caves')
@@ -110,5 +110,41 @@ describe('trailVertices', () => {
     const line = dialogue('a', HARBOUR, '2026-08-15T10:00:00.000Z', { x: 10, y: 5 })
 
     expect(trailVertices([scaled], [line])).toEqual([{ id: line.id, point: { x: 120, y: 110 } }])
+  })
+})
+
+describe('trailArrows', () => {
+  function vertex(id: string, x: number, y: number) {
+    return { id: asDialogueId(id), point: { x, y } }
+  }
+
+  it('has one arrow per segment, so one fewer than there are vertices', () => {
+    const arrows = trailArrows([vertex('a', 0, 0), vertex('b', 10, 0), vertex('c', 10, 10)])
+    expect(arrows).toHaveLength(2)
+    expect(arrows[0].point).toEqual({ x: 5, y: 0 })
+    expect(arrows[1].point).toEqual({ x: 10, y: 5 })
+  })
+
+  it('is empty for fewer than two vertices', () => {
+    expect(trailArrows([])).toEqual([])
+    expect(trailArrows([vertex('a', 1, 2)])).toEqual([])
+  })
+
+  it('points along +x at 0 degrees, so a glyph facing right needs no correction', () => {
+    expect(trailArrows([vertex('a', 0, 0), vertex('b', 10, 0)])[0].angle).toBe(0)
+  })
+
+  it('points down the screen at +90, because canvas y grows downwards', () => {
+    expect(trailArrows([vertex('a', 0, 0), vertex('b', 0, 10)])[0].angle).toBe(90)
+  })
+
+  it('turns around for a segment running right to left', () => {
+    expect(trailArrows([vertex('a', 10, 0), vertex('b', 0, 0)])[0].angle).toBe(180)
+  })
+
+  it('drops a zero-length segment rather than pointing it arbitrarily right', () => {
+    const arrows = trailArrows([vertex('a', 5, 5), vertex('b', 5, 5), vertex('c', 5, 25)])
+    expect(arrows).toHaveLength(1)
+    expect(arrows[0]).toEqual({ point: { x: 5, y: 15 }, angle: 90 })
   })
 })

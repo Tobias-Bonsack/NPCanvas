@@ -56,3 +56,38 @@ export function trailVertices(
     point: mapLocalToCanvas(map, dialogue.position),
   }))
 }
+
+/**
+ * Where a direction marker goes on each segment, and which way it points: the midpoint in canvas
+ * space, and the bearing in **degrees** — what an SVG `rotate()` consumes, with 0 pointing along
+ * +x, so a glyph drawn facing right needs no correction.
+ *
+ * The midpoint rather than either end, because a mark drawn *at* a pin competes with the pin, and
+ * because a mark between two of them reads as belonging to the segment rather than to one vertex.
+ */
+export type TrailArrow = { point: Point; angle: number }
+
+/**
+ * Below this, in canvas units, a segment has no direction worth drawing. Two lines logged at one
+ * point are the case: `Math.atan2(0, 0)` is `0`, which would silently plant an arrow pointing
+ * right and meaning nothing. Absorbed rather than prevented, the way `polygonCentroid` absorbs a
+ * zero-area polygon.
+ */
+const MIN_SEGMENT = 1e-3
+
+/** One arrow per drawn segment, in the order `vertices` gives — so earliest-first, like it. */
+export function trailArrows(vertices: readonly TrailVertex[]): readonly TrailArrow[] {
+  const arrows: TrailArrow[] = []
+  for (let index = 1; index < vertices.length; index++) {
+    const from = vertices[index - 1].point
+    const to = vertices[index].point
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    if (Math.hypot(dx, dy) < MIN_SEGMENT) continue
+    arrows.push({
+      point: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+      angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+    })
+  }
+  return arrows
+}

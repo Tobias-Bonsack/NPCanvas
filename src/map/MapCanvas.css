@@ -278,6 +278,21 @@
   stroke-linecap: round;
 }
 
+/* One direction marker per segment. vector-effect above leaves the line's *stroke* unscaled but
+   not a *shape*, so the head has to counter-scale explicitly, against the same product everything
+   else in the world element divides by.
+
+   transform-box is view-box — not the fill-box .zone-layer__label needs — because the arrow is
+   placed by the translate inside --arrow-place rather than sitting where it was authored: its
+   path is drawn about the origin so that scale and rotate act about the point it was moved to.
+   Composing the two here rather than in JS is what keeps a zoom free of a per-arrow style write. */
+.trail-layer__arrow {
+  fill: var(--trail);
+  transform-box: view-box;
+  transform-origin: 0 0;
+  transform: var(--arrow-place) scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
+}
+
 /* ---- pins ---- */
 
 /* A zero-size layer: it exists only to give the pins a positioning context that is not

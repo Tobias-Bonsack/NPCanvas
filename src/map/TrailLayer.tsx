@@ -1,9 +1,9 @@
-import type { ReactElement } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 import { memo, useMemo } from 'react'
 import type { Dialogue, DialogueId, GameMap } from '../project/types.ts'
 import { mapsBounds } from './canvas-layout.ts'
-import type { TrailVertex } from './trail-path.ts'
-import { trailVertices } from './trail-path.ts'
+import type { TrailArrow, TrailVertex } from './trail-path.ts'
+import { trailArrows, trailVertices } from './trail-path.ts'
 
 /**
  * The line time draws: one polyline threading every pin from the earliest line heard to the
@@ -43,6 +43,7 @@ export const TrailLayer = memo(function TrailLayer({
     [dialogues, highlighted],
   )
   const vertices = useMemo(() => trailVertices(maps, threaded), [maps, threaded])
+  const arrows = useMemo(() => trailArrows(vertices), [vertices])
   const bounds = useMemo(() => mapsBounds(maps), [maps])
 
   // One vertex is not a line, and a canvas with no maps has no rectangle to lay the svg on.
@@ -67,10 +68,50 @@ export const TrailLayer = memo(function TrailLayer({
           points={pointsAttribute(vertices)}
           vectorEffect="non-scaling-stroke"
         />
+        {/* A bare polyline is symmetric: it shows the pins are in a sequence and nothing about
+            which end of it is the earliest, which is the one claim this feature makes. */}
+        {arrows.map((arrow, index) => (
+          // Keyed by position: an arrow belongs to a segment, and a segment has no identity of
+          // its own beyond where it sits in the chain.
+          <Arrowhead key={index} arrow={arrow} />
+        ))}
       </svg>
     </div>
   )
 })
+
+/**
+ * One direction marker, sitting on its segment's midpoint and pointing the way time runs.
+ *
+ * `translate` and `rotate` come from the geometry; the counter-scale that keeps the head a
+ * constant size on screen is in CSS, against the `--map-zoom` the world element publishes — the
+ * same division `.zone-layer__label` needs, because `vector-effect` leaves a *stroke* unscaled but
+ * not a *shape*. The two must be composed in one declaration, so the transform lands here as a
+ * custom property the stylesheet interpolates rather than as a `transform` of its own.
+ *
+ * Filled rather than stroked, for the reason `QuestFlag` and `ContentGlyph` are: at this size a
+ * stroke lands near a single physical pixel and reads as a smudge.
+ */
+function Arrowhead({ arrow }: { arrow: TrailArrow }): ReactElement {
+  return <path className="trail-layer__arrow" style={arrowStyle(arrow)} d={ARROW_HEAD} />
+}
+
+/**
+ * A triangle drawn about the origin and pointing along +x, which is what makes `trailArrows`'
+ * bearing usable with no correction. In canvas units before the counter-scale, so these numbers
+ * are also its size in screen pixels once it is applied.
+ */
+const ARROW_HEAD = 'M -3.5 -3.5 L 4.5 0 L -3.5 3.5 Z'
+
+/**
+ * The intersection type is how the custom property reaches `style` without an `as` cast —
+ * `mapGroupStyle` does the same for `--map-scale`.
+ */
+function arrowStyle(arrow: TrailArrow): CSSProperties & Record<'--arrow-place', string> {
+  return {
+    '--arrow-place': `translate(${arrow.point.x}px, ${arrow.point.y}px) rotate(${arrow.angle}deg)`,
+  }
+}
 
 /** SVG's own vertex list format: "x,y x,y …" — the same shape `ZoneLayer` writes for a polygon. */
 function pointsAttribute(vertices: readonly TrailVertex[]): string {
