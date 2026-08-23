@@ -178,10 +178,19 @@ describe('matchGlyph', () => {
     expect(matchGlyph(nothing, ALPHABET)).toBe(null)
   })
 
-  it('refuses when two candidates are within one bit of each other', () => {
+  it('refuses when a noisy tile sits between two candidates', () => {
+    const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
+    const noisy = { ...tile, rows: flipBits(D, [[4, 2]]) }
+
+    expect(matchGlyph(noisy, [...ALPHABET, nearlyD])).toBe(null)
+  })
+
+  // The Gen 1 font's own `o` and `c` are one pixel apart; without the exemption neither is ever
+  // readable, and the learner reopens on the tile it was just taught.
+  it('matches a bit-exact tile even with a candidate one bit away', () => {
     const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
-    expect(matchGlyph(tile, [...ALPHABET, nearlyD])).toBe(null)
+    expect(matchGlyph(tile, [...ALPHABET, nearlyD])?.char).toBe('D')
   })
 
   it('does not treat a re-learned bitmap as an ambiguity', () => {

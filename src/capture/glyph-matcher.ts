@@ -215,6 +215,12 @@ export function readTiles(bits: Uint8Array, nativeWidth: number, textRect: Pixel
  * Refused on two counts: nothing close enough, and two candidates so close that the difference
  * between them is within the noise the tolerance exists to absorb. Candidates spelling the same
  * character do not compete — re-learning a tile is a correction, not an ambiguity.
+ *
+ * A bit-exact hit is exempt from the ambiguity test, and must be: the Gen 1 font puts `o` and `c`
+ * one pixel apart, so under the margin alone neither could ever be read — and because the learner
+ * stores the tile's own bitmap, the very tile just named would come back unknown, reopening the
+ * learner forever. Nothing is lost by the exemption: `mergeGlyphs` replaces on identical bits, so
+ * at most one glyph can sit at distance zero.
  */
 export function matchGlyph(
   tile: TileMask,
@@ -238,6 +244,7 @@ export function matchGlyph(
   }
 
   if (best === null || bestDistance > maxDistance) return null
+  if (bestDistance === 0) return best
   for (const candidate of distances) {
     if (candidate.glyph.char === best.char) continue
     if (candidate.distance - bestDistance <= AMBIGUITY_MARGIN) return null
