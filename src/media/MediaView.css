@@ -9,6 +9,14 @@
   background: var(--surface-0);
 }
 
+/* `width` rather than `max-width`: a ceiling only ever shrinks a picture, so a capture narrower
+   than the panel stayed at its own size however far the panel was dragged open. The intrinsic
+   width/height attributes above are what keep the proportions — the height follows. */
+.media-view__image--fill,
+.media-view__video--fill {
+  width: 100%;
+}
+
 .media-view__text {
   margin: 0;
   white-space: pre-wrap;

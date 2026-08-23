@@ -54,7 +54,9 @@ export function MediaGallery({
   return (
     <div className="media-gallery" onKeyDown={onKeyDown}>
       <div className="media-gallery__frame">
-        <MediaView media={current} label={label} />
+        {/* The frame fills the width the panel gives it; the strip below stays at the default,
+            or a thumbnail would be blown up to the column's width. */}
+        <MediaView media={current} label={label} fit="fill" />
       </div>
 
       {paged && (
