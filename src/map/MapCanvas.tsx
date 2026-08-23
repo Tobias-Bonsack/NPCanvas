@@ -406,9 +406,10 @@ export function MapCanvas({
       // No gesture guard: a zoom or a pan during a drag or a zone draw is legitimate, and every
       // gesture reads `viewportRef` rather than a snapshot precisely so this lands and stays.
       //
-      // Which gesture does which is `wheel-zoom.ts`'s doc comment: a trackpad pinch arrives
-      // with `ctrlKey` set, a two-finger scroll without it.
-      if (event.ctrlKey) {
+      // Which gesture does which is `wheel-zoom.ts`'s doc comment: the wheel zooms, whether it
+      // arrives as a mouse notch or as a trackpad pinch (`ctrlKey`), and `shiftKey` is the
+      // scroll-to-pan a trackpad keeps.
+      if (!event.shiftKey) {
         const anchor = anchorOf(event, containerOrigin.current)
         applyViewport(zoomAt(viewportRef.current, anchor, wheelZoomFactor(event)))
         return

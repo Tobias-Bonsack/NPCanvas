@@ -9,10 +9,9 @@ import type { Point } from '../project/types.ts'
  *
  * **The convention, which is a platform fact and not derivable from the code:** Chromium
  * reports a trackpad pinch as a wheel event with `ctrlKey` set, and a two-finger scroll as a
- * plain one. So `ctrlKey` zooms and a plain scroll pans — the same split Figma and every other
- * canvas tool uses. A mouse wheel is a plain scroll and therefore pans too; ctrl and the wheel
- * is how a mouse zooms. The previous mapping had it backwards: it zoomed on a plain scroll,
- * zoomed harder on a pinch, and left the trackpad with no way to pan at all.
+ * plain one. Both zoom here, because the wheel is this canvas's zoom control: a game map is
+ * looked at, not scrolled through, and the plain notch is the gesture a mouse actually has.
+ * Panning is the drag, and `shiftKey` keeps a scroll-to-pan for a trackpad that wants one.
  */
 export type WheelInput = {
   deltaX: number
@@ -55,19 +54,27 @@ function pixelsPerUnit(deltaMode: number): number {
 }
 
 /**
- * How much a pinch changes the scale. Exponential, so a notch zooms by the same *ratio* at
- * every scale — linear steps crawl when zoomed out and jump when zoomed in.
+ * How much a wheel notch or a pinch changes the scale. Exponential, so a notch zooms by the
+ * same *ratio* at every scale — linear steps crawl when zoomed out and jump when zoomed in.
  *
- * Deliberately defined for a plain scroll too, and deliberately not called for one: a caller
- * that hands this a non-pinch event gets a well-defined answer rather than a special case, and
- * the decision of which gesture zooms is made once, in the caller, where it is readable.
+ * Deliberately independent of the modifier keys: which gesture zooms is decided once, in the
+ * caller, where it is readable — this answers the same for a pinch and for a mouse notch.
  */
 export function wheelZoomFactor(event: WheelInput): number {
-  return Math.exp(-normalizeDelta(event).y * ZOOM_PER_PIXEL)
+  return Math.exp(-clampToNotch(normalizeDelta(event).y) * ZOOM_PER_PIXEL)
 }
 
 /**
- * Chromium reports a pinch as a wheel event with much smaller deltas than a mouse notch, which
- * is what this coefficient is sized against.
+ * The two gestures that zoom report wildly different magnitudes for the same intent: Chromium
+ * sends a trackpad pinch as a handful of pixels per event, and one mouse notch as ~100 (a full
+ * page, 400, on `DOM_DELTA_PAGE`). Feeding both through the same exponent unclamped makes a
+ * single notch nearly triple the scale. Clamping the delta first is what lets one coefficient
+ * serve both: a pinch stays below the cap and keeps its fine grain, a notch saturates at a
+ * comfortable step, and the function stays symmetric so out-and-back returns to where it was.
  */
+function clampToNotch(deltaY: number): number {
+  return Math.max(-MAX_ZOOM_PIXELS, Math.min(MAX_ZOOM_PIXELS, deltaY))
+}
+
+const MAX_ZOOM_PIXELS = 20
 const ZOOM_PER_PIXEL = 0.01

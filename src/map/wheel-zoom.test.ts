@@ -68,9 +68,21 @@ describe('wheelZoomFactor', () => {
     )
   })
 
-  it('reads a page-mode pinch through the same conversion', () => {
-    expect(wheelZoomFactor(wheel({ deltaY: -1, deltaMode: 2, ctrlKey: true }))).toBe(
-      wheelZoomFactor(wheel({ deltaY: -400, deltaMode: 0, ctrlKey: true })),
+  it('saturates a mouse notch, so one notch is a step and not a leap', () => {
+    const notch = wheelZoomFactor(wheel({ deltaY: -100 }))
+    expect(notch).toBeGreaterThan(1)
+    expect(notch).toBeLessThan(1.3)
+  })
+
+  it('caps a page-mode scroll at the same step a mouse notch gets', () => {
+    expect(wheelZoomFactor(wheel({ deltaY: -1, deltaMode: 2 }))).toBe(
+      wheelZoomFactor(wheel({ deltaY: -100, deltaMode: 0 })),
+    )
+  })
+
+  it('leaves a pinch below the cap, where its fine grain still reads', () => {
+    expect(wheelZoomFactor(wheel({ deltaY: -4, ctrlKey: true }))).toBeLessThan(
+      wheelZoomFactor(wheel({ deltaY: -8, ctrlKey: true })),
     )
   })
 })
