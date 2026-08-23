@@ -700,6 +700,13 @@
   font-size: var(--text-2xs);
 }
 
+/* The gallery is a flex child of the line's column, so it takes the full width and the frame
+   inside it fills that — while the thumbnail strip scrolls inside itself, which is what keeps
+   a line of twelve frames from widening the dossier column. */
+.npc-line .media-gallery {
+  min-width: 0;
+}
+
 /* pre-wrap: a logged line keeps the breaks it was typed with — a dialogue box's own line
    breaks are part of what was seen. */
 .npc-line__text {

@@ -2,12 +2,20 @@ import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { formatRoute } from '../app/route.ts'
 import { formatSpokenAt, resolveZones, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
-import { MediaView } from '../media/MediaView.tsx'
+import { MediaGallery } from '../media/MediaGallery.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import { dispatch } from '../project/store.ts'
-import type { Dialogue, DialogueId, Quest, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
+import type {
+  Dialogue,
+  DialogueId,
+  MediaId,
+  Quest,
+  RelevanceTag,
+  Zone,
+  ZoneId,
+} from '../project/types.ts'
 import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
 import { npcKey, npcLabel } from './filters.ts'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
@@ -244,6 +252,9 @@ function NpcLine({
   label: string
   zones: readonly Zone[]
 }): ReactElement {
+  // The dossier is a reading list, so each line pages its own pictures independently — one
+  // shared current frame across a dozen lines would move all of them at once.
+  const [currentMediaId, setCurrentMediaId] = useState<MediaId | null>(null)
   const said = dialogue.text.trim()
   return (
     <article className="npc-line">
@@ -274,9 +285,15 @@ function NpcLine({
         </a>
       </header>
       {said !== '' && <p className="npc-line__text">{dialogue.text}</p>}
-      {dialogue.media.map((medium) => (
-        <MediaView key={medium.id} media={medium} label={label} />
-      ))}
+      {/* No reorder or remove here, and nothing dispatched: editing a line's media from a place
+          that shows neither its pin nor its map is how a picture gets removed from the wrong
+          dialogue. "Show on canvas" above is the way to the panel that can edit it. */}
+      <MediaGallery
+        media={dialogue.media}
+        label={label}
+        selectedId={currentMediaId}
+        onSelect={setCurrentMediaId}
+      />
       {said === '' && dialogue.media.length === 0 && (
         <p className="npc-line__empty">No text yet</p>
       )}
