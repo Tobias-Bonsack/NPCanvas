@@ -1,7 +1,7 @@
 # NPCanvas
 
 React + TypeScript (Vite), deployed to GitHub Pages:
-<https://tobias-bonsack.github.io/NPCanvas/>
+<https://tonsias.github.io/NPCanvas/>
 
 ```bash
 npm install
