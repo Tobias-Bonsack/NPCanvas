@@ -268,19 +268,32 @@
   overflow: visible;
 }
 
-/* Divided by the same product everything else in the world element counter-scales by, NOT left to
-   vector-effect: `non-scaling-stroke` normalises against the svg's own viewport, and the canvas
-   zoom is a CSS transform on an HTML ancestor *outside* it, so the attribute does not see it.
-   Measured in Chromium on an otherwise identical probe path: with the attribute the stroke
-   rendered 0.5px at zoom 0.25, 8.5px at zoom 4 and 16.5px at zoom 8; with this calc it held ~2px
-   across all four. A fat line at high zoom also swallowed the direction arrows, which are counter-
-   scaled and therefore stayed 10px. Round joins because the line turns hard at every pin. */
+/* Both widths are divided by the same product everything else in the world element counter-scales
+   by, NOT left to vector-effect: `non-scaling-stroke` normalises against the svg's own viewport,
+   and the canvas zoom is a CSS transform on an HTML ancestor *outside* it, so the attribute does
+   not see it. Measured in Chromium on an otherwise identical probe path carrying a 2px stroke:
+   with the attribute it rendered 0.5px at zoom 0.25, 8.5px at zoom 4 and 16.5px at zoom 8; with
+   this calc it held ~2px across all four. A stroke that grew with the zoom also swallowed the
+   direction arrows, which are counter-scaled and therefore stayed put.
+
+   Round joins and caps because the line turns hard at every pin it passes through. */
+.trail-layer__halo,
 .trail-layer__path {
   fill: none;
-  stroke: var(--trail);
-  stroke-width: calc(2px / (var(--map-zoom) * var(--map-scale)));
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+
+/* The line's outline, and the reason it is a second element: a stroke has no fill, so paint-order
+   cannot halo it the way it haloes the arrowhead below. One pixel proud on each side. */
+.trail-layer__halo {
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: calc(5px / (var(--map-zoom) * var(--map-scale)));
+}
+
+.trail-layer__path {
+  stroke: var(--trail);
+  stroke-width: calc(3px / (var(--map-zoom) * var(--map-scale)));
 }
 
 /* One direction marker per segment. vector-effect above leaves the line's *stroke* unscaled but
@@ -302,7 +315,7 @@
      needs no division of its own. */
   paint-order: stroke;
   stroke: rgba(0, 0, 0, 0.65);
-  stroke-width: 1.5;
+  stroke-width: 2;
   stroke-linejoin: round;
 }
 

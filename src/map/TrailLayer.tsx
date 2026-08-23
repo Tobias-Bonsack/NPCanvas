@@ -77,6 +77,9 @@ export const TrailLayer = memo(function TrailLayer({
   // One vertex is not a line, and a canvas with no maps has no rectangle to lay the svg on.
   if (drawn.length < 2 || bounds === null) return null
 
+  // Built once and handed to both passes, so the halo and the line can never disagree.
+  const points = pointsAttribute(drawn)
+
   return (
     <div className="trail-layer">
       {/* Decorative: the order it draws is already readable from each dialogue's own date in the
@@ -89,11 +92,16 @@ export const TrailLayer = memo(function TrailLayer({
         viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
         aria-hidden="true"
       >
-        {/* No `vector-effect`: it normalises against this svg's own viewport, and the canvas zoom
-            is a CSS transform on an HTML ancestor outside it, so the attribute never sees it. The
-            constant on-screen width comes from a counter-scaled `stroke-width` in the stylesheet
-            instead — see `.trail-layer__path`, which records the measurement. */}
-        <polyline className="trail-layer__path" points={pointsAttribute(drawn)} />
+        {/* Two passes over one point list: a wider dark stroke underneath, then the coloured one
+            on top. A stroke has no fill, so `paint-order` cannot give a line the halo it gives the
+            arrowhead — drawing it twice is what an outlined stroke *is*.
+
+            No `vector-effect` on either: it normalises against this svg's own viewport, and the
+            canvas zoom is a CSS transform on an HTML ancestor outside it, so the attribute never
+            sees it. The constant on-screen width comes from a counter-scaled `stroke-width` in the
+            stylesheet instead — see `.trail-layer__path`, which records the measurement. */}
+        <polyline className="trail-layer__halo" points={points} />
+        <polyline className="trail-layer__path" points={points} />
         {/* A bare polyline is symmetric: it shows the pins are in a sequence and nothing about
             which end of it is the earliest, which is the one claim this feature makes. */}
         {arrows.map((arrow, index) => (
@@ -127,7 +135,7 @@ function Arrowhead({ arrow }: { arrow: TrailArrow }): ReactElement {
  * bearing usable with no correction. In canvas units before the counter-scale, so these numbers
  * are also its size in screen pixels once it is applied.
  */
-const ARROW_HEAD = 'M -3.5 -3.5 L 4.5 0 L -3.5 3.5 Z'
+const ARROW_HEAD = 'M -6 -6 L 9 0 L -6 6 Z'
 
 /**
  * The intersection type is how the custom property reaches `style` without an `as` cast —
