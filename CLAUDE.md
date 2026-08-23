@@ -190,7 +190,12 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   inherits this constraint. `MapCanvas` renders such layers via `children`, inside the world element.
   Transient state two layers must share — the live position of a map being dragged — belongs to
   `MapScreen`, which composes them: it feeds the same previewed `maps` array to both, and returns
-  the document's own array identically when no drag is in flight so the memo still holds.
+  the document's own array identically when no drag is in flight so the memo still holds. A **pin**
+  drag lifts its preview the same way (`PinDragPreview`, `onPinDrag`), but only `TrailLayer` reads
+  it. `PinLayer` deliberately keeps receiving `project.dialogues`: it already renders the dragged pin
+  from its own state, and a preview-patched array would be a fresh one every frame, rebuilding
+  `groupByMap` and reconciling every pin. `TrailLayer` substitutes the vertex *after* `trailVertices`
+  has sorted, so a `pointermove` never re-sorts the document.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
   state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>` and
   `?focus=<mapId>`; the pre-M3.5 `#/map/<id>` still parses, dropping the id, so an old link lands

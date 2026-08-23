@@ -1,7 +1,8 @@
 import type { CSSProperties, ReactElement } from 'react'
 import { memo, useMemo } from 'react'
 import type { Dialogue, DialogueId, GameMap } from '../project/types.ts'
-import { mapsBounds } from './canvas-layout.ts'
+import type { PinDragPreview } from './PinLayer.tsx'
+import { mapLocalToCanvas, mapsBounds } from './canvas-layout.ts'
 import type { TrailArrow, TrailVertex } from './trail-path.ts'
 import { trailArrows, trailVertices } from './trail-path.ts'
 
@@ -24,6 +25,7 @@ export const TrailLayer = memo(function TrailLayer({
   maps,
   dialogues,
   highlighted,
+  pinDrag,
 }: {
   /** Already carrying any in-progress map drag preview — see `MapScreen`. */
   maps: readonly GameMap[]
@@ -34,6 +36,13 @@ export const TrailLayer = memo(function TrailLayer({
    * `null` means no filter is active — which must not be read as a filter that matched nothing.
    */
   highlighted: ReadonlySet<DialogueId> | null
+  /**
+   * The pin currently under the pointer, in its map's map-local space, or `null` when none is —
+   * see `PinLayer`'s `onPinDrag`. Without it the line would stay on the position `data.json`
+   * still holds and snap when the drag lands, because `dialogue/moved` is dispatched once, on
+   * pointerup.
+   */
+  pinDrag: PinDragPreview | null
 }): ReactElement | null {
   const threaded = useMemo(
     () =>
@@ -43,11 +52,30 @@ export const TrailLayer = memo(function TrailLayer({
     [dialogues, highlighted],
   )
   const vertices = useMemo(() => trailVertices(maps, threaded), [maps, threaded])
-  const arrows = useMemo(() => trailArrows(vertices), [vertices])
+
+  // Substituted *after* the ordering, never before it. Handing `trailVertices` a preview-patched
+  // dialogue array instead would re-sort every dialogue in the project on every `pointermove`, to
+  // move one point — so the sort above stays keyed on the document and this runs per frame.
+  //
+  // Returns `vertices` by reference whenever nothing matches, which is what keeps the arrows below
+  // from recomputing for a drag the trail does not draw: a pin filtered out by `highlighted`, or
+  // one whose line has no parsable time, is simply not in this chain.
+  const drawn = useMemo(() => {
+    if (pinDrag === null) return vertices
+    if (!vertices.some((vertex) => vertex.id === pinDrag.id)) return vertices
+    const dialogue = dialogues.find((candidate) => candidate.id === pinDrag.id)
+    if (dialogue === undefined) return vertices
+    const map = maps.find((candidate) => candidate.id === dialogue.mapId)
+    if (map === undefined) return vertices
+    const point = mapLocalToCanvas(map, pinDrag.position)
+    return vertices.map((vertex) => (vertex.id === pinDrag.id ? { id: vertex.id, point } : vertex))
+  }, [vertices, dialogues, maps, pinDrag])
+
+  const arrows = useMemo(() => trailArrows(drawn), [drawn])
   const bounds = useMemo(() => mapsBounds(maps), [maps])
 
   // One vertex is not a line, and a canvas with no maps has no rectangle to lay the svg on.
-  if (vertices.length < 2 || bounds === null) return null
+  if (drawn.length < 2 || bounds === null) return null
 
   return (
     <div className="trail-layer">
@@ -65,7 +93,7 @@ export const TrailLayer = memo(function TrailLayer({
             a single line of JS — the stroke is simply not scaled by the ancestor transforms. */}
         <polyline
           className="trail-layer__path"
-          points={pointsAttribute(vertices)}
+          points={pointsAttribute(drawn)}
           vectorEffect="non-scaling-stroke"
         />
         {/* A bare polyline is symmetric: it shows the pins are in a sequence and nothing about

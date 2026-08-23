@@ -41,8 +41,17 @@ type PinHandlers = {
   onConfirmDelete: (dialogue: Dialogue) => void
 }
 
-/** The live position of the pin being dragged, or `null` when none is. */
-type PinDrag = { id: DialogueId; position: Point }
+/**
+ * A pin being dragged, in its own map's map-local space — the same space `Dialogue.position` is
+ * stored in. A *preview* for the reason `MapDragPreview` and `ZoneDragPreview` are: `dialogue/moved`
+ * is dispatched once, on pointerup, so autosave sees one document change per drag rather than one
+ * per frame.
+ *
+ * Exported because it leaves the layer now: `MapScreen` holds it so `TrailLayer` can follow the
+ * pin mid-gesture. This layer keeps rendering the dragged pin from its own state regardless — see
+ * `dragged` below.
+ */
+export type PinDragPreview = { id: DialogueId; position: Point }
 
 /** What a pin drag carries; `DragGesture` owns the pointer bookkeeping. */
 type PinDragGesture = {
@@ -78,6 +87,7 @@ export const PinLayer = memo(function PinLayer({
   visibleRect,
   suppressFocusId,
   onPinSelected,
+  onPinDrag,
 }: {
   maps: readonly GameMap[]
   dialogues: Dialogue[]
@@ -124,19 +134,32 @@ export const PinLayer = memo(function PinLayer({
    * stay out of `onPointerUp`'s dependency list — see the handlers below.
    */
   onPinSelected: (dialogueId: DialogueId) => void
+  /**
+   * The live position of the pin being dragged, `null` once the gesture ends however it ends —
+   * the same contract `onMapDrag` and `onZoneDrag` follow. `MapScreen` holds it so `TrailLayer`
+   * can follow the pin instead of waiting for the `dialogue/moved` on pointerup.
+   *
+   * This layer deliberately does **not** consume the value back: it renders the dragged pin from
+   * its own `dragged` state, and a preview-patched `dialogues` array would be a fresh array every
+   * frame, rebuilding `groupByMap` and reconciling every pin. Fired through a ref, like
+   * `onPinSelected`, so the handlers' dependency lists stay empty.
+   */
+  onPinDrag: (preview: PinDragPreview | null) => void
 }): ReactElement {
   // Only the pin being dragged re-renders from state; the drag bookkeeping itself stays in
   // a ref so a sub-threshold wobble costs no render at all.
   const drag = useRef<DragGesture<PinDragGesture> | null>(null)
-  const [dragged, setDragged] = useState<PinDrag | null>(null)
+  const [dragged, setDragged] = useState<PinDragPreview | null>(null)
   const [pendingDelete, setPendingDelete] = useState<DialogueId | null>(null)
 
   // A ref rather than a dependency: `onPointerUp` is a stable `useCallback` with an empty
   // dependency list, which is what keeps `memo(Pin)` from reconciling on every render of this
   // layer — see the comment above `handlers`.
   const onPinSelectedRef = useRef(onPinSelected)
+  const onPinDragRef = useRef(onPinDrag)
   useEffect(() => {
     onPinSelectedRef.current = onPinSelected
+    onPinDragRef.current = onPinDrag
   })
 
   // A confirmation belongs to the pin that was selected when it opened; leaving that pin
@@ -184,6 +207,7 @@ export const PinLayer = memo(function PinLayer({
     move.data.position = position
     move.data.client = { x: event.clientX, y: event.clientY }
     setDragged({ id: move.data.id, position })
+    onPinDragRef.current({ id: move.data.id, position })
   }, [])
 
   const onPointerUp = useCallback(function onPointerUp(
@@ -196,6 +220,9 @@ export const PinLayer = memo(function PinLayer({
     if (end === null) return
     event.stopPropagation()
     setDragged(null)
+    // Before the dispatch below, so nothing ever sees the preview and the committed document at
+    // the same time.
+    onPinDragRef.current(null)
 
     // A slightly shaky click still selects — that is the whole point of the threshold.
     if (!end.moved) {
@@ -214,7 +241,9 @@ export const PinLayer = memo(function PinLayer({
   const onPointerCancel = useCallback(function onPointerCancel(
     event: ReactPointerEvent<HTMLButtonElement>,
   ): void {
-    if (cancelDrag(drag, event)) setDragged(null)
+    if (!cancelDrag(drag, event)) return
+    setDragged(null)
+    onPinDragRef.current(null)
   }, [])
 
   // The pin comes back as an argument rather than being closed over, which is the whole reason
@@ -304,7 +333,7 @@ const PinMapGroup = memo(function PinMapGroup({
   questsByDialogue: ReadonlyMap<DialogueId, Quest[]>
   relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   visibleRect: Rect | null
-  dragged: PinDrag | null
+  dragged: PinDragPreview | null
   pendingDelete: DialogueId | null
   suppressFocusId: DialogueId | null
   handlers: PinHandlers

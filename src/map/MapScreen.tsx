@@ -22,6 +22,7 @@ import { MapCanvas } from './MapCanvas.tsx'
 import type { Viewport } from './viewport.ts'
 import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
+import type { PinDragPreview } from './PinLayer.tsx'
 import { PinLayer } from './PinLayer.tsx'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { TrailLayer } from './TrailLayer.tsx'
@@ -117,6 +118,10 @@ export function MapScreen({
   // derived from the zones — labels, counts — must see the live polygon, and none of it
   // belongs in a document that autosaves.
   const [zoneDrag, setZoneDrag] = useState<ZoneDragPreview | null>(null)
+  // And a pin drag, held here for a narrower reason: only `TrailLayer` reads it. `PinLayer` keeps
+  // rendering the dragged pin from its own state and keeps receiving `project.dialogues`, because
+  // a preview-patched array would be new every frame and rebuild its per-map buckets.
+  const [pinDrag, setPinDrag] = useState<PinDragPreview | null>(null)
   // The culling input for the pin layer. It lives here rather than in `MapCanvas` because
   // both are children of this screen, and it changes only when the view settles — `setState`
   // is passed straight down, so the callback identity is stable for MapCanvas's effect.
@@ -341,6 +346,7 @@ export function MapScreen({
                 maps={placedMaps}
                 dialogues={project.dialogues}
                 highlighted={highlighted}
+                pinDrag={pinDrag}
               />
             )}
             <PinLayer
@@ -353,6 +359,7 @@ export function MapScreen({
               visibleRect={visibleRect}
               suppressFocusId={autoFocusDialogueId}
               onPinSelected={onPinSelected}
+              onPinDrag={setPinDrag}
             />
           </MapCanvas>
         </div>
