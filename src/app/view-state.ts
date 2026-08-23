@@ -20,6 +20,8 @@ export type CanvasViewState = {
   questFilter: boolean
   /** `null` until the canvas has fitted itself once — see `MapCanvas`'s `initialViewport`. */
   viewport: Viewport | null
+  /** `null` until the panel's resize handle is dragged once — the width the stylesheet gives it. */
+  panelWidth: number | null
 }
 
 export type InsightsViewState = {
@@ -35,7 +37,7 @@ export type QuestsViewState = {
 }
 
 export const INITIAL_VIEW_STATE: ViewState = {
-  canvas: { tool: { kind: 'inspect' }, questFilter: false, viewport: null },
+  canvas: { tool: { kind: 'inspect' }, questFilter: false, viewport: null, panelWidth: null },
   insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null },
   quests: { mode: { kind: 'idle' } },
 }

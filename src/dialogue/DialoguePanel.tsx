@@ -1,4 +1,10 @@
-import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
+import type {
+  CSSProperties,
+  DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+} from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useActiveCaptureProfile } from '../capture/active-profile.ts'
 import { CaptureBar } from '../capture/CaptureBar.tsx'
@@ -15,6 +21,8 @@ import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
 import { DIALOGUE_MEDIA_ACCEPT, importDialogueMedia } from '../media/import-media.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { MediaView } from '../media/MediaView.tsx'
+import type { DragGesture } from '../map/drag-gesture.ts'
+import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
@@ -30,6 +38,7 @@ import type {
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { DialogueForm } from './DialogueForm.tsx'
+import { MIN_CANVAS_WIDTH, MIN_PANEL_WIDTH, clampPanelWidth } from './panel-width.ts'
 import './DialoguePanel.css'
 
 /**
@@ -64,6 +73,17 @@ type CaptureState =
   | { kind: 'done'; message: string }
   | { kind: 'failed'; message: string }
 
+/**
+ * What a resize gesture snapshots at pointerdown: the width the panel actually had — which may
+ * have come from the stylesheet rather than from a previous drag — and the width the panel and
+ * the canvas share. Both are re-measured per gesture, because the window can be resized between
+ * two of them.
+ */
+type PanelResizeData = { startWidth: number; availableWidth: number }
+
+/** One press of an arrow key on the handle, in CSS pixels. */
+const PANEL_WIDTH_STEP = 32
+
 /** The in-page shortcut, and the words for it — the emulator has the keyboard the rest of the time. */
 const CAPTURE_KEY = 'Enter'
 const CAPTURE_SHORTCUT = 'Ctrl+Enter'
@@ -83,6 +103,9 @@ export function DialoguePanel({
   autoFocusNpc,
   onAutoFocusConsumed,
   openedFromPin,
+  width,
+  onWidthChange,
+  measureAvailableWidth,
 }: {
   project: ProjectFile
   dialogue: Dialogue
@@ -106,6 +129,11 @@ export function DialoguePanel({
    * that stays selected, but a *fresh* open only ever happens once per mount.
    */
   openedFromPin: boolean
+  /** The dragged width in CSS pixels, or `null` for whatever the stylesheet gives — see `CanvasViewState`. */
+  width: number | null
+  onWidthChange: (width: number) => void
+  /** The width the panel and the canvas share, measured now — never a number cached at mount. */
+  measureAvailableWidth: () => number
 }): ReactElement {
   const [importState, setImportState] = useState<ImportState>({ kind: 'idle' })
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
@@ -117,6 +145,108 @@ export function DialoguePanel({
   // textarea has to push the draft down first, or it appends to a line the user has moved past.
   const flushDraft = useRef<(() => void) | null>(null)
 
+  // The resize gesture's own bookkeeping lives in a ref, exactly as every other drag in this
+  // repo does; only the flag the handle and the Escape listener read is state, so a pointermove
+  // costs one render of this panel and nothing else.
+  const resizeRef = useRef<DragGesture<PanelResizeData> | null>(null)
+  const [resizing, setResizing] = useState(false)
+
+  // What the handle announces. Measured rather than assumed, because the panel's width may come
+  // from the stylesheet, from one of its two media queries, or from a drag, and the maximum
+  // moves whenever the window does. Deliberately *not* what the clamp reads — a gesture measures
+  // for itself at pointerdown, since a number cached here would clamp against a stale window.
+  const [band, setBand] = useState<{ width: number; max: number } | null>(null)
+  const measureBand = useRef<() => void>(() => {})
+  // No dependency list: every render is a chance the panel changed width, and returning the
+  // previous object when nothing moved is what stops the setState from looping.
+  useEffect(() => {
+    const measure = (): void => {
+      const aside = asideRef.current
+      if (aside === null) return
+      const measured = aside.getBoundingClientRect().width
+      const max = Math.max(MIN_PANEL_WIDTH, measureAvailableWidth() - MIN_CANVAS_WIDTH)
+      setBand((prev) =>
+        prev !== null && prev.width === measured && prev.max === max
+          ? prev
+          : { width: measured, max },
+      )
+    }
+    measureBand.current = measure
+    measure()
+  })
+
+  // A window resize moves both ends of the band without rendering anything on its own.
+  useEffect(() => {
+    const onResize = (): void => measureBand.current()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  function beginResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) return
+    const startWidth = asideRef.current?.getBoundingClientRect().width ?? MIN_PANEL_WIDTH
+    beginDrag(resizeRef, event, { startWidth, availableWidth: measureAvailableWidth() })
+  }
+
+  // The handle is on the *left* edge, so travel to the left widens the panel — hence `-dx`.
+  function moveResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    const move = moveDrag(resizeRef, event)
+    if (move === null) return
+    if (move.started) setResizing(true)
+    onWidthChange(clampPanelWidth(move.data.startWidth - move.dx, move.data.availableWidth))
+  }
+
+  function endResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) return
+    if (commitDrag(resizeRef, event) === null) return
+    setResizing(false)
+  }
+
+  /**
+   * The platform withdrew the gesture, so the width goes back to the one the press started
+   * from — a cancel is not a shorter pointerup. Escape mid-drag is the same terminal, and the
+   * effect below is where it lands: there is no pointer event for a key press.
+   */
+  function cancelResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = resizeRef.current
+    if (!cancelDrag(resizeRef, event)) return
+    setResizing(false)
+    if (gesture !== null) restoreWidth(gesture.data)
+  }
+
+  function restoreWidth(data: PanelResizeData): void {
+    onWidthChange(clampPanelWidth(data.startWidth, data.availableWidth))
+  }
+
+  function stepResize(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    // The separator moves the way the arrow points; the panel is to its right, so left is wider.
+    const step =
+      event.key === 'ArrowLeft'
+        ? PANEL_WIDTH_STEP
+        : event.key === 'ArrowRight'
+          ? -PANEL_WIDTH_STEP
+          : null
+    if (step === null) return
+    event.preventDefault()
+    const current = asideRef.current?.getBoundingClientRect().width ?? MIN_PANEL_WIDTH
+    onWidthChange(clampPanelWidth(current + step, measureAvailableWidth()))
+  }
+
+  useEffect(() => {
+    if (!resizing) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const gesture = resizeRef.current
+      resizeRef.current = null
+      setResizing(false)
+      if (gesture !== null) {
+        onWidthChange(clampPanelWidth(gesture.data.startWidth, gesture.data.availableWidth))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [resizing, onWidthChange])
+
   const source = useCaptureSource()
   const profile = useActiveCaptureProfile(project.captureProfiles)
   const blocker = captureBlocker(source, profile)
@@ -124,14 +254,15 @@ export function DialoguePanel({
 
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
   // Escape aimed at "close this" would otherwise have to be pressed inside the panel first.
-  // Stood down while the learner is up, so one Escape does not both cancel a capture in flight
-  // and close the panel that was going to report what it did. Typing is exempt too — a text
+  // Stood down while the learner is up, and while a resize is in flight, so one Escape does not
+  // both abandon a gesture and close the panel that was going to report what it did — the
+  // resize's own listener above is the one that must see it. Typing is exempt too — a text
   // field never loses what is being typed into it just because Escape was the key pressed —
   // and an open alertdialog or the quest picker claims the key before it can bubble this far;
   // see `useAlertDialogFocus` and `DialogueQuestLinks`'s picker.
   const learning = captureState.kind === 'learning'
   useEffect(() => {
-    if (learning) return
+    if (learning || resizing) return
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       if (isTextFieldFocused()) return
@@ -139,7 +270,7 @@ export function DialoguePanel({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose, learning])
+  }, [onClose, learning, resizing])
 
   // Frozen at their mount-time value, deliberately: this effect only ever asks "how did *this*
   // open happen", never "how does the current render's props describe things now".
@@ -328,6 +459,10 @@ export function DialoguePanel({
       ref={asideRef}
       className="dialogue-panel"
       aria-label="Dialogue"
+      // The custom property, not `width`: the two media queries in DialoguePanel.css redefine
+      // the property, so an untouched panel behaves exactly as it always has and a dragged one
+      // simply outranks all three declarations.
+      style={width === null ? undefined : panelWidthStyle(width)}
       // Only ever a programmatic focus target — the panel's own controls are the tab stops,
       // never the `<aside>` itself when the user is tabbing normally.
       tabIndex={-1}
@@ -347,176 +482,198 @@ export function DialoguePanel({
       }}
       onDrop={onDrop}
     >
-      <header className="dialogue-panel__header">
-        <h2 className="dialogue-panel__title">Dialogue</h2>
-        <button type="button" className="button" onClick={onClose}>
-          Close
-        </button>
-      </header>
-      {/* The map association is not editable — a dialogue belongs to the map it was pinned
-          onto, and moving it between maps would strand its map-local position. */}
-      <p className="dialogue-panel__map">on {map === null ? 'an unknown map' : map.name}</p>
-
-      {/* Not editable, and not stored: where a dialogue happened is decided by where its pin
-          sits, so moving either the pin or the zone changes this line with no write here. */}
-      <p className="dialogue-panel__location">
-        {locations.length === 0 ? (
-          <span className="dialogue-panel__nowhere">Outside any zone</span>
-        ) : (
-          locations.map((zone) => (
-            <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
-              {zone.name}
-            </span>
-          ))
-        )}
-      </p>
-
-      {/* Keyed on the dialogue: switching pins must unmount the form, because unmount is what
-          flushes a half-typed line into the dialogue it was typed for. */}
-      <DialogueForm
-        key={dialogueId}
-        dialogue={dialogue}
-        relevanceTags={project.relevanceTags}
-        npcNames={npcNames}
-        flushRef={flushDraft}
-        autoFocusNpc={autoFocusNpc}
-        onAutoFocusConsumed={onAutoFocusConsumed}
-        previousRelevance={previousRelevance}
+      {/* The seam between the canvas and the panel, and the only thing in here that is not
+          part of the dialogue: absolutely positioned against the `<aside>` rather than laid out
+          in the column below, because the column scrolls and a handle that scrolls away is
+          reachable only at the top of a long panel. */}
+      <div
+        className="dialogue-panel__resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Dialogue panel width"
+        aria-valuenow={Math.round(band?.width ?? MIN_PANEL_WIDTH)}
+        aria-valuemin={MIN_PANEL_WIDTH}
+        aria-valuemax={Math.round(band?.max ?? MIN_PANEL_WIDTH)}
+        tabIndex={0}
+        data-resizing={resizing ? 'true' : undefined}
+        onPointerDown={beginResize}
+        onPointerMove={moveResize}
+        onPointerUp={endResize}
+        onPointerCancel={cancelResize}
+        onKeyDown={stepResize}
       />
-
-      <section className="dialogue-media">
-        <h3 className="micro-label">Media</h3>
-
-        {/* An ordered list because the order is the content: the first entry is what the pin
-            wears. Position is moved one step at a time rather than dragged — a drag inside a
-            panel that is itself a drop target for files would have to fight it for the gesture. */}
-        {dialogue.media.length > 0 && (
-          <ol className="dialogue-media__list">
-            {dialogue.media.map((medium, index) => (
-              <li key={medium.id} className="dialogue-media__item">
-                <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
-                <p className="dialogue-media__position">
-                  {index === 0 ? 'First — the pin shows this one' : `Picture ${index + 1}`}
-                </p>
-                <div className="dialogue-media__controls">
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={index === 0}
-                    onClick={() => moveMedium(medium, index - 1)}
-                  >
-                    Move up
-                  </button>
-                  <button
-                    type="button"
-                    className="button"
-                    disabled={index === dialogue.media.length - 1}
-                    onClick={() => moveMedium(medium, index + 1)}
-                  >
-                    Move down
-                  </button>
-                  <button
-                    type="button"
-                    className="button"
-                    onClick={() => void removeMedium(medium)}
-                  >
-                    Remove
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        <div className="dialogue-media__actions">
-          {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
-              cannot be restyled, and a button would need a ref plus a synthetic click. */}
-          <label
-            className="button--primary dialogue-media__label"
-            htmlFor={pickerId}
-            // Not `aria-disabled`: that attribute means something on a widget with a role, and
-            // a `<label>` has none — it conveys nothing to assistive tech and only ever styled
-            // this element. The real state lives on the `<input>` below, which is genuinely
-            // `disabled` and already announced as such; this is a plain style hook.
-            data-importing={importState.kind === 'importing' ? 'true' : undefined}
-          >
-            {importState.kind === 'importing'
-              ? importingLabel(importState.done, importState.total)
-              : 'Add images, gifs or clips'}
-          </label>
-          {/* Beside the import because it is the other way a picture gets here — and the faster
-              one, once the source and the profile are set up below. */}
-          <button
-            type="button"
-            className="dialogue-media__capture"
-            disabled={blocker !== null || busy}
-            title={
-              blocker ??
-              `Capture the console screen, attach it, and append what the text box says — ${CAPTURE_SHORTCUT}`
-            }
-            onClick={() => void capture()}
-          >
-            {captureState.kind === 'capturing'
-              ? 'Capturing…'
-              : `Capture the screen · ${CAPTURE_SHORTCUT}`}
+      {/* Everything the panel is about scrolls; the handle above does not. */}
+      <div className="dialogue-panel__content">
+        <header className="dialogue-panel__header">
+          <h2 className="dialogue-panel__title">Dialogue</h2>
+          <button type="button" className="button" onClick={onClose}>
+            Close
           </button>
-        </div>
-        <input
-          id={pickerId}
-          className="visually-hidden dialogue-media__input"
-          type="file"
-          multiple
-          accept={DIALOGUE_MEDIA_ACCEPT}
-          disabled={importState.kind === 'importing'}
-          onChange={(event) => {
-            const input = event.target
-            const files = [...(input.files ?? [])]
-            // Clearing is what lets the same file be picked twice in a row — otherwise the
-            // second pick is not a change and fires no event at all.
-            input.value = ''
-            void importFiles(files)
-          }}
-        />
-        <p className="dialogue-media__hint">
-          …or drop files anywhere on this panel. They are added in the order they are dropped.
+        </header>
+        {/* The map association is not editable — a dialogue belongs to the map it was pinned
+            onto, and moving it between maps would strand its map-local position. */}
+        <p className="dialogue-panel__map">on {map === null ? 'an unknown map' : map.name}</p>
+
+        {/* Not editable, and not stored: where a dialogue happened is decided by where its pin
+            sits, so moving either the pin or the zone changes this line with no write here. */}
+        <p className="dialogue-panel__location">
+          {locations.length === 0 ? (
+            <span className="dialogue-panel__nowhere">Outside any zone</span>
+          ) : (
+            locations.map((zone) => (
+              <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
+                {zone.name}
+              </span>
+            ))
+          )}
         </p>
 
-        {/* Never disabled and silent: the button's `title` is the same sentence, and a tooltip on
-            a disabled control is not something anyone goes looking for. */}
-        {blocker !== null && (
-          <p className="dialogue-media__hint" role="status">
-            {blocker}
-          </p>
-        )}
-        {captureState.kind === 'done' && (
-          <p className="dialogue-media__capture-note" role="status">
-            {captureState.message}
-          </p>
-        )}
-        {captureState.kind === 'failed' && (
-          <p className="dialogue-media__error" role="alert">
-            {captureState.message}
-          </p>
-        )}
+        {/* Keyed on the dialogue: switching pins must unmount the form, because unmount is what
+            flushes a half-typed line into the dialogue it was typed for. */}
+        <DialogueForm
+          key={dialogueId}
+          dialogue={dialogue}
+          relevanceTags={project.relevanceTags}
+          npcNames={npcNames}
+          flushRef={flushDraft}
+          autoFocusNpc={autoFocusNpc}
+          onAutoFocusConsumed={onAutoFocusConsumed}
+          previousRelevance={previousRelevance}
+        />
 
-        {importState.kind === 'warned' && (
-          <p className="dialogue-media__warning" role="status">
-            {importState.message}
+        <section className="dialogue-media">
+          <h3 className="micro-label">Media</h3>
+
+          {/* An ordered list because the order is the content: the first entry is what the pin
+              wears. Position is moved one step at a time rather than dragged — a drag inside a
+              panel that is itself a drop target for files would have to fight it for the gesture. */}
+          {dialogue.media.length > 0 && (
+            <ol className="dialogue-media__list">
+              {dialogue.media.map((medium, index) => (
+                <li key={medium.id} className="dialogue-media__item">
+                  <MediaView media={medium} label={dialogue.npcName || 'Dialogue media'} />
+                  <p className="dialogue-media__position">
+                    {index === 0 ? 'First — the pin shows this one' : `Picture ${index + 1}`}
+                  </p>
+                  <div className="dialogue-media__controls">
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={index === 0}
+                      onClick={() => moveMedium(medium, index - 1)}
+                    >
+                      Move up
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={index === dialogue.media.length - 1}
+                      onClick={() => moveMedium(medium, index + 1)}
+                    >
+                      Move down
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={() => void removeMedium(medium)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <div className="dialogue-media__actions">
+            {/* A styled `<label>` driving a hidden input, as in MapImportButton: a file input
+                cannot be restyled, and a button would need a ref plus a synthetic click. */}
+            <label
+              className="button--primary dialogue-media__label"
+              htmlFor={pickerId}
+              // Not `aria-disabled`: that attribute means something on a widget with a role, and
+              // a `<label>` has none — it conveys nothing to assistive tech and only ever styled
+              // this element. The real state lives on the `<input>` below, which is genuinely
+              // `disabled` and already announced as such; this is a plain style hook.
+              data-importing={importState.kind === 'importing' ? 'true' : undefined}
+            >
+              {importState.kind === 'importing'
+                ? importingLabel(importState.done, importState.total)
+                : 'Add images, gifs or clips'}
+            </label>
+            {/* Beside the import because it is the other way a picture gets here — and the faster
+                one, once the source and the profile are set up below. */}
+            <button
+              type="button"
+              className="dialogue-media__capture"
+              disabled={blocker !== null || busy}
+              title={
+                blocker ??
+                `Capture the console screen, attach it, and append what the text box says — ${CAPTURE_SHORTCUT}`
+              }
+              onClick={() => void capture()}
+            >
+              {captureState.kind === 'capturing'
+                ? 'Capturing…'
+                : `Capture the screen · ${CAPTURE_SHORTCUT}`}
+            </button>
+          </div>
+          <input
+            id={pickerId}
+            className="visually-hidden dialogue-media__input"
+            type="file"
+            multiple
+            accept={DIALOGUE_MEDIA_ACCEPT}
+            disabled={importState.kind === 'importing'}
+            onChange={(event) => {
+              const input = event.target
+              const files = [...(input.files ?? [])]
+              // Clearing is what lets the same file be picked twice in a row — otherwise the
+              // second pick is not a change and fires no event at all.
+              input.value = ''
+              void importFiles(files)
+            }}
+          />
+          <p className="dialogue-media__hint">
+            …or drop files anywhere on this panel. They are added in the order they are dropped.
           </p>
-        )}
-        {importState.kind === 'failed' && (
-          <p className="dialogue-media__error" role="alert">
-            {importState.message}
-          </p>
-        )}
-      </section>
 
-      {/* Below the media it will eventually feed: the connection is a session-long setup step,
-          not something touched per dialogue, so it must not push the line's own fields down. */}
-      <CaptureBar profiles={project.captureProfiles} />
+          {/* Never disabled and silent: the button's `title` is the same sentence, and a tooltip on
+              a disabled control is not something anyone goes looking for. */}
+          {blocker !== null && (
+            <p className="dialogue-media__hint" role="status">
+              {blocker}
+            </p>
+          )}
+          {captureState.kind === 'done' && (
+            <p className="dialogue-media__capture-note" role="status">
+              {captureState.message}
+            </p>
+          )}
+          {captureState.kind === 'failed' && (
+            <p className="dialogue-media__error" role="alert">
+              {captureState.message}
+            </p>
+          )}
 
-      <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
+          {importState.kind === 'warned' && (
+            <p className="dialogue-media__warning" role="status">
+              {importState.message}
+            </p>
+          )}
+          {importState.kind === 'failed' && (
+            <p className="dialogue-media__error" role="alert">
+              {importState.message}
+            </p>
+          )}
+        </section>
 
+        {/* Below the media it will eventually feed: the connection is a session-long setup step,
+            not something touched per dialogue, so it must not push the line's own fields down. */}
+        <CaptureBar profiles={project.captureProfiles} />
+
+        <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
+      </div>
       {/* Cancelling keeps the picture and says the text was not transcribed — the frame is the
           record, and it is the half that cannot be produced again once the game has advanced. */}
       {captureState.kind === 'learning' && (
@@ -530,6 +687,17 @@ export function DialoguePanel({
       )}
     </aside>
   )
+}
+
+/**
+ * The dragged width as the inherited custom property `.dialogue-panel` reads. The intersection
+ * type is how it reaches `style` without an `as` cast, as in `zoneHueStyle` and `mapGroupStyle`:
+ * `CSSProperties` alone has no index signature for `--*`.
+ */
+function panelWidthStyle(
+  width: number,
+): CSSProperties & Record<'--dialogue-panel-width', string> {
+  return { '--dialogue-panel-width': `${width}px` }
 }
 
 /** Silent about the count for a single file, so the common case reads as it always did. */

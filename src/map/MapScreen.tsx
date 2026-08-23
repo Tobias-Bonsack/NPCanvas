@@ -53,7 +53,7 @@ export function MapScreen({
   // canvas exactly as it was — see CLAUDE.md's view-state note. Every setter below is a stable
   // functional update rather than a closure over `viewState`, which is what keeps the global
   // keydown listener correct without needing `viewState` itself in its dependency list.
-  const { tool, questFilter, viewport } = viewState
+  const { tool, questFilter, viewport, panelWidth } = viewState
   const setTool = useCallback(
     (tool: CanvasTool) => onViewStateChange((prev) => ({ ...prev, tool })),
     [onViewStateChange],
@@ -65,6 +65,19 @@ export function MapScreen({
   const setViewport = useCallback(
     (viewport: Viewport) => onViewStateChange((prev) => ({ ...prev, viewport })),
     [onViewStateChange],
+  )
+  const setPanelWidth = useCallback(
+    (panelWidth: number) => onViewStateChange((prev) => ({ ...prev, panelWidth })),
+    [onViewStateChange],
+  )
+
+  // The width the panel and the canvas share, read at the moment a resize gesture needs it
+  // rather than kept in state: the window can be resized between two drags, and a cached
+  // number would clamp the second one against the first one's window.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const measureAvailableWidth = useCallback(
+    () => bodyRef.current?.clientWidth ?? 0,
+    [],
   )
 
   // The dialogue a `place-dialogue` click just created, until its form has claimed the focus it
@@ -267,7 +280,7 @@ export function MapScreen({
         </div>
         <CanvasLegend relevanceTags={project.relevanceTags} />
       </header>
-      <div className="map-screen__body">
+      <div className="map-screen__body" ref={bodyRef}>
         {/* A sidebar rather than a row in the bar: the list grows with the project, and it
             has to scroll on its own instead of pushing the canvas off screen. */}
         <aside className="map-screen__sidebar">
@@ -321,6 +334,9 @@ export function MapScreen({
             autoFocusNpc={autoFocusDialogueId === selectedDialogue.id}
             onAutoFocusConsumed={onAutoFocusConsumed}
             openedFromPin={pinClickId === selectedDialogue.id}
+            width={panelWidth}
+            onWidthChange={setPanelWidth}
+            measureAvailableWidth={measureAvailableWidth}
           />
         )}
       </div>

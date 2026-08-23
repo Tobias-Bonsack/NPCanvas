@@ -86,8 +86,8 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   casts on ids.
 - **Store scope.** `src/project/store.ts` is a module-level store over a pure reducer, read through
   `useSyncExternalStore`. It holds the persisted document, connection state, and selection.
-  Transient UI — canvas viewport, active tool, form drafts, filter bar — stays in component
-  `useState`. Do not migrate it into the store, and do not replace the store with context.
+  Transient UI — canvas viewport, active tool, dialogue panel width, form drafts, filter bar —
+  stays in component `useState`. Do not migrate it into the store, and do not replace the store with context.
 - **`useSyncExternalStore` contract.** Pass `getState` by reference. A snapshot function that builds
   a new object on each call is an infinite render loop. A *selector* over the state is therefore
   only ever allowed to return something already stable: a field of `AppState` (`useSaveState`), or a
