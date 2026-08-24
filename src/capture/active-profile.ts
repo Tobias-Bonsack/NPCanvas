@@ -42,5 +42,23 @@ export function useActiveCaptureProfile(
   profiles: readonly CaptureProfile[],
 ): CaptureProfile | null {
   const id = useSyncExternalStore(subscribe, getActiveId)
+  return resolveActiveProfile(profiles, id)
+}
+
+/**
+ * The same answer outside React, for `capture-watch.ts` — its loop runs on a timer rather than in
+ * a render, and reading the choice through a second rule would let the watcher and the button
+ * capture with different profiles.
+ */
+export function activeCaptureProfile(
+  profiles: readonly CaptureProfile[],
+): CaptureProfile | null {
+  return resolveActiveProfile(profiles, activeId)
+}
+
+function resolveActiveProfile(
+  profiles: readonly CaptureProfile[],
+  id: CaptureProfileId | null,
+): CaptureProfile | null {
   return profiles.find((profile) => profile.id === id) ?? profiles[0] ?? null
 }

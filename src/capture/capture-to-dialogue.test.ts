@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { asCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile } from '../project/types.ts'
 import type { CaptureSource } from './capture-session.ts'
-import { captureBlocker, describeCapture } from './capture-to-dialogue.ts'
+import { appendOutcome, captureBlocker, describeCapture } from './capture-to-dialogue.ts'
 
 const PROFILE: CaptureProfile = {
   id: asCaptureProfileId('profile-1'),
@@ -66,5 +66,36 @@ describe('describeCapture', () => {
     const message = describeCapture({ text: 'not-transcribed', picture: 1 })
     expect(message).toMatch(/not transcribed/i)
     expect(message).toMatch(/alphabet/i)
+  })
+})
+
+describe('appendOutcome', () => {
+  it('appends only what the line does not already say', () => {
+    const outcome = appendOutcome('HELLO THERE!', 'THERE! I AM OAK.')
+    expect(outcome.text).toBe('appended')
+    expect(outcome.next).toBe('HELLO THERE! I AM OAK.')
+  })
+
+  it('reports the same frame read twice as unchanged, with the line untouched', () => {
+    const existing = 'HELLO THERE!'
+    const outcome = appendOutcome(existing, 'HELLO THERE!')
+    expect(outcome.text).toBe('unchanged')
+    // Identically, so a caller can decide not to write by comparing references.
+    expect(outcome.next).toBe(existing)
+  })
+
+  it('leaves the line alone when the box could not be read whole', () => {
+    const existing = 'HELLO THERE!'
+    const outcome = appendOutcome(existing, null)
+    expect(outcome.text).toBe('not-transcribed')
+    expect(outcome.next).toBe(existing)
+  })
+
+  it('treats an empty box as nothing to add', () => {
+    expect(appendOutcome('HELLO', '').text).toBe('unchanged')
+  })
+
+  it('appends to an empty line', () => {
+    expect(appendOutcome('', 'HELLO')).toEqual({ text: 'appended', next: 'HELLO' })
   })
 })

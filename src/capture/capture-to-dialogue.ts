@@ -148,16 +148,35 @@ export async function captureIntoDialogue(
   }
 
   const picture = dialogue.media.length + 1
+  const outcome = appendOutcome(dialogue.text, transcript)
+  if (outcome.text === 'appended') {
+    dispatch({ kind: 'dialogue/text-set', dialogueId: dialogue.id, text: outcome.next })
+  }
+  return { text: outcome.text, picture }
+}
 
-  if (transcript === null) return { text: 'not-transcribed', picture }
+/**
+ * What appending `transcript` to `existing` would do, and what the line would then say.
+ *
+ * Split out of `captureIntoDialogue` because the watcher has to know **before** it writes: a box
+ * that says nothing new is the ordinary case for a loop reading four times a second, and writing a
+ * picture for it would bury the conversation under identical frames. A deliberate press is a claim
+ * that *this* frame is worth keeping, so the manual path still attaches its picture either way —
+ * only the caller that fires unattended asks first.
+ *
+ * `next` is `existing` **itself** when nothing is new, which is `appendWithoutOverlap`'s own
+ * guarantee rather than a comparison invented here.
+ */
+export function appendOutcome(
+  existing: string,
+  transcript: string | null,
+): { text: CaptureResult['text']; next: string } {
+  // A box that could not be read whole. The picture is still the record; a sentence with holes
+  // in it is not, so the line is left exactly as it stands.
+  if (transcript === null) return { text: 'not-transcribed', next: existing }
 
-  const text = appendWithoutOverlap(dialogue.text, transcript)
-  // `appendWithoutOverlap` returns the existing text itself when nothing is new, so this is the
-  // same frame read twice — or an empty box — rather than a comparison that had to be invented.
-  if (text === dialogue.text) return { text: 'unchanged', picture }
-
-  dispatch({ kind: 'dialogue/text-set', dialogueId: dialogue.id, text })
-  return { text: 'appended', picture }
+  const next = appendWithoutOverlap(existing, transcript)
+  return next === existing ? { text: 'unchanged', next: existing } : { text: 'appended', next }
 }
 
 /** What the panel says afterwards. Every outcome names both halves — the picture and the line. */

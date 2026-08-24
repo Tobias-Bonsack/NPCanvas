@@ -246,3 +246,64 @@
 .dialogue-media__error {
   color: var(--danger);
 }
+
+/* The unattended capture, beside the deliberate one. Outlined rather than filled while it is off,
+   so the manual button stays the one the eye lands on first. */
+.dialogue-media__watch {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.dialogue-media__watch:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.dialogue-media__watch:disabled {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Filled while it runs: a loop writing into the document unattended must be impossible to
+   overlook from across the desk, with the emulator in front. */
+.dialogue-media__watch[data-watching] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dialogue-media__watch-note,
+.dialogue-media__watch-line {
+  margin: 0;
+  font-size: var(--text-2xs);
+}
+
+.dialogue-media__watch-note {
+  color: var(--text);
+}
+
+/* The last line written, quoted and clamped: it is a glance-at confirmation, not the record —
+   the line's own field above holds that. */
+.dialogue-media__watch-line {
+  color: var(--text-muted);
+  font-style: italic;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.dialogue-media__watch-line::before {
+  content: '“';
+}
+
+.dialogue-media__watch-line::after {
+  content: '”';
+}
