@@ -92,8 +92,8 @@ export function QuestBoard({
   const zonesById = useMemo(() => byId(project.zones), [project.zones])
   // Locations are derived here exactly as the canvas derives them — a Dialogue stores no zone.
   const zoneIndex = useMemo(
-    () => indexDialoguesByZone(project.dialogues, project.zones),
-    [project.dialogues, project.zones],
+    () => indexDialoguesByZone(project.dialogues, project.zones, project.maps),
+    [project.dialogues, project.zones, project.maps],
   )
 
   function createQuest(): void {

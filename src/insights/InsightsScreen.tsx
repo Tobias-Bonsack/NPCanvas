@@ -46,8 +46,8 @@ export function InsightsScreen({
   // Locations are derived here exactly as the canvas and the board derive them — and through
   // the same cached index, so arriving on this screen rebuilds nothing.
   const zoneIndex = useMemo(
-    () => indexDialoguesByZone(project.dialogues, project.zones),
-    [project.dialogues, project.zones],
+    () => indexDialoguesByZone(project.dialogues, project.zones, project.maps),
+    [project.dialogues, project.zones, project.maps],
   )
   const dialogues = useMemo(
     () => applyFilter(project.dialogues, filter, zoneIndex),

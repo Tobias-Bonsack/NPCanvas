@@ -177,22 +177,26 @@ export function MapScreen({
   }, [dialogueId, dialogues])
 
   // The derived locations, computed once per state change rather than per render. Built from
-  // the document's own zones, so a zone drag leaves it untouched for the whole gesture.
+  // the document's own zones *and* its own maps, so neither a zone drag nor a map drag touches it
+  // for the length of the gesture — `placedMaps` is a new array every frame, and feeding it here
+  // would force a full O(dialogues x zones) rebuild per frame for a layout move. A map dropped
+  // over a zone reclassifies its pins on release; a zone drag stays live through the reindex
+  // below, which is the gesture whose whole point is watching membership change.
   const documentIndex = useMemo(
-    () => indexDialoguesByZone(dialogues, project.zones),
-    [dialogues, project.zones],
+    () => indexDialoguesByZone(dialogues, project.zones, project.maps),
+    [dialogues, project.zones, project.maps],
   )
 
   // A zone being dragged still reclassifies its dialogues live, with no write to any of them —
   // that is the whole payoff of never storing a zoneId. What changed is the cost: one zone's
-  // membership re-tested against its own map's dialogues, applied to the index above, instead
-  // of an O(dialogues x zones) rebuild on every frame.
+  // membership re-tested against the pins of every map it reaches, applied to the index above,
+  // instead of an O(dialogues x zones) rebuild on every frame.
   const zoneIndex = useMemo(
     () =>
       zoneDrag === null
         ? documentIndex
-        : reindexMovedZone(documentIndex, dialogues, drawnZones, zoneDrag.id),
-    [documentIndex, dialogues, drawnZones, zoneDrag],
+        : reindexMovedZone(documentIndex, dialogues, drawnZones, project.maps, zoneDrag.id),
+    [documentIndex, dialogues, drawnZones, project.maps, zoneDrag],
   )
   const zoneCounts = useMemo(() => countDialoguesByZone(zoneIndex), [zoneIndex])
 

@@ -1,5 +1,13 @@
-import type { Dialogue, DialogueId, MapId, Zone, ZoneId } from '../project/types.ts'
-import { pointInPolygon, polygonArea, polygonBounds, rectContains } from './geometry.ts'
+import type { Dialogue, DialogueId, GameMap, MapId, Point, Zone, ZoneId } from '../project/types.ts'
+import { canvasToMapLocal, mapCanvasRect, mapLocalToCanvas, zoneCanvasRect } from './canvas-layout.ts'
+import type { Rect } from './geometry.ts'
+import {
+  pointInPolygon,
+  polygonArea,
+  polygonBounds,
+  rectContains,
+  rectsOverlap,
+} from './geometry.ts'
 
 /**
  * Which zones each dialogue falls inside, derived from the geometry on every read.
@@ -12,9 +20,20 @@ import { pointInPolygon, polygonArea, polygonBounds, rectContains } from './geom
  * is ordered by ascending area, so the most specific zone comes first and callers can take
  * `[0]` as the primary location without knowing anything about the sorting rule.
  *
- * A dialogue is only ever matched against zones on its own map: map-local coordinates from
- * two different maps are unrelated numbers, and comparing them would place pins in regions
- * they have never been near.
+ * Membership is decided in **canvas** space, not map-local, which is why `maps` is an argument.
+ * A house interior imported as its own map and dropped onto the town it stands in is a map lying
+ * over another map's zone, and a line heard inside it was heard in that town — answering
+ * "outside any zone" there would be wrong about the world the user is logging. Map-local
+ * coordinates from two maps are unrelated numbers on their own; a map's `origin` and `scale` are
+ * exactly what relates them, so the pin goes up into canvas space once and back down into each
+ * candidate zone's own space, leaving the stored polygons untouched. The ordering is by canvas
+ * area for the same reason — "smallest wins" has to mean the same thing across two maps whose
+ * `scale` differs.
+ *
+ * A click is deliberately *not* resolved this way: `zoneAtCanvasPoint` consults only the topmost
+ * map at the point. Belonging is geometric — a pin lies in a region whatever is drawn over it —
+ * while a click means what the user can see, and selecting a zone through the map covering it
+ * would be unaccountable.
  *
  * Every dialogue gets an entry, including an empty one — "outside any zone" is an answer, and
  * a missing key would make callers unable to tell it from a dialogue this index never saw.
@@ -22,19 +41,25 @@ import { pointInPolygon, polygonArea, polygonBounds, rectContains } from './geom
 export function indexDialoguesByZone(
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
+  maps: readonly GameMap[],
 ): ReadonlyMap<DialogueId, ZoneId[]> {
-  if (cached !== null && cached.dialogues === dialogues && cached.zones === zones) {
+  if (
+    cached !== null &&
+    cached.dialogues === dialogues &&
+    cached.zones === zones &&
+    cached.maps === maps
+  ) {
     return cached.index
   }
-  const index = buildIndex(dialogues, zones)
-  cached = { dialogues, zones, index }
+  const index = buildIndex(dialogues, zones, maps)
+  cached = { dialogues, zones, maps, index }
   return index
 }
 
 /**
  * The last index built and what it was built from.
  *
- * The canvas, the quest board and the insights screen all ask the same question of the same two
+ * The canvas, the quest board and the insights screen all ask the same question of the same three
  * arrays, and `App` unmounts the view on every route change — so without this, navigating
  * Canvas → Insights → Canvas rebuilds an O(dialogues x zones) index from scratch, three times,
  * for a document that never changed. One slot rather than a keyed cache: the question is always
@@ -46,29 +71,50 @@ export function indexDialoguesByZone(
 let cached: {
   dialogues: readonly Dialogue[]
   zones: readonly Zone[]
+  maps: readonly GameMap[]
   index: ReadonlyMap<DialogueId, ZoneId[]>
 } | null = null
 
 function buildIndex(
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
+  maps: readonly GameMap[],
 ): ReadonlyMap<DialogueId, ZoneId[]> {
-  const byMap = groupZonesByMap(zones)
+  const { byMap } = zoneCandidates(zones, maps)
+  const mapById = mapsById(maps)
   const index = new Map<DialogueId, ZoneId[]>()
 
   for (const dialogue of dialogues) {
-    const candidates = byMap.get(dialogue.mapId) ?? []
+    const map = mapById.get(dialogue.mapId)
     const hits: ZoneId[] = []
-    for (const candidate of candidates) {
-      // The bounding box rejects the overwhelming majority for a quarter of the work of the
-      // ray cast, which matters here: this is O(dialogues x zones) on every state change.
-      if (!rectContains(candidate.bounds, dialogue.position)) continue
-      if (!pointInPolygon(dialogue.position, candidate.zone.polygon)) continue
-      hits.push(candidate.zone.id)
+    // A dialogue whose `mapId` names no map cannot be placed on the canvas at all, the same
+    // reason `trailVertices` drops one — it is outside every zone rather than in an unknown one.
+    if (map !== undefined) {
+      const canvasPoint = mapLocalToCanvas(map, dialogue.position)
+      for (const candidate of byMap.get(map.id) ?? []) {
+        const local = zoneLocalPoint(candidate, dialogue, canvasPoint)
+        // The bounding box rejects the overwhelming majority for a quarter of the work of the
+        // ray cast, which matters here: this is O(dialogues x zones) on every state change.
+        if (!rectContains(candidate.bounds, local)) continue
+        if (!pointInPolygon(local, candidate.zone.polygon)) continue
+        hits.push(candidate.zone.id)
+      }
     }
     index.set(dialogue.id, hits)
   }
   return index
+}
+
+/**
+ * The pin in the candidate zone's own space.
+ *
+ * Verbatim for a zone on the pin's own map: converting up to canvas and back down is the identity
+ * in exact arithmetic but not in floating point, and a pin sitting on a zone's edge must not
+ * change sides because an unrelated map moved. Only a zone on *another* map is converted.
+ */
+function zoneLocalPoint(candidate: ZoneCandidate, dialogue: Dialogue, canvasPoint: Point): Point {
+  if (candidate.map.id === dialogue.mapId) return dialogue.position
+  return canvasToMapLocal(candidate.map, canvasPoint)
 }
 
 /**
@@ -77,49 +123,59 @@ function buildIndex(
  * A zone drag rebuilds the index on every frame, and a full build is O(dialogues x zones) with
  * a ray cast per candidate. Only one polygon moved, so only one question changed: is this
  * dialogue inside *that* zone now. Every other zone's answer for that dialogue is the one the
- * previous index already holds, and dialogues on other maps could never have been affected.
+ * previous index already holds.
  *
- * The result is identical to `indexDialoguesByZone(dialogues, zones)` for the same input, which
- * `zone-index.test.ts` pins — an optimisation that may silently disagree with the definition is
- * worse than the cost it saves. It returns `previous` itself when no membership changed, so a
+ * Every dialogue is re-tested, not only those on the moved zone's own map: a zone can hold pins
+ * from any map laid over it, so "on another map" is no longer a reason to skip one. What still
+ * bounds the work is the same overlap rule a full build applies — a pin on a map the moved zone
+ * does not reach cannot be inside it.
+ *
+ * The result is identical to `indexDialoguesByZone(dialogues, zones, maps)` for the same input,
+ * which `zone-index.test.ts` pins — an optimisation that may silently disagree with the definition
+ * is worse than the cost it saves. It returns `previous` itself when no membership changed, so a
  * zone dragged through empty space costs the callers downstream nothing at all.
  *
  * Falls back to a full build when `previous` cannot be trusted to describe the same input: a
- * zone id that names nothing, or a dialogue the previous index never saw.
+ * zone id that names nothing, a zone on a map that is gone, or a dialogue the previous index
+ * never saw.
  */
 export function reindexMovedZone(
   previous: ReadonlyMap<DialogueId, ZoneId[]>,
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
+  maps: readonly GameMap[],
   movedId: ZoneId,
 ): ReadonlyMap<DialogueId, ZoneId[]> {
+  const mapById = mapsById(maps)
   const moved = zones.find((zone) => zone.id === movedId)
-  if (moved === undefined) return indexDialoguesByZone(dialogues, zones)
+  const movedMap = moved === undefined ? undefined : mapById.get(moved.mapId)
+  if (moved === undefined || movedMap === undefined) {
+    return indexDialoguesByZone(dialogues, zones, maps)
+  }
 
-  // The map's own candidates, already area-sorted and already carrying their bounds, from the
-  // same cache a full build reads. A zone's position in that list *is* its rank, so an id that
-  // has to go back into a dialogue's list lands where a full build would have put it — the
-  // ordering rule stays in one place and this obeys the same one.
-  const candidates = groupZonesByMap(zones).get(moved.mapId) ?? []
-  const rank = new Map(candidates.map((candidate, index) => [candidate.zone.id, index]))
-  const bounds =
-    candidates.find((candidate) => candidate.zone.id === movedId)?.bounds ??
-    polygonBounds(moved.polygon)
+  // A zone's position in the area-sorted candidate list *is* its rank, and that list is global, so
+  // an id that has to go back into a dialogue's list lands where a full build would have put it —
+  // the ordering rule stays in one place and this obeys the same one.
+  const { rank } = zoneCandidates(zones, maps)
+  const candidate: ZoneCandidate = { zone: moved, map: movedMap, bounds: polygonBounds(moved.polygon) }
+  const reach = mapsReachedBy(zoneCanvasRect(movedMap, moved), maps)
 
   const next = new Map<DialogueId, ZoneId[]>()
   let changed = false
 
   for (const dialogue of dialogues) {
     const before = previous.get(dialogue.id)
-    if (before === undefined) return indexDialoguesByZone(dialogues, zones)
+    if (before === undefined) return indexDialoguesByZone(dialogues, zones, maps)
 
-    if (dialogue.mapId !== moved.mapId) {
-      next.set(dialogue.id, before)
-      continue
-    }
-
+    const map = reach.has(dialogue.mapId) ? mapById.get(dialogue.mapId) : undefined
+    const local =
+      map === undefined
+        ? null
+        : zoneLocalPoint(candidate, dialogue, mapLocalToCanvas(map, dialogue.position))
     const inside =
-      rectContains(bounds, dialogue.position) && pointInPolygon(dialogue.position, moved.polygon)
+      local !== null &&
+      rectContains(candidate.bounds, local) &&
+      pointInPolygon(local, moved.polygon)
     const was = before.includes(movedId)
     if (inside === was) {
       next.set(dialogue.id, before)
@@ -180,35 +236,98 @@ export function dialoguesInZone(
   return inside
 }
 
-type ZoneCandidate = { zone: Zone; bounds: ReturnType<typeof polygonBounds> }
+/**
+ * A zone placed on the canvas: the polygon, the map whose space it is written in, and its
+ * map-local bounding box. The map travels with it because testing a pin from another map means
+ * converting into *this* zone's space, which nothing but its own map can do.
+ */
+type ZoneCandidate = { zone: Zone; map: GameMap; bounds: Rect }
 
 /**
- * Zones bucketed by map and sorted smallest-area-first, once per index build. Sorting here
- * rather than per dialogue is what makes the hit list come out ordered for free — the area of
- * a polygon is the same whichever dialogue is being tested against it.
+ * The zones each map's pins have to be tested against, and every zone's rank in one global
+ * area order.
+ *
+ * A bucket is geometric now rather than a `mapId` match: a zone belongs to the bucket of every
+ * map whose canvas footprint it overlaps, which is the only way a pin on an interior map finds
+ * the town zone underneath. Maps that lie apart on the canvas — which is where `nextMapOrigin`
+ * puts every import — share no zones at all, so the common case still costs what it always did.
  */
-function groupZonesByMap(zones: readonly Zone[]): ReadonlyMap<MapId, ZoneCandidate[]> {
-  if (cachedCandidates !== null && cachedCandidates.zones === zones) return cachedCandidates.byMap
-  const byMap = buildCandidates(zones)
-  cachedCandidates = { zones, byMap }
-  return byMap
+type ZoneCandidates = {
+  byMap: ReadonlyMap<MapId, ZoneCandidate[]>
+  rank: ReadonlyMap<ZoneId, number>
+}
+
+function zoneCandidates(zones: readonly Zone[], maps: readonly GameMap[]): ZoneCandidates {
+  if (
+    cachedCandidates !== null &&
+    cachedCandidates.zones === zones &&
+    cachedCandidates.maps === maps
+  ) {
+    return cachedCandidates.candidates
+  }
+  const candidates = buildCandidates(zones, maps)
+  cachedCandidates = { zones, maps, candidates }
+  return candidates
 }
 
 /**
- * The sort, kept for as long as the zones are the same array. Sorting is the expensive half of
- * a build for an unchanged zone set, and a zone drag asks for the same set once per frame.
+ * The buckets, kept for as long as the zones and the maps are the same arrays. Sorting is the
+ * expensive half of a build for an unchanged zone set, and a zone drag asks for the same set
+ * once per frame.
  */
-let cachedCandidates: { zones: readonly Zone[]; byMap: ReadonlyMap<MapId, ZoneCandidate[]> } | null =
-  null
+let cachedCandidates: {
+  zones: readonly Zone[]
+  maps: readonly GameMap[]
+  candidates: ZoneCandidates
+} | null = null
 
-function buildCandidates(zones: readonly Zone[]): ReadonlyMap<MapId, ZoneCandidate[]> {
-  const byArea = [...zones].sort((a, b) => polygonArea(a.polygon) - polygonArea(b.polygon))
-  const byMap = new Map<MapId, ZoneCandidate[]>()
-  for (const zone of byArea) {
-    const candidate: ZoneCandidate = { zone, bounds: polygonBounds(zone.polygon) }
-    const bucket = byMap.get(zone.mapId)
-    if (bucket === undefined) byMap.set(zone.mapId, [candidate])
-    else bucket.push(candidate)
+function buildCandidates(zones: readonly Zone[], maps: readonly GameMap[]): ZoneCandidates {
+  const mapById = mapsById(maps)
+
+  // A zone whose `mapId` names no map has no placement on the canvas, so there is no space to
+  // test a point in — it was unreachable under the old map-local rule too.
+  const placed: { candidate: ZoneCandidate; canvasRect: Rect; canvasArea: number }[] = []
+  for (const zone of zones) {
+    const map = mapById.get(zone.mapId)
+    if (map === undefined) continue
+    placed.push({
+      candidate: { zone, map, bounds: polygonBounds(zone.polygon) },
+      canvasRect: zoneCanvasRect(map, zone),
+      // Canvas area, not map-local: a zone drawn on a map at `scale: 2` covers four times the
+      // canvas its vertices suggest, and "smallest zone wins" compares what is on the canvas.
+      canvasArea: polygonArea(zone.polygon) * map.scale * map.scale,
+    })
   }
-  return byMap
+  // Sorting here rather than per dialogue is what makes the hit list come out ordered for free —
+  // the area of a polygon is the same whichever dialogue is being tested against it.
+  placed.sort((a, b) => a.canvasArea - b.canvasArea)
+
+  const byMap = new Map<MapId, ZoneCandidate[]>()
+  const rank = new Map<ZoneId, number>()
+  placed.forEach((entry, index) => {
+    rank.set(entry.candidate.zone.id, index)
+    for (const mapId of mapsReachedBy(entry.canvasRect, maps)) {
+      const bucket = byMap.get(mapId)
+      if (bucket === undefined) byMap.set(mapId, [entry.candidate])
+      else bucket.push(entry.candidate)
+    }
+  })
+  return { byMap, rank }
+}
+
+/**
+ * The maps whose pins a zone of this canvas footprint could contain. One rule, called from both
+ * the build and the incremental re-test, so the two can never disagree about which dialogues a
+ * moved zone was allowed to claim.
+ */
+function mapsReachedBy(zoneRect: Rect, maps: readonly GameMap[]): ReadonlySet<MapId> {
+  const reached = new Set<MapId>()
+  for (const map of maps) {
+    if (rectsOverlap(zoneRect, mapCanvasRect(map))) reached.add(map.id)
+  }
+  return reached
+}
+
+function mapsById(maps: readonly GameMap[]): ReadonlyMap<MapId, GameMap> {
+  return new Map<MapId, GameMap>(maps.map((map) => [map.id, map]))
 }

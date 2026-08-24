@@ -78,7 +78,10 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   carries an origin and its contents ride along for free. `src/map/canvas-layout.ts` owns every
   conversion and every placement policy — nothing re-derives one inline. This does not contradict
   "location is derived, never stored": a zone is a region *within* a map, while a map is the
-  substrate the coordinates are expressed in.
+  substrate the coordinates are expressed in. Rendering stays purely map-local — every world-space
+  layer but the trail writes stored coordinates verbatim under a per-map group — but *questions
+  about where things are* are answered in canvas space, because that is the only space in which two
+  maps have a spatial relation at all. Zone membership is the case that matters (below).
 - **No enums** (`erasableSyntaxOnly` is on). The pattern is `export const X = [...] as const` plus
   `type X = (typeof X)[number]` — runtime list and union type from one declaration.
 - **Branded ids** (`MapId`, `ZoneId`, `DialogueId`, `QuestId`, `MediaId`, `CaptureProfileId`,
@@ -102,15 +105,30 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   a plain action per step. No thunks, no middleware.
 - **Exhaustiveness uses `assertNever(value: never): never`**, not `const _never: never = x` —
   `noUnusedLocals` fails the latter.
-- **Location is derived, never stored.** `Dialogue` carries no `zoneId`; `src/map/zone-index.ts`
-  computes membership by point-in-polygon, returning zone ids ordered by ascending area so the most
-  specific overlapping zone comes first. Derived, but not recomputed blindly: the index and its
-  area-sorted candidate list are cached at module level on the *identity* of `(dialogues, zones)`,
-  which is what makes the canvas, the quest board and the insights screen share one build across a
-  route change; and a zone drag goes through `reindexMovedZone`, which re-tests only the dragged
-  zone against its own map's dialogues. Both are caches on identity, never on value, and neither
-  may disagree with a full build — `zone-index.test.ts` pins that. A cached FK would silently go stale when a zone moves. If an
-  explicit override is ever needed, add `locationOverride: ZoneId | null` — never a cache.
+- **Location is derived, never stored, and derived in canvas space.** `Dialogue` carries no
+  `zoneId`; `src/map/zone-index.ts` computes membership by point-in-polygon, returning zone ids
+  ordered by ascending **canvas** area so the most specific overlapping zone comes first.
+  `indexDialoguesByZone` therefore takes `maps` as well: a house interior imported as its own map and
+  dropped onto the town it stands in is a map lying over another map's zone, and every line heard
+  inside it was heard in that town — the old `zone.mapId === dialogue.mapId` rule answered "outside
+  any zone" for all of them. The pin goes up into canvas space once and back down into each candidate
+  zone's own space; the stored polygons are never converted. Ordering is canvas area
+  (`polygonArea * scale²`) because "smallest wins" has to mean the same thing across maps whose
+  `scale` differs, and a candidate bucket is geometric (`rectsOverlap` of the two canvas rects), so
+  maps laid apart — where `nextMapOrigin` puts every import — still cost what they always did. The
+  test is per **pin**, not per map: a map straddling a zone edge has pins on both sides of it.
+  A click is deliberately the other way round — `zoneAtCanvasPoint` consults only the topmost map at
+  the point, because belonging is geometric while a click means what the user can see. Derived, but
+  not recomputed blindly: the index and its area-sorted candidate list are cached at module level on
+  the *identity* of `(dialogues, zones, maps)`, which is what makes the canvas, the quest board and
+  the insights screen share one build across a route change; and a zone drag goes through
+  `reindexMovedZone`, which re-tests only the dragged zone, against the pins of every map it reaches.
+  Both are caches on identity, never on value, and neither may disagree with a full build —
+  `zone-index.test.ts` pins that. `MapScreen` feeds all three functions `project.maps`, never the
+  drag-previewed `placedMaps`: a map drag would otherwise force a full rebuild per frame, so pins
+  under a moved map reclassify on release, while a zone drag stays live. A cached FK would silently
+  go stale when a zone *or a map* moves. If an explicit override is ever needed, add
+  `locationOverride: ZoneId | null` — never a cache.
 - **Zones are polygons only.** Rectangles are 4-point polygons. Do not introduce a shape union.
   Resizing one is therefore a *scale of every vertex* about the opposite edge or corner
   (`src/map/zone-resize.ts`), never an edit of a single vertex: the eight grips are the
