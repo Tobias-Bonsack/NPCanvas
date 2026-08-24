@@ -20,6 +20,7 @@ import {
   describeReplay,
   heldUnknownTiles,
   replayHeldFrames,
+  setDraftFlush,
   startWatching,
   stopWatching,
   useHeldFrames,
@@ -275,6 +276,15 @@ export function DialoguePanel({
   // Only whether the loop runs, not what it has counted: see `useWatching`. The status line below
   // is what subscribes to the rest, so a box appended does not re-render the panel around it.
   const watching = useWatching()
+
+  // The watcher writes without anyone touching the browser, so it has to be able to push the line
+  // field's draft down first — exactly as the capture button does before it appends. Registered
+  // for as long as a panel is mounted, and taken back on unmount so a stale closure cannot commit
+  // into a dialogue that is no longer on screen.
+  useEffect(() => {
+    setDraftFlush(() => flushDraft.current?.())
+    return () => setDraftFlush(null)
+  }, [])
   const busy = captureState.kind === 'capturing' || isLearning(captureState)
 
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
@@ -888,6 +898,7 @@ function HeldNote({
 function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>): string {
   const parts = [
     watch.appended === 1 ? '1 box appended' : `${watch.appended} boxes appended`,
+    watch.repeated === 0 ? null : `${watch.repeated} said nothing new`,
     sinceRead(watch.lastReadAt),
   ]
   return `Watching · ${parts.filter((part) => part !== null).join(' · ')}`

@@ -219,7 +219,7 @@ describe('readTextBox', () => {
     write(native, 0, 'DU', { D, U })
     const reading = readTextBox(toFrame(native), profile())
 
-    expect(reading).toEqual({ text: 'DU', unknown: [] })
+    expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
   })
 
   it('joins two lines with one space and drops trailing spaces', () => {
@@ -259,13 +259,16 @@ describe('readTextBox', () => {
     expect(reading.unknown).toMatchObject([{ column: 2, row: 0, bits: SHARP_S, context: 'DU▯' }])
   })
 
-  it('asks about a repeated character once', () => {
+  it('asks about a repeated character once, and still counts both tiles', () => {
     const native = blankNative()
     write(native, 0, 'DUU', { D, U })
     const reading = readTextBox(toFrame(native), profile({ glyphs: [{ char: 'D', bits: D }] }))
 
     expect(reading.unknown.map((tile) => tile.column)).toEqual([1])
     expect(reading.unknown[0].bits).toBe(U)
+    // One question, two tiles: `box-settle.ts` reads the count to tell a box that is still filling
+    // in an unnamed character from one that has come to rest.
+    expect(reading.unreadable).toBe(2)
   })
 
   it('transcribes completely once the unknown tiles have been learned', () => {
@@ -278,7 +281,7 @@ describe('readTextBox', () => {
     const learned = first.unknown.map((tile) => ({ char: 'ß', bits: tile.bits }))
     const second = readTextBox(frame, profile({ glyphs: [...partial.glyphs, ...learned] }))
 
-    expect(second).toEqual({ text: 'DUß', unknown: [] })
+    expect(second).toEqual({ text: 'DUß', unknown: [], unreadable: 0 })
   })
 })
 

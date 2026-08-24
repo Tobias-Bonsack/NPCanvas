@@ -142,13 +142,21 @@ export async function captureIntoDialogue(
   // too: delete the pin while the frame is being encoded and the dispatch is a silent no-op,
   // leaving a file nothing in the document names. The cascade that deleted the dialogue ran
   // before this file existed, so this is the only place that can still remove it.
-  if (currentDialogue(dialogue.id) === null) {
+  //
+  // The document as it stands *now*, and the line is appended to that copy rather than to the
+  // argument: encoding a PNG and writing it takes long enough for a second capture — the watcher
+  // ticking during a manual press, or a held frame being replayed — to have finished its own
+  // append, and computing this one from the pre-await snapshot would overwrite it silently, with
+  // both pictures left in place to disagree with the line.
+  const into = currentDialogue(dialogue.id)
+  if (into === null) {
     await discardMediaFile(media.file.fileName)
     throw new Error('The dialogue was deleted while capturing. Nothing was kept.')
   }
 
-  const picture = dialogue.media.length + 1
-  const outcome = appendOutcome(dialogue.text, transcript)
+  // The dispatch above has already landed, so this frame is in the list and counted.
+  const picture = into.media.length
+  const outcome = appendOutcome(into.text, transcript)
   if (outcome.text === 'appended') {
     dispatch({ kind: 'dialogue/text-set', dialogueId: dialogue.id, text: outcome.next })
   }

@@ -52,6 +52,15 @@ export type UnknownTile = {
 export type TextBoxReading = {
   text: string
   unknown: UnknownTile[]
+  /**
+   * How many tiles could not be named at all, **before** deduplication — `unknown` holds one entry
+   * per distinct bitmap, so a line with three unrecognised `e`s has one entry and three here.
+   *
+   * The count is how a watcher tells a box that is still typing itself out from one that is merely
+   * blinking: the number of unnamed tiles only ever grows while a box fills, and a repeated bitmap
+   * adds nothing to `unknown` at all. See `box-settle.ts`.
+   */
+  unreadable: number
 }
 
 /** Stands in for an unrecognised tile in `UnknownTile.context`. Never enters a transcript. */
@@ -275,7 +284,7 @@ export function readTextBox(frame: PixelBuffer, profile: CaptureProfile): TextBo
     .map((line) => line.trim())
     .filter((line) => line !== '')
     .join(' ')
-  return { text, unknown }
+  return { text, unknown, unreadable: pending.length }
 }
 
 /**

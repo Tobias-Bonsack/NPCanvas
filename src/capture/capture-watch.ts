@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { currentDialogue, getState } from '../project/store.ts'
-import type { CaptureProfile, DialogueId } from '../project/types.ts'
+import type { CaptureProfile, CaptureProfileId, DialogueId } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { activeCaptureProfile } from './active-profile.ts'
@@ -40,6 +40,12 @@ export type WatchState =
       kind: 'watching'
       /** Boxes written into a line since the watcher was switched on. */
       appended: number
+      /**
+       * Boxes that came to rest saying only what the line already says, and were therefore not
+       * written. Usually a box read again after the game paused on it; occasionally a sentence an
+       * NPC genuinely repeats, which `appendWithoutOverlap` cannot tell apart from the first one.
+       */
+      repeated: number
       /** The last line written, so the panel can be checked out of the corner of the eye. */
       lastText: string | null
       /** Why this tick read nothing, in a sentence naming the fix. `null` while it is reading. */
@@ -75,6 +81,8 @@ export type HeldReplay = {
   gone: number
   /** Frames the grown alphabet still cannot read whole. They stay in the queue. */
   stillHeld: number
+  /** Frames whose box says only what the line already says — see `replayInto`. */
+  repeated: number
   /** Frames the cap had already pushed out before this round. */
   dropped: number
   /** What went wrong writing a frame, if anything. Those frames stay in the queue too. */
@@ -124,7 +132,28 @@ const listeners = new Set<() => void>()
 let session = 0
 let timer: ReturnType<typeof setTimeout> | null = null
 let settle: SettleState = NOTHING_SEEN
+/** What `settle` describes. A box is only "already written" for the line it was written into. */
+let settledFor: { dialogueId: DialogueId | null; profileId: CaptureProfileId | null } = {
+  dialogueId: null,
+  profileId: null,
+}
 let failures = 0
+/** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
+let replaying = false
+
+/**
+ * Pushes the panel's line draft into the document, if a panel is mounted — see `setDraftFlush`.
+ * The watcher appends to what the document says, and the field is 300 ms ahead of it.
+ */
+let flushDraft: (() => void) | null = null
+
+/**
+ * Registers the mounted panel's draft flush, so an unattended append cannot discard what is being
+ * typed. `null` on unmount: a stale closure would commit into a dialogue that is no longer shown.
+ */
+export function setDraftFlush(flush: (() => void) | null): void {
+  flushDraft = flush
+}
 
 /** Passed to `useSyncExternalStore` by reference — a fresh object per call renders forever. */
 function getWatchState(): WatchState {
@@ -182,7 +211,14 @@ export function startWatching(): void {
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
   // because the alphabet is usually answered once the conversation is over.
-  setState({ kind: 'watching', appended: 0, lastText: null, paused: null, lastReadAt: null })
+  setState({
+    kind: 'watching',
+    appended: 0,
+    repeated: 0,
+    lastText: null,
+    paused: null,
+    lastReadAt: null,
+  })
   schedule(session)
 }
 
@@ -215,6 +251,11 @@ async function run(mine: number): Promise<void> {
   if (mine !== session) return
   try {
     await tick(mine)
+  } catch (error) {
+    // Nothing in `tick` is expected to throw that it does not handle itself, so this is the
+    // backstop: without it a bad frame would become an unhandled rejection every 200 ms, invisible
+    // outside the console, while the loop kept going as if it were reading.
+    if (mine === session) pause(describeError(error))
   } finally {
     if (mine === session) schedule(mine)
   }
@@ -245,6 +286,13 @@ async function tick(mine: number): Promise<void> {
     return
   }
 
+  // A replay writes the held queue frame by frame, each one an await long. Reading on underneath
+  // it would interleave two writers into one line, and put boxes into it out of order.
+  if (replaying) {
+    pause('Writing the boxes that were waiting for the alphabet.')
+    return
+  }
+
   // Both halves are load-bearing. `useFieldDraft` yields to the document whenever it changes
   // underneath, so an append landing in an unflushed draft would discard what was just typed —
   // and the line's textarea stays `document.activeElement` for as long as you play in the
@@ -254,10 +302,22 @@ async function tick(mine: number): Promise<void> {
     return
   }
 
+  // What the box last settled *against* is only meaningful for one line read under one profile:
+  // select another pin without advancing the game and the box on screen has not changed, but it
+  // has never been written to this line. Same for a profile switched mid-conversation, which can
+  // read the same pixels differently.
+  if (dialogueId !== settledFor.dialogueId || profile.id !== settledFor.profileId) {
+    settle = NOTHING_SEEN
+    settledFor = { dialogueId, profileId: profile.id }
+  }
+
   let frame: ImageData
   try {
     frame = await grabFrame()
   } catch (error) {
+    // The stop or start that bumped the session owns the state now: a grab can wait seconds for a
+    // frame that never comes, and a deliberate Stop must not be overwritten by its rejection.
+    if (mine !== session) return
     failures += 1
     if (failures >= FAILURES_BEFORE_STOP) stopWith(describeError(error))
     else pause(describeError(error))
@@ -271,15 +331,31 @@ async function tick(mine: number): Promise<void> {
   markRead()
 
   const settled = step.settled
-  if (settled === null || settled.kind === 'empty') return
+  if (settled === null) return
   if (settled.kind === 'held') {
     hold(dialogueId, frame)
     return
   }
 
+  // The line as the field has it, before reading what the document says: `useFieldDraft` only
+  // commits 300 ms after the last keystroke, and typing a word and clicking straight back into the
+  // emulator would otherwise let this append land first — after which the draft yields to the
+  // document and the typed characters are gone. The manual button flushes for the same reason.
+  flushDraft?.()
+
   try {
-    if ((await writeBox(dialogueId, profile, frame, settled.text)) === 'appended') {
-      countAppended(settled.text)
+    switch (await writeBox(dialogueId, profile, frame, settled.text)) {
+      case 'appended':
+        countAppended(settled.text)
+        break
+      case 'unchanged':
+        // The box said what the line already says. `box-settle.ts` treats a sentence repeated
+        // after a gap as a second box deliberately, and `appendWithoutOverlap` cannot: counted
+        // rather than passed over, so a line that logged one "OK." out of two says so.
+        countRepeated()
+        break
+      case 'gone':
+        break
     }
   } catch (error) {
     // The box has already been marked emitted, so this is not retried against the same frame —
@@ -307,8 +383,11 @@ async function writeBox(
   const target = currentDialogue(dialogueId)
   if (target === null) return 'gone'
   if (appendOutcome(target.text, text).text !== 'appended') return 'unchanged'
-  await captureIntoDialogue(target, profile, frame, text)
-  return 'appended'
+  // Asked twice, because the answer can change in between: `captureIntoDialogue` encodes a PNG and
+  // writes it before it appends, and a manual capture running alongside can land its own append in
+  // that window. Its verdict is the one that describes what the document actually took.
+  const result = await captureIntoDialogue(target, profile, frame, text)
+  return result.text === 'appended' ? 'appended' : 'unchanged'
 }
 
 /**
@@ -324,6 +403,11 @@ function markRead(): void {
   const same = state.lastReadAt !== null && Math.floor(at / 1000) === Math.floor(state.lastReadAt / 1000)
   if (same && state.paused === null) return
   setState({ ...state, paused: null, lastReadAt: at })
+}
+
+function countRepeated(): void {
+  if (state.kind !== 'watching') return
+  setState({ ...state, repeated: state.repeated + 1 })
 }
 
 function countAppended(text: string): void {
@@ -385,13 +469,33 @@ export async function replayHeldFrames(profile: CaptureProfile): Promise<HeldRep
     appended: 0,
     gone: 0,
     stillHeld: 0,
+    repeated: 0,
     dropped: held.dropped,
     failures: [] as string[],
   }
   // The count is what the panel showed; the frames themselves went long ago. Cleared here because
   // this round is the acknowledgement.
   setHeld({ waiting: heldFrames.length, dropped: 0 })
+  // The tick stands down for the duration: two writers appending to one line would interleave the
+  // boxes, and each one's append is computed while the other's is still in flight.
+  replaying = true
+  // The panel's line field is 300 ms ahead of the document, exactly as it is for a live tick.
+  flushDraft?.()
 
+  try {
+    await replayInto(pending, profile, replay)
+  } finally {
+    replaying = false
+  }
+
+  return replay
+}
+
+async function replayInto(
+  pending: readonly HeldFrame[],
+  profile: CaptureProfile,
+  replay: { appended: number; gone: number; stillHeld: number; repeated: number; failures: string[] },
+): Promise<void> {
   for (const entry of pending) {
     if (currentDialogue(entry.dialogueId) === null) {
       release(entry)
@@ -411,14 +515,18 @@ export async function replayHeldFrames(profile: CaptureProfile): Promise<HeldRep
         countAppended(reading.text)
       } else if (written === 'gone') {
         replay.gone += 1
+      } else {
+        // The line already says what this box says. It is *not* counted as written: a held box
+        // replayed after the boxes that followed it can only be appended at the end of the line,
+        // and `appendWithoutOverlap` swallowing it there is exactly the case the reader has to be
+        // told about rather than left to notice.
+        replay.repeated += 1
       }
     } catch (error) {
       // Kept, not dropped: the frame is still the only record of that box.
       replay.failures.push(describeError(error))
     }
   }
-
-  return replay
 }
 
 /** Takes one entry out of the queue. Absent already — pushed out by the cap mid-replay — is fine. */
@@ -437,6 +545,15 @@ export function describeReplay(replay: HeldReplay): string {
   }
   if (replay.stillHeld > 0) {
     parts.push(`${replay.stillHeld} still hold tiles the alphabet cannot name, and are kept`)
+  }
+  if (replay.repeated > 0) {
+    // Named, because a held box can only be appended at the *end* of the line, after the boxes
+    // that were written while it waited — and one that says what the line already says is swallowed
+    // there rather than slotted back into its place.
+    parts.push(
+      `${replay.repeated} said only what the line already said, and were not written — a held box ` +
+        'is appended at the end of the line, not back in its place',
+    )
   }
   if (replay.dropped > 0) {
     parts.push(`${replay.dropped} had already been pushed out of the queue and are lost`)

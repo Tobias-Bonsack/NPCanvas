@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { BoxReading, SettleState } from './box-settle.ts'
+import type { BoxReading, SettledBox, SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 
 const SETTLE_TICKS = 3
@@ -7,16 +7,25 @@ const SETTLE_TICKS = 3
 const HELLO: BoxReading = { kind: 'text', text: 'HELLO' }
 const HELLO_THERE: BoxReading = { kind: 'text', text: 'HELLO THERE' }
 const EMPTY: BoxReading = { kind: 'empty' }
+/** The same box on a frame where one tile could not be named — the arrow, or a new character. */
+const HELLO_HELD: BoxReading = { kind: 'held', signature: 'HELLO', unreadable: 1 }
 
-/** Feeds one reading `times` times over, and returns every settled reading it produced. */
+/** Feeds one reading `times` times over, and returns every settled box it produced. */
 function feed(
   state: SettleState,
   reading: BoxReading,
   times: number,
-): { state: SettleState; settled: BoxReading[] } {
-  const settled: BoxReading[] = []
+): { state: SettleState; settled: SettledBox[] } {
+  return feedAll(state, Array.from({ length: times }, () => reading))
+}
+
+function feedAll(
+  state: SettleState,
+  readings: readonly BoxReading[],
+): { state: SettleState; settled: SettledBox[] } {
+  const settled: SettledBox[] = []
   let current = state
-  for (let tick = 0; tick < times; tick++) {
+  for (const reading of readings) {
     const step = nextSettle(current, reading, SETTLE_TICKS)
     current = step.state
     if (step.settled !== null) settled.push(step.settled)
@@ -26,7 +35,7 @@ function feed(
 
 describe('nextSettle', () => {
   it('says nothing while the box is still typing itself out', () => {
-    // What a console does: one more character per frame, so every tick is a different signature.
+    // What a console does: one more character per frame, so every tick reads a longer transcript.
     let state = NOTHING_SEEN
     for (const text of ['H', 'HE', 'HEL', 'HELL', 'HELLO']) {
       const step = nextSettle(state, { kind: 'text', text }, SETTLE_TICKS)
@@ -46,13 +55,15 @@ describe('nextSettle', () => {
     expect(settled).toEqual([HELLO])
   })
 
-  it('resets repeats and emitted when the signature changes', () => {
+  it('resets repeats and emitted when the transcript changes', () => {
     const settledOnce = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS).state
     expect(settledOnce.emitted).toBe(true)
 
     const changed = nextSettle(settledOnce, HELLO_THERE, SETTLE_TICKS)
     expect(changed.settled).toBeNull()
-    expect(changed.state).toEqual({ signature: 'text:HELLO THERE', repeats: 1, emitted: false })
+    expect(changed.state.repeats).toBe(1)
+    expect(changed.state.emitted).toBe(false)
+    expect(changed.state.signature).toBe('HELLO THERE')
   })
 
   it('settles the scrolled box in its turn', () => {
@@ -81,15 +92,44 @@ describe('nextSettle', () => {
   })
 
   it('settles a held box on its own signature', () => {
-    const held: BoxReading = { kind: 'held', signature: 'HELLO | 0:4:00ff00ff00ff00ff:HELL' }
-    const { settled } = feed(NOTHING_SEEN, held, SETTLE_TICKS + 5)
-    expect(settled).toEqual([held])
+    const { settled } = feed(NOTHING_SEEN, HELLO_HELD, SETTLE_TICKS + 5)
+    expect(settled).toEqual([HELLO_HELD])
   })
 
-  it('keeps a held box and a text of the same words apart', () => {
-    const settledText = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS).state
-    const held = nextSettle(settledText, { kind: 'held', signature: 'HELLO' }, SETTLE_TICKS)
-    expect(held.state.repeats).toBe(1)
+  it('settles through a blinking tile the alphabet cannot name yet', () => {
+    // The continuation arrow before it has been learned: one frame holds it, the next does not,
+    // and the transcript is the same either way. Without the high-water rule this alternation
+    // would reset the count on every tick and the box would never settle at all.
+    const { settled } = feedAll(NOTHING_SEEN, [
+      HELLO_HELD,
+      HELLO,
+      HELLO_HELD,
+      HELLO,
+      HELLO_HELD,
+      HELLO,
+    ])
+    // Written rather than held: the frames where the arrow was dark could be read whole.
+    expect(settled).toEqual([HELLO])
+  })
+
+  it('starts over when a box that could not be read grows another unnamed tile', () => {
+    // A box typing itself out in characters the alphabet cannot name: the transcript stands still
+    // at what is legible, and only the count says the box is still filling.
+    const typing: BoxReading[] = [
+      { kind: 'held', signature: 'HELLO', unreadable: 1 },
+      { kind: 'held', signature: 'HELLO', unreadable: 2 },
+      { kind: 'held', signature: 'HELLO', unreadable: 3 },
+    ]
+    const { settled, state } = feedAll(NOTHING_SEEN, typing)
+    expect(settled).toEqual([])
+    expect(state.repeats).toBe(1)
+    expect(state.unreadable).toBe(3)
+  })
+
+  it('holds a box back when a tile other than the arrow cannot be named', () => {
+    const held: BoxReading = { kind: 'held', signature: 'HELL', unreadable: 1 }
+    const { settled } = feed(NOTHING_SEEN, held, SETTLE_TICKS)
+    expect(settled).toEqual([held])
   })
 
   it('hands back the same state object while a settled box stays on screen', () => {
@@ -104,32 +144,33 @@ describe('nextSettle', () => {
 
 describe('boxReadingFrom', () => {
   it('calls a box with no text and no unknown tiles empty', () => {
-    expect(boxReadingFrom({ text: '', unknown: [] })).toEqual({ kind: 'empty' })
+    expect(boxReadingFrom({ text: '', unknown: [], unreadable: 0 })).toEqual({ kind: 'empty' })
   })
 
   it('carries a complete transcript through as text', () => {
-    expect(boxReadingFrom({ text: 'HELLO', unknown: [] })).toEqual({ kind: 'text', text: 'HELLO' })
+    expect(boxReadingFrom({ text: 'HELLO', unknown: [], unreadable: 0 })).toEqual({
+      kind: 'text',
+      text: 'HELLO',
+    })
   })
 
   it('holds a box back as soon as one tile could not be named', () => {
     const reading = boxReadingFrom({
       text: 'HELLO',
       unknown: [{ column: 5, row: 0, bits: '00ff00ff00ff00ff', context: 'HELLO▯' }],
+      unreadable: 1,
     })
-    expect(reading.kind).toBe('held')
+    expect(reading).toEqual({ kind: 'held', signature: 'HELLO', unreadable: 1 })
   })
 
-  it('changes signature when the line grows behind an already-unknown tile', () => {
-    // `readTextBox` deduplicates unknown tiles by bitmap, so the second `▯` is dropped from
-    // `unknown` — only the context says the box moved on.
-    const typing = boxReadingFrom({
-      text: 'HELL',
-      unknown: [{ column: 4, row: 0, bits: '00ff00ff00ff00ff', context: 'HELL▯' }],
+  it('counts every unnamed tile, not every distinct bitmap', () => {
+    // `readTextBox` deduplicates `unknown` by bitmap, so a line of three unnamed `e`s is one entry
+    // and three tiles — and it is the three that says the box is still filling.
+    const reading = boxReadingFrom({
+      text: '',
+      unknown: [{ column: 2, row: 0, bits: '00ff00ff00ff00ff', context: '▯▯▯' }],
+      unreadable: 3,
     })
-    const grown = boxReadingFrom({
-      text: 'HELL',
-      unknown: [{ column: 4, row: 0, bits: '00ff00ff00ff00ff', context: 'HELL▯▯' }],
-    })
-    expect(typing).not.toEqual(grown)
+    expect(reading).toEqual({ kind: 'held', signature: '', unreadable: 3 })
   })
 })
