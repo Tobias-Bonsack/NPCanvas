@@ -885,6 +885,15 @@ function HeldNote({
         {held.dropped > 0 &&
           ` · ${held.dropped} older ${held.dropped === 1 ? 'one was' : 'ones were'} pushed out of the queue and lost`}
       </p>
+      {/* Why the line has stopped growing even though the watcher says it is reading: a box the
+          alphabet cannot name holds up the boxes after it, because a held box can only ever be
+          appended at the end of the line. */}
+      {held.waiting > 1 && (
+        <p className="dialogue-media__hint">
+          The boxes after the one it could not read are waiting with it, so the line keeps its
+          order.
+        </p>
+      )}
       {held.waiting > 0 && (
         <button type="button" className="button" disabled={disabled} onClick={onAnswer}>
           Name the tiles and write them

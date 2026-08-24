@@ -332,7 +332,12 @@ async function tick(mine: number): Promise<void> {
 
   const settled = step.settled
   if (settled === null) return
-  if (settled.kind === 'held') {
+  // A readable box goes into the queue too, once a box before it is waiting there: a held frame can
+  // only ever be appended at the *end* of the line, so writing the boxes that came after it would
+  // put the conversation down out of order — and `appendWithoutOverlap` would then join the held
+  // one to the wrong suffix, or swallow it whole. Deferred work is the point of the queue; a
+  // scrambled line is not.
+  if (settled.kind === 'held' || holdsFrameFor(dialogueId)) {
     hold(dialogueId, frame)
     return
   }
@@ -431,6 +436,11 @@ function hold(dialogueId: DialogueId, frame: ImageData): void {
   setHeld({ waiting: heldFrames.length, dropped })
 }
 
+/** Whether a box of this line is already waiting, and the next one must therefore wait behind it. */
+function holdsFrameFor(dialogueId: DialogueId): boolean {
+  return heldFrames.some((entry) => entry.dialogueId === dialogueId)
+}
+
 /**
  * Every tile the queue's frames cannot name, deduplicated by bitmap — one round of questions for
  * the whole queue, not one per frame.
@@ -496,6 +506,10 @@ async function replayInto(
   profile: CaptureProfile,
   replay: { appended: number; gone: number; stillHeld: number; repeated: number; failures: string[] },
 ): Promise<void> {
+  // Lines with a frame left behind in this round. Everything after it waits, for the reason the
+  // tick holds a readable box behind a held one: appending it now would put the line out of order.
+  const blocked = new Set<DialogueId>()
+
   for (const entry of pending) {
     if (currentDialogue(entry.dialogueId) === null) {
       release(entry)
@@ -503,7 +517,8 @@ async function replayInto(
       continue
     }
     const reading = readTextBox(entry.frame, profile)
-    if (reading.unknown.length > 0) {
+    if (reading.unknown.length > 0 || blocked.has(entry.dialogueId)) {
+      blocked.add(entry.dialogueId)
       replay.stillHeld += 1
       continue
     }
@@ -523,7 +538,9 @@ async function replayInto(
         replay.repeated += 1
       }
     } catch (error) {
-      // Kept, not dropped: the frame is still the only record of that box.
+      // Kept, not dropped: the frame is still the only record of that box — and the boxes behind
+      // it in the same line are kept with it, so a retry writes them in order.
+      blocked.add(entry.dialogueId)
       replay.failures.push(describeError(error))
     }
   }
