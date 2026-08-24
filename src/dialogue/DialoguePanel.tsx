@@ -116,6 +116,20 @@ const CAPTURE_KEY = 'Enter'
 const CAPTURE_SHORTCUT = 'Ctrl+Enter'
 
 /**
+ * Switching the watcher on and off, as one unmodified key.
+ *
+ * Bare rather than a chord, and one letter rather than two, because of when it is pressed: a
+ * conversation starts and ends while the hand is on the emulator's controls, so the gesture has to
+ * be cheaper than reaching for the panel. `w` is free — the canvas tools own `i`, `p`, `z` and `m`,
+ * and the viewport `f`, `0`, `+` and `-`.
+ *
+ * Unmodified letters are also exactly what an NPC name is made of, so the listener stands down for
+ * a focused text field the same way `MapScreen`'s tool shortcuts do.
+ */
+const WATCH_KEY = 'w'
+const WATCH_SHORTCUT = 'W'
+
+/**
  * The detail view for the selected dialogue. Rendering it at all *is* "open" — the parent
  * owns the selection, so closing on deselect needs no state here.
  *
@@ -514,6 +528,19 @@ export function DialoguePanel({
     void write(target, frame, reading.text)
   }
 
+  /**
+   * The watcher's toggle, for both the button and the key.
+   *
+   * Stopping is unconditional: the connection can end while the loop runs, and a toggle that
+   * refused to stop would leave it switched on with no way back. Starting is not — a blocker means
+   * there is nothing to read, and switching on into a paused loop says the opposite of what
+   * happened. Same rule as the button's `disabled`, in one place so the two cannot drift.
+   */
+  function toggleWatch(): void {
+    if (watching) stopWatching()
+    else if (blocker === null) startWatching()
+  }
+
   // The handler closes over the dialogue, so it is a new function on every keystroke in the line
   // field. A ref keeps the window binding stable while the shortcut still runs the current one.
   const captureRef = useRef(capture)
@@ -528,6 +555,25 @@ export function DialoguePanel({
       // text this is about to append to.
       event.preventDefault()
       void captureRef.current()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // Both halves change on every render — `watching` on each toggle, `blocker` whenever the
+  // connection or the profile does — so the same ref pattern as `captureRef` keeps one binding.
+  const toggleWatchRef = useRef(toggleWatch)
+  useEffect(() => {
+    toggleWatchRef.current = toggleWatch
+  })
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (event.key.toLowerCase() !== WATCH_KEY) return
+      if (isTextFieldFocused()) return
+      event.preventDefault()
+      toggleWatchRef.current()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -744,13 +790,13 @@ export function DialoguePanel({
               disabled={blocker !== null && !watching}
               title={
                 watching
-                  ? 'Stop reading the text box'
+                  ? `Stop reading the text box — ${WATCH_SHORTCUT}`
                   : (blocker ??
-                    'Read the text box while you play — every box that comes to rest is appended to this line, with its picture')
+                    `Read the text box while you play — every box that comes to rest is appended to this line, with its picture. ${WATCH_SHORTCUT}`)
               }
-              onClick={() => (watching ? stopWatching() : startWatching())}
+              onClick={toggleWatch}
             >
-              {watching ? 'Stop watching' : 'Watch the text box'}
+              {watching ? 'Stop watching' : 'Watch the text box'} · {WATCH_SHORTCUT}
             </button>
           </div>
           <WatchNote />
