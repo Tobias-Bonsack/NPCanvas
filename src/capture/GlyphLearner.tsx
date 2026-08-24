@@ -1,9 +1,8 @@
 import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import type { Glyph } from '../project/types.ts'
-import { TILE_SIZE } from './capture-profile.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
-import { isGlyphPixelSet, parseGlyphBits } from './glyph-matcher.ts'
+import { GlyphTile } from './GlyphTile.tsx'
 import './GlyphLearner.css'
 
 /** What one tile has been answered with. `notText` produces the empty `char` the arrow needs. */
@@ -60,7 +59,7 @@ export function GlyphLearner({
         <ol className="glyph-learner__list">
           {tiles.map((tile, index) => (
             <li key={tile.bits} className="glyph-learner__item">
-              <TileBitmap bits={tile.bits} />
+              <GlyphTile bits={tile.bits} className="glyph-learner__tile" label="Unrecognised tile" />
               <div className="glyph-learner__fields">
                 <p className="glyph-learner__context">
                   {tile.context}
@@ -116,34 +115,5 @@ export function GlyphLearner({
         </footer>
       </div>
     </div>
-  )
-}
-
-/**
- * One 8 × 8 tile, drawn large enough to read.
- *
- * An `<svg>` of one rect per ink pixel rather than an upscaled bitmap: this is the only place the
- * user judges what a tile *is*, and a scaled image would leave that to the browser's smoothing.
- */
-function TileBitmap({ bits }: { bits: string }): ReactElement {
-  const rows = parseGlyphBits(bits)
-  const pixels: ReactElement[] = []
-  if (rows !== null) {
-    for (let row = 0; row < TILE_SIZE; row++) {
-      for (let column = 0; column < TILE_SIZE; column++) {
-        if (!isGlyphPixelSet(rows, column, row)) continue
-        pixels.push(<rect key={`${column},${row}`} x={column} y={row} width={1} height={1} />)
-      }
-    }
-  }
-  return (
-    <svg
-      className="glyph-learner__tile"
-      viewBox={`0 0 ${TILE_SIZE} ${TILE_SIZE}`}
-      role="img"
-      aria-label="Unrecognised tile"
-    >
-      {pixels}
-    </svg>
   )
 }

@@ -26,7 +26,7 @@ export const DEFAULT_NATIVE_HEIGHT = 144
 export type ScreenMapping = Pick<CaptureProfile, 'screenRect' | 'nativeWidth' | 'nativeHeight'>
 
 /**
- * Everything one calibration pass produces: a profile minus its identity and its alphabet.
+ * Everything one calibration pass produces: a profile minus its identity and its name.
  * `frameWidth`/`frameHeight` belong to it because they record what the rects were measured
  * against — a profile that forgot them could only be silently wrong on a resized window.
  */
@@ -157,12 +157,15 @@ export function normalizeRect(rect: PixelRect): PixelRect {
   }
 }
 
-/** A new profile, with the empty alphabet #53 fills. The only place a profile is constructed. */
+/**
+ * A new profile. The only place one is constructed — and it takes nothing but a name and a
+ * measurement, because the alphabet it will read with belongs to the project, not to it.
+ */
 export function createCaptureProfile(
   name: string,
   calibration: ProfileCalibration,
 ): CaptureProfile {
-  return { id: newCaptureProfileId(), name, ...calibration, glyphs: [] }
+  return { id: newCaptureProfileId(), name, ...calibration }
 }
 
 /**

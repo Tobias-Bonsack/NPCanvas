@@ -233,11 +233,18 @@ export function matchGlyph(tile: TileMask, glyphs: readonly Glyph[]): Glyph | nu
 /**
  * A whole text box, as a transcript plus whatever it could not name.
  *
+ * The alphabet is a separate argument because a profile does not carry one: a profile says where
+ * to read pixels, and the font is the console's, shared by every profile aimed at it.
+ *
  * Lines are joined with a single space and trimmed first: Pokémon Gen 1 breaks between words and
  * never inside one, so a line end is always a word boundary. A line of nothing but background
  * disappears entirely rather than contributing a second space.
  */
-export function readTextBox(frame: PixelBuffer, profile: CaptureProfile): TextBoxReading {
+export function readTextBox(
+  frame: PixelBuffer,
+  profile: CaptureProfile,
+  glyphs: readonly Glyph[],
+): TextBoxReading {
   const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight)
   const bits = binarise(native, inkThreshold(native, profile.textRect))
   const tiles = readTiles(bits, profile.nativeWidth, profile.textRect)
@@ -258,7 +265,7 @@ export function readTextBox(frame: PixelBuffer, profile: CaptureProfile): TextBo
       continue
     }
 
-    const glyph = matchGlyph(tile, profile.glyphs)
+    const glyph = matchGlyph(tile, glyphs)
     if (glyph === null) {
       // Contributes nothing: `text` is only ever complete when `unknown` is empty.
       pending.push({ column: tile.column, row: tile.row, bits: toGlyphBits(tile.rows) })
@@ -302,6 +309,30 @@ export function mergeGlyphs(existing: readonly Glyph[], learned: readonly Glyph[
     ...existing.map((glyph) => replacements.get(glyph.bits) ?? glyph),
     ...learned.filter((glyph) => !known.has(glyph.bits)),
   ]
+}
+
+/**
+ * An alphabet with one bitmap taken out of it — the mirror of `mergeGlyphs`, and the only removal
+ * path there is.
+ *
+ * Keyed on the bitmap through `toGlyphBits(parseGlyphBits(...))`, exactly as `matchGlyph` compares,
+ * so an entry hand-written into `data.json` in upper case is still the one this removes. Returns
+ * the array it was given when nothing matched, which is how the reducer tells a real removal from
+ * a request for a bitmap the project never learned — the difference between one undo step and none.
+ *
+ * Removal exists because re-learning cannot reach every mistake: a tile wrongly marked *not text*
+ * matches silently from then on and never reappears in `unknown`, so the learner would never ask
+ * about it again.
+ */
+export function forgetGlyph(glyphs: Glyph[], bits: string): Glyph[] {
+  const rows = parseGlyphBits(bits)
+  if (rows === null) return glyphs
+  const target = toGlyphBits(rows)
+  const kept = glyphs.filter((glyph) => {
+    const own = parseGlyphBits(glyph.bits)
+    return own === null || toGlyphBits(own) !== target
+  })
+  return kept.length === glyphs.length ? glyphs : kept
 }
 
 /** The 16 hex characters a `Glyph` stores, from a tile's rows. */

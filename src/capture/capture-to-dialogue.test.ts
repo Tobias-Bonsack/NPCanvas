@@ -13,7 +13,6 @@ const PROFILE: CaptureProfile = {
   nativeWidth: 160,
   nativeHeight: 144,
   textRect: { x: 8, y: 96, width: 144, height: 40 },
-  glyphs: [],
 }
 
 const LIVE: CaptureSource = {

@@ -4,6 +4,7 @@ import type { CaptureProfile, Glyph } from '../project/types.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 import {
   binarise,
+  forgetGlyph,
   inkThreshold,
   matchGlyph,
   parseGlyphBits,
@@ -213,11 +214,53 @@ describe('matchGlyph', () => {
   })
 })
 
+describe('forgetGlyph', () => {
+  it('takes one bitmap out and leaves the rest in their order', () => {
+    expect(forgetGlyph([...ALPHABET], U)).toEqual([
+      { char: 'D', bits: D },
+      { char: 'ß', bits: SHARP_S },
+      { char: '', bits: ARROW },
+    ])
+  })
+
+  it('reaches a tile that was wrongly marked as not text — the case re-learning cannot', () => {
+    // Such a glyph matches silently from then on and never lands in `unknown`, so the learner
+    // would never ask about it again. Forgetting it is the only way back to being asked.
+    const forgotten = forgetGlyph([...ALPHABET], ARROW)
+    expect(forgotten.some((glyph) => glyph.bits === ARROW)).toBe(false)
+  })
+
+  it('matches a bitmap written in upper case hex, the way matchGlyph does', () => {
+    expect(forgetGlyph([...ALPHABET], U.toUpperCase()).map((glyph) => glyph.char)).toEqual([
+      'D',
+      'ß',
+      '',
+    ])
+  })
+
+  it('hands back the same array when the bitmap is not in the alphabet', () => {
+    const alphabet = [...ALPHABET]
+    // Reference equality, not a deep match: it is what lets the reducer tell a removal of nothing
+    // from a real one, and cost it no undo step.
+    expect(forgetGlyph(alphabet, '0000000000000000')).toBe(alphabet)
+  })
+
+  it('hands back the same array for a bitmap that is not 16 hex characters', () => {
+    const alphabet = [...ALPHABET]
+    expect(forgetGlyph(alphabet, 'nonsense')).toBe(alphabet)
+  })
+
+  it('removes every entry sharing a bitmap, so a hand-edited duplicate cannot survive', () => {
+    const doubled: Glyph[] = [...ALPHABET, { char: 'O', bits: U.toUpperCase() }]
+    expect(forgetGlyph(doubled, U).map((glyph) => glyph.char)).toEqual(['D', 'ß', ''])
+  })
+})
+
 describe('readTextBox', () => {
   it('transcribes a known alphabet exactly', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const reading = readTextBox(toFrame(native), profile())
+    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
 
     expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
   })
@@ -226,7 +269,7 @@ describe('readTextBox', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
     write(native, 1, 'ß', { ß: SHARP_S })
-    const reading = readTextBox(toFrame(native), profile())
+    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('DU ß')
   })
@@ -234,7 +277,7 @@ describe('readTextBox', () => {
   it('reads an empty tile as a space and never asks about it', () => {
     const native = blankNative()
     write(native, 0, 'D U', { D, U })
-    const reading = readTextBox(toFrame(native), profile())
+    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('D U')
     expect(reading.unknown).toEqual([])
@@ -244,7 +287,7 @@ describe('readTextBox', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
     drawTile(native, ARROW, 4 + TEXT_RECT.x / 8, 1 + TEXT_RECT.y / 8)
-    const reading = readTextBox(toFrame(native), profile())
+    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('DU')
     expect(reading.unknown).toEqual([])
@@ -253,7 +296,10 @@ describe('readTextBox', () => {
   it('reports an unrecognised tile with its grid position instead of inventing a character', () => {
     const native = blankNative()
     write(native, 0, 'DUß', { D, U, ß: SHARP_S })
-    const reading = readTextBox(toFrame(native), profile({ glyphs: [{ char: 'D', bits: D }, { char: 'U', bits: U }] }))
+    const reading = readTextBox(toFrame(native), profile(), [
+      { char: 'D', bits: D },
+      { char: 'U', bits: U },
+    ])
 
     expect(reading.text).toBe('DU')
     expect(reading.unknown).toMatchObject([{ column: 2, row: 0, bits: SHARP_S, context: 'DU▯' }])
@@ -262,7 +308,7 @@ describe('readTextBox', () => {
   it('asks about a repeated character once, and still counts both tiles', () => {
     const native = blankNative()
     write(native, 0, 'DUU', { D, U })
-    const reading = readTextBox(toFrame(native), profile({ glyphs: [{ char: 'D', bits: D }] }))
+    const reading = readTextBox(toFrame(native), profile(), [{ char: 'D', bits: D }])
 
     expect(reading.unknown.map((tile) => tile.column)).toEqual([1])
     expect(reading.unknown[0].bits).toBe(U)
@@ -275,11 +321,11 @@ describe('readTextBox', () => {
     const native = blankNative()
     write(native, 0, 'DUß', { D, U, ß: SHARP_S })
     const frame = toFrame(native)
-    const partial = profile({ glyphs: [{ char: 'D', bits: D }, { char: 'U', bits: U }] })
+    const partial: Glyph[] = [{ char: 'D', bits: D }, { char: 'U', bits: U }]
 
-    const first = readTextBox(frame, partial)
+    const first = readTextBox(frame, profile(), partial)
     const learned = first.unknown.map((tile) => ({ char: 'ß', bits: tile.bits }))
-    const second = readTextBox(frame, profile({ glyphs: [...partial.glyphs, ...learned] }))
+    const second = readTextBox(frame, profile(), [...partial, ...learned])
 
     expect(second).toEqual({ text: 'DUß', unknown: [], unreadable: 0 })
   })
@@ -301,7 +347,6 @@ function profile(overrides: Partial<CaptureProfile> = {}): CaptureProfile {
     nativeWidth: NATIVE_WIDTH,
     nativeHeight: NATIVE_HEIGHT,
     textRect: TEXT_RECT,
-    glyphs: ALPHABET,
     ...overrides,
   }
 }

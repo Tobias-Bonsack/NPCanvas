@@ -138,6 +138,10 @@ export type Glyph = {
 /**
  * How to cut a console screen out of a captured frame, and where the text box sits inside it.
  * Declared here because it is document state — several per project, written by #52 onwards.
+ *
+ * Every field is a measurement. The font is not one: it is the console's, and it is the same
+ * whether the box being read is the dialogue box or the Pokédex panel, so the alphabet lives on
+ * `ProjectFile.glyphs` and every profile reads with it.
  */
 export type CaptureProfile = {
   id: CaptureProfileId
@@ -152,9 +156,14 @@ export type CaptureProfile = {
   nativeHeight: number
   /** The text box, in native pixels, snapped to the 8-pixel tile grid. */
   textRect: PixelRect
-  /** The alphabet learned so far. Empty until #53 fills it. */
-  glyphs: Glyph[]
 }
+
+/**
+ * A profile as V5 and earlier stored it, carrying an alphabet of its own. The pre-migration shape,
+ * beside `GameMapV1`, `QuestV2`, `DialogueV3` and `DialogueV4`, and the only thing
+ * `readCaptureProfileV5` still builds.
+ */
+export type CaptureProfileV5 = CaptureProfile & { glyphs: Glyph[] }
 
 /**
  * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
@@ -276,7 +285,7 @@ export type ProjectFileV4 = {
   zones: Zone[]
   dialogues: DialogueV4[]
   quests: Quest[]
-  captureProfiles: CaptureProfile[]
+  captureProfiles: CaptureProfileV5[]
 }
 
 /**
@@ -293,8 +302,28 @@ export type ProjectFileV5 = {
   zones: Zone[]
   dialogues: Dialogue[]
   quests: Quest[]
+  captureProfiles: CaptureProfileV5[]
+  relevanceTags: RelevanceTag[]
+}
+
+/**
+ * V6 takes the alphabet off the profile and gives it to the project. A profile says *where* to
+ * read pixels — a frame rect, a screen rect, a text rect — while the font is the console's, so
+ * two profiles aimed at one game were learning the same tiles twice. `glyphs` is keyed by bitmap
+ * and its order carries no meaning: `matchGlyph` is an exact lookup and `mergeGlyphs` keeps the
+ * bitmaps unique, so nothing may read the position of an entry the way `relevanceTags` is read.
+ */
+export type ProjectFileV6 = {
+  schemaVersion: 6
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
   captureProfiles: CaptureProfile[]
   relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
 }
 
 /**
@@ -307,9 +336,10 @@ export type StoredProjectFile =
   | ProjectFileV3
   | ProjectFileV4
   | ProjectFileV5
+  | ProjectFileV6
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV5
+export type ProjectFile = ProjectFileV6
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not

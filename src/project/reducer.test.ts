@@ -18,6 +18,7 @@ import type {
   Dialogue,
   DialogueMedia,
   GameMap,
+  Glyph,
   History,
   MapId,
   ProjectFile,
@@ -132,7 +133,7 @@ const CALIBRATION: ProfileCalibration = {
 }
 
 function captureProfile(id: string, name = id): CaptureProfile {
-  return { id: asCaptureProfileId(id), name, ...CALIBRATION, glyphs: [] }
+  return { id: asCaptureProfileId(id), name, ...CALIBRATION }
 }
 
 /** Two maps, each with a dialogue and a zone, plus a quest spanning both. */
@@ -243,6 +244,8 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     calibration: CALIBRATION,
   },
   { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') },
+  { kind: 'glyphs/learned', glyphs: [{ char: 'A', bits: '0123456789abcdef' }] },
+  { kind: 'glyph/forgotten', bits: '0123456789abcdef' },
   { kind: 'relevance-tag/added', tag: relevanceTag('lore', 'Lore', 10) },
   { kind: 'relevance-tag/renamed', tagId: asRelevanceTagId('other'), name: 'Lore' },
   { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('other'), hue: 10 },
@@ -1350,12 +1353,11 @@ describe('reduce: capture profiles', () => {
     expect(profilesOf(next)[0].name).toBe('Pokémon Blue')
   })
 
-  it('re-calibrates one, keeping the glyphs it has learned', () => {
+  it('re-calibrates one, leaving the project alphabet alone', () => {
     const learned = ready({
       ...createEmptyProject('Harbour'),
-      captureProfiles: [
-        { ...captureProfile('profile-1'), glyphs: [{ char: 'A', bits: '0123456789abcdef' }] },
-      ],
+      captureProfiles: [captureProfile('profile-1')],
+      glyphs: [{ char: 'A', bits: '0123456789abcdef' }],
     })
     const next = reduce(learned, {
       kind: 'capture-profile/calibrated',
@@ -1369,7 +1371,7 @@ describe('reduce: capture profiles', () => {
     })
     expect(profilesOf(next)[0].frameWidth).toBe(1920)
     expect(profilesOf(next)[0].screenRect).toEqual({ x: 10, y: 20, width: 320, height: 288 })
-    expect(profilesOf(next)[0].glyphs).toEqual([{ char: 'A', bits: '0123456789abcdef' }])
+    expect(readyOf(next).project.glyphs).toEqual([{ char: 'A', bits: '0123456789abcdef' }])
   })
 
   it('deletes one, and nothing else', () => {
@@ -1415,6 +1417,76 @@ describe('reduce: capture profiles', () => {
         profileId: asCaptureProfileId('missing'),
       }),
     ).toBe(state)
+  })
+})
+
+describe('reduce: the project alphabet', () => {
+  const A: Glyph = { char: 'A', bits: '0123456789abcdef' }
+  const B: Glyph = { char: 'B', bits: 'fedcba9876543210' }
+
+  function glyphsOf(state: AppState): Glyph[] {
+    return readyOf(state).project.glyphs
+  }
+
+  function withAlphabet(glyphs: Glyph[]): ReadyState {
+    return ready({ ...createEmptyProject('Harbour'), glyphs })
+  }
+
+  it('learns a tile into the project, not into a profile', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      captureProfiles: [captureProfile('profile-1'), captureProfile('profile-2')],
+    })
+    const next = reduce(state, { kind: 'glyphs/learned', glyphs: [A] })
+
+    expect(glyphsOf(next)).toEqual([A])
+    // Both profiles read with it, because neither owns anything to read with.
+    expect(readyOf(next).project.captureProfiles).toEqual(state.project.captureProfiles)
+  })
+
+  it('replaces on an identical bitmap, so re-learning corrects a mistyped character', () => {
+    const next = reduce(withAlphabet([A, B]), {
+      kind: 'glyphs/learned',
+      glyphs: [{ char: 'Ä', bits: A.bits }],
+    })
+
+    expect(glyphsOf(next)).toEqual([{ char: 'Ä', bits: A.bits }, B])
+  })
+
+  it('ignores learning nothing', () => {
+    const state = withAlphabet([A])
+    expect(reduce(state, { kind: 'glyphs/learned', glyphs: [] })).toBe(state)
+  })
+
+  it('forgets one glyph and leaves the rest', () => {
+    const next = reduce(withAlphabet([A, B]), { kind: 'glyph/forgotten', bits: A.bits })
+    expect(glyphsOf(next)).toEqual([B])
+  })
+
+  it('ignores forgetting a bitmap the project never learned', () => {
+    const state = withAlphabet([A])
+    expect(reduce(state, { kind: 'glyph/forgotten', bits: B.bits })).toBe(state)
+  })
+
+  it('makes each removal its own undo step, which is why forgetting needs no confirmation', () => {
+    const state = withAlphabet([A, B])
+    const forgotten = reduce(state, { kind: 'glyph/forgotten', bits: A.bits })
+    expect(glyphsOf(forgotten)).toEqual([B])
+    expect(readyOf(forgotten).history.undo).toHaveLength(1)
+
+    const undone = reduce(forgotten, { kind: 'history/undo' })
+    expect(glyphsOf(undone)).toEqual([A, B])
+  })
+
+  it('does not coalesce two removals into one undo step', () => {
+    const state = withAlphabet([A, B])
+    const twice = reduce(reduce(state, { kind: 'glyph/forgotten', bits: A.bits }), {
+      kind: 'glyph/forgotten',
+      bits: B.bits,
+    })
+
+    expect(glyphsOf(twice)).toEqual([])
+    expect(glyphsOf(reduce(twice, { kind: 'history/undo' }))).toEqual([B])
   })
 })
 

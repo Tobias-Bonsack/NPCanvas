@@ -14,6 +14,7 @@ import {
 import type {
   CaptureProfile,
   CaptureProfileId,
+  CaptureProfileV5,
   Dialogue,
   DialogueId,
   DialogueMedia,
@@ -34,6 +35,7 @@ import type {
   ProjectFileV3,
   ProjectFileV4,
   ProjectFileV5,
+  ProjectFileV6,
   ProjectRepairs,
   Quest,
   QuestId,
@@ -50,7 +52,7 @@ import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -59,6 +61,7 @@ export function createEmptyProject(name: string): ProjectFile {
     quests: [],
     captureProfiles: [],
     relevanceTags: defaultRelevanceTags(),
+    glyphs: [],
   }
 }
 
@@ -397,6 +400,10 @@ function readGlyph(value: unknown, path: string): Glyph {
   }
 }
 
+function readGlyphs(value: unknown, path: string): Glyph[] {
+  return readArray(value, path).map((glyph, index) => readGlyph(glyph, `${path}[${index}]`))
+}
+
 function readCaptureProfile(value: unknown, path: string): CaptureProfile {
   const raw = readObject(value, path)
   return {
@@ -408,9 +415,19 @@ function readCaptureProfile(value: unknown, path: string): CaptureProfile {
     nativeWidth: readPositiveNumber(raw.nativeWidth, `${path}.nativeWidth`),
     nativeHeight: readPositiveNumber(raw.nativeHeight, `${path}.nativeHeight`),
     textRect: readPixelRect(raw.textRect, `${path}.textRect`),
-    glyphs: readArray(raw.glyphs, `${path}.glyphs`).map((glyph, index) =>
-      readGlyph(glyph, `${path}.glyphs[${index}]`),
-    ),
+  }
+}
+
+/**
+ * A V5-and-earlier profile, alphabet and all. `glyphs` is appended *after* the shared fields so a
+ * migrated document's first save writes the keys in the order every save after it does — the
+ * byte-stability the round-trip test pins.
+ */
+function readCaptureProfileV5(value: unknown, path: string): CaptureProfileV5 {
+  const raw = readObject(value, path)
+  return {
+    ...readCaptureProfile(value, path),
+    glyphs: readGlyphs(raw.glyphs, `${path}.glyphs`),
   }
 }
 
@@ -645,17 +662,22 @@ function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw)))))
+      return migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))
     case 2:
-      return migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))
+      return migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw)))))
     case 3:
-      return migrateV4(migrateV3(readProjectFileV3(raw)))
+      return migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))
     case 4:
-      return migrateV4(readProjectFileV4(raw))
+      return migrateV5(migrateV4(readProjectFileV4(raw)))
     case 5:
-      return readProjectFileV5(raw)
+      return migrateV5(readProjectFileV5(raw))
+    case 6:
+      return readProjectFileV6(raw)
     default:
-      throw new SchemaError('schemaVersion', `1, 2, 3, 4 or 5, but found ${String(schemaVersion)}`)
+      throw new SchemaError(
+        'schemaVersion',
+        `1, 2, 3, 4, 5 or 6, but found ${String(schemaVersion)}`,
+      )
   }
 }
 
@@ -715,7 +737,7 @@ function readProjectFileV4(raw: Record<string, unknown>): ProjectFileV4 {
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues: readUniqueArray(raw, 'dialogues', readDialogueV4),
     quests: readQuestsV3(raw),
-    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV5),
   }
 }
 
@@ -736,8 +758,32 @@ function readProjectFileV5(raw: Record<string, unknown>): ProjectFileV5 {
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,
     quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV5),
+    relevanceTags,
+  }
+}
+
+/**
+ * V6 reads the project's own alphabet after everything else, which is the order it is written in.
+ * Otherwise identical to V5 — moving `glyphs` off the profiles changed nothing a dialogue or a
+ * zone is read by.
+ */
+function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  return {
+    schemaVersion: 6,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
     relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
   }
 }
 
@@ -815,5 +861,50 @@ function migrateV4(file: ProjectFileV4): ProjectFileV5 {
       ),
     })),
     relevanceTags,
+  }
+}
+
+/**
+ * V5 gave every capture profile an alphabet of its own; V6 gives the project one. The profiles'
+ * alphabets are folded together in profile order, and the **first** naming of a bitmap wins.
+ *
+ * Deliberately not `mergeGlyphs`: that replaces on identical bits, so the last profile taught
+ * would overrule every earlier one. Profiles are appended in the order they were created, which is
+ * the order they were taught in, and the fullest alphabet is the one that was taught first — a
+ * later profile aimed at a second box on the same console is re-learning tiles, not correcting
+ * them. Where the two disagree the earlier answer is the one with the most readings behind it.
+ * A disagreement is now fixable in the UI either way, which is what makes this a rule rather than
+ * a guess: `forgetGlyph` plus the learner replaces a wrong entry in two clicks.
+ */
+function migrateV5(file: ProjectFileV5): ProjectFileV6 {
+  const glyphs: Glyph[] = []
+  const known = new Set<string>()
+  for (const profile of file.captureProfiles) {
+    for (const glyph of profile.glyphs) {
+      if (known.has(glyph.bits)) continue
+      known.add(glyph.bits)
+      glyphs.push(glyph)
+    }
+  }
+  return {
+    ...file,
+    schemaVersion: 6,
+    captureProfiles: file.captureProfiles.map(stripGlyphs),
+    glyphs,
+  }
+}
+
+/** A V5 profile as V6 stores it. Written out field by field rather than destructured, because
+ * `noUnusedLocals` fails on the binding a rest-spread would leave behind. */
+function stripGlyphs(profile: CaptureProfileV5): CaptureProfile {
+  return {
+    id: profile.id,
+    name: profile.name,
+    frameWidth: profile.frameWidth,
+    frameHeight: profile.frameHeight,
+    screenRect: profile.screenRect,
+    nativeWidth: profile.nativeWidth,
+    nativeHeight: profile.nativeHeight,
+    textRect: profile.textRect,
   }
 }

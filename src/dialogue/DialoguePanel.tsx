@@ -81,6 +81,9 @@ type CaptureState =
       kind: 'learning'
       /** The capture stays with the profile it started under, whatever the bar switches to. */
       profile: CaptureProfile
+      /** And with the alphabet it started under, for the same reason — including the tiles just
+          typed in, which the store has not handed back yet. */
+      glyphs: readonly Glyph[]
       frame: ImageData
       tiles: readonly UnknownTile[]
     }
@@ -88,7 +91,12 @@ type CaptureState =
    * The same questions, asked for the watcher's whole held queue at once. No single frame: the
    * tiles are the union across all of them, and every frame is re-read on confirm.
    */
-  | { kind: 'learning-held'; profile: CaptureProfile; tiles: readonly UnknownTile[] }
+  | {
+      kind: 'learning-held'
+      profile: CaptureProfile
+      glyphs: readonly Glyph[]
+      tiles: readonly UnknownTile[]
+    }
   | { kind: 'done'; message: string }
   | { kind: 'failed'; message: string }
 
@@ -409,9 +417,15 @@ export function DialoguePanel({
     }
     setCaptureState({ kind: 'capturing' })
     try {
-      const { frame, reading } = await readLiveBox(profile)
+      const { frame, reading } = await readLiveBox(profile, project.glyphs)
       if (reading.unknown.length > 0) {
-        setCaptureState({ kind: 'learning', profile, frame, tiles: reading.unknown })
+        setCaptureState({
+          kind: 'learning',
+          profile,
+          glyphs: project.glyphs,
+          frame,
+          tiles: reading.unknown,
+        })
         return
       }
       await write(profile, frame, reading.text)
@@ -447,18 +461,21 @@ export function DialoguePanel({
    */
   function answerHeld(): void {
     if (busy || profile === null) return
-    const tiles = heldUnknownTiles(profile)
+    const tiles = heldUnknownTiles(profile, project.glyphs)
     if (tiles.length === 0) {
-      void replayHeld(profile)
+      void replayHeld(profile, project.glyphs)
       return
     }
-    setCaptureState({ kind: 'learning-held', profile, tiles })
+    setCaptureState({ kind: 'learning-held', profile, glyphs: project.glyphs, tiles })
   }
 
-  async function replayHeld(target: CaptureProfile): Promise<void> {
+  async function replayHeld(target: CaptureProfile, alphabet: readonly Glyph[]): Promise<void> {
     setCaptureState({ kind: 'capturing' })
     try {
-      setCaptureState({ kind: 'done', message: describeReplay(await replayHeldFrames(target)) })
+      setCaptureState({
+        kind: 'done',
+        message: describeReplay(await replayHeldFrames(target, alphabet)),
+      })
     } catch (error) {
       // `replayHeldFrames` keeps a frame it could not write, so nothing is lost here — but the
       // panel must not be left reading "Capturing…" with every control disabled behind it.
@@ -466,26 +483,35 @@ export function DialoguePanel({
     }
   }
 
-  function onHeldGlyphsLearned(target: CaptureProfile, glyphs: Glyph[]): void {
-    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: target.id, glyphs })
+  function onHeldGlyphsLearned(
+    target: CaptureProfile,
+    alphabet: readonly Glyph[],
+    learned: Glyph[],
+  ): void {
+    dispatch({ kind: 'glyphs/learned', glyphs: learned })
     // The store's own copy arrives on the next render and the frames are being re-read now, so
     // the grown alphabet is applied here through the same merge the reducer just ran — as
     // `CaptureBar` and `onGlyphsLearned` do.
-    void replayHeld({ ...target, glyphs: mergeGlyphs(target.glyphs, glyphs) })
+    void replayHeld(target, mergeGlyphs(alphabet, learned))
   }
 
-  function onGlyphsLearned(target: CaptureProfile, frame: ImageData, glyphs: Glyph[]): void {
-    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: target.id, glyphs })
+  function onGlyphsLearned(
+    target: CaptureProfile,
+    alphabet: readonly Glyph[],
+    frame: ImageData,
+    learned: Glyph[],
+  ): void {
+    dispatch({ kind: 'glyphs/learned', glyphs: learned })
     // The store's own copy arrives on the next render and the transcript is wanted now, so the
     // grown alphabet is applied here through the same merge the reducer just ran — as CaptureBar
     // does. Re-read rather than assumed complete: two glyphs learned one bit apart stay ambiguous.
-    const grown = { ...target, glyphs: mergeGlyphs(target.glyphs, glyphs) }
-    const reading = readTextBox(frame, grown)
+    const grown = mergeGlyphs(alphabet, learned)
+    const reading = readTextBox(frame, target, grown)
     if (reading.unknown.length > 0) {
-      setCaptureState({ kind: 'learning', profile: grown, frame, tiles: reading.unknown })
+      setCaptureState({ kind: 'learning', profile: target, glyphs: grown, frame, tiles: reading.unknown })
       return
     }
-    void write(grown, frame, reading.text)
+    void write(target, frame, reading.text)
   }
 
   // The handler closes over the dialogue, so it is a new function on every keystroke in the line
@@ -781,7 +807,7 @@ export function DialoguePanel({
 
         {/* Below the media it will eventually feed: the connection is a session-long setup step,
             not something touched per dialogue, so it must not push the line's own fields down. */}
-        <CaptureBar profiles={project.captureProfiles} />
+        <CaptureBar profiles={project.captureProfiles} glyphs={project.glyphs} />
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
       </div>
@@ -791,8 +817,13 @@ export function DialoguePanel({
         <GlyphLearner
           tiles={captureState.tiles}
           onCancel={() => void write(captureState.profile, captureState.frame, null)}
-          onConfirm={(glyphs) =>
-            onGlyphsLearned(captureState.profile, captureState.frame, glyphs)
+          onConfirm={(learned) =>
+            onGlyphsLearned(
+              captureState.profile,
+              captureState.glyphs,
+              captureState.frame,
+              learned,
+            )
           }
         />
       )}
@@ -802,7 +833,9 @@ export function DialoguePanel({
         <GlyphLearner
           tiles={captureState.tiles}
           onCancel={() => setCaptureState({ kind: 'idle' })}
-          onConfirm={(glyphs) => onHeldGlyphsLearned(captureState.profile, glyphs)}
+          onConfirm={(learned) =>
+            onHeldGlyphsLearned(captureState.profile, captureState.glyphs, learned)
+          }
         />
       )}
     </aside>

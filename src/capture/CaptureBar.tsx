@@ -19,6 +19,7 @@ import { readLiveBox } from './capture-to-dialogue.ts'
 import { GlyphLearner } from './GlyphLearner.tsx'
 import type { TextBoxReading } from './glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from './glyph-matcher.ts'
+import { GlyphSet } from './GlyphSet.tsx'
 import './CaptureBar.css'
 
 /**
@@ -55,7 +56,13 @@ type ReadState =
  * opened, and the picker must run once per session, not once per mount. Which profile is active
  * lives in `active-profile.ts` for the same reason.
  */
-export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }): ReactElement {
+export function CaptureBar({
+  profiles,
+  glyphs,
+}: {
+  profiles: readonly CaptureProfile[]
+  glyphs: readonly Glyph[]
+}): ReactElement {
   const source = useCaptureSource()
   const active = useActiveCaptureProfile(profiles)
   /**
@@ -66,6 +73,8 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
   const [calibration, setCalibration] = useState<CalibrationState>({ kind: 'closed' })
   const [mode, setMode] = useState<ProfileMode>({ kind: 'idle' })
   const [read, setRead] = useState<ReadState>({ kind: 'idle' })
+  /** Whether the alphabet is open for review. Transient UI, like every other flag in this bar. */
+  const [showingGlyphs, setShowingGlyphs] = useState(false)
 
   /** A box may only be read through a profile drawn against the frame that is live right now. */
   const readable =
@@ -119,18 +128,17 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
     if (read.kind === 'reading') return
     setRead({ kind: 'reading' })
     try {
-      setRead({ kind: 'read', ...(await readLiveBox(profile)) })
+      setRead({ kind: 'read', ...(await readLiveBox(profile, glyphs)) })
     } catch (error) {
       setRead({ kind: 'failed', message: error instanceof Error ? error.message : String(error) })
     }
   }
 
-  function onGlyphsLearned(profile: CaptureProfile, frame: ImageData, glyphs: Glyph[]): void {
-    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: profile.id, glyphs })
+  function onGlyphsLearned(profile: CaptureProfile, frame: ImageData, learned: Glyph[]): void {
+    dispatch({ kind: 'glyphs/learned', glyphs: learned })
     // The store's own copy arrives on the next render, and the transcript is wanted now — so the
     // grown alphabet is applied here through the same merge the reducer just ran.
-    const grown = { ...profile, glyphs: mergeGlyphs(profile.glyphs, glyphs) }
-    setRead({ kind: 'read', frame, reading: readTextBox(frame, grown) })
+    setRead({ kind: 'read', frame, reading: readTextBox(frame, profile, mergeGlyphs(glyphs, learned)) })
   }
 
   function onRenameSubmit(profile: CaptureProfile, draft: string): void {
@@ -218,7 +226,7 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
       return (
         <div className="capture-bar__confirm" role="alert">
           <span>
-            Delete <strong>{active.name}</strong>, including the glyphs it has learned?
+            Delete <strong>{active.name}</strong>? The alphabet is the project's and stays.
           </span>
           <button
             type="button"
@@ -336,9 +344,6 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
             >
               {read.kind === 'reading' ? 'Reading…' : 'Read the text box'}
             </button>
-            <span className="capture-bar__size">
-              {active.glyphs.length} {active.glyphs.length === 1 ? 'glyph' : 'glyphs'} learned
-            </span>
           </div>
           {/* Says what this is *not*, because there are now two buttons that read the same box:
               this one is the calibration check, and Capture the screen is the one that writes. */}
@@ -359,11 +364,30 @@ export function CaptureBar({ profiles }: { profiles: readonly CaptureProfile[] }
         </>
       )}
 
+      {/* Its own section, and not inside the `active !== null` block above: an alphabet belongs to
+          the project, so correcting a mistyped character must not require a profile to be aimed at
+          anything or a screen to be shared. */}
+      <h3 className="micro-label">Alphabet</h3>
+      <div className="capture-bar__row capture-bar__row--actions">
+        <button type="button" className="button" onClick={() => setShowingGlyphs(true)}>
+          Review the alphabet…
+        </button>
+        <span className="capture-bar__size">
+          {glyphs.length} {glyphs.length === 1 ? 'glyph' : 'glyphs'} learned
+        </span>
+      </div>
+      <p className="capture-bar__hint">
+        One alphabet for the whole project — every profile reads with it, so a second profile aimed
+        at another box on the same console starts out already able to read.
+      </p>
+
       {calibration.kind === 'failed' && (
         <p className="capture-bar__error" role="alert">
           {calibration.message}
         </p>
       )}
+
+      {showingGlyphs && <GlyphSet glyphs={glyphs} onClose={() => setShowingGlyphs(false)} />}
 
       {calibration.kind === 'open' && (
         <CaptureCalibration

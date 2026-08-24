@@ -150,6 +150,22 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
   chart segment, a pin band, and a filter chip all draw in, and the order the reducer normalizes
   `Dialogue.relevance` (a deduplicated `RelevanceTagId[]`) against on every edit.
+- **The alphabet belongs to the project, not to a capture profile.** Every field of a
+  `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect` — and a font is
+  not one: it is the console's, and it is the same whether the box being read is the dialogue box or
+  the Pokédex panel. So `project.glyphs` holds it and `readTextBox(frame, profile, glyphs)` takes it
+  as a separate argument. Per-profile alphabets meant a second profile aimed at another box on the
+  same game re-learned the whole font tile by tile. Unlike `relevanceTags`, the array's **order
+  carries no meaning**: `matchGlyph` is an exact lookup and `mergeGlyphs` keeps the bitmaps unique,
+  so nothing may start reading the position of an entry — `GlyphSet` sorts for display only.
+  `mergeGlyphs` is the only addition path (it replaces on identical bits, which is what makes
+  re-learning the correction path) and `forgetGlyph` the only removal one — it hands back the array
+  it was given when nothing matched, which is how the reducer spends no undo step on a removal of
+  nothing. Removal exists because re-learning cannot reach every mistake: a tile wrongly ticked
+  *Not text* matches silently from then on and never lands in `unknown` again, so the learner would
+  never ask about it a second time. Each learn and each forget is its own undo step —
+  `coalesceKeyFor` deliberately does not coalesce either — which is why forgetting has no
+  confirmation prompt.
 - **Media contract.** `data.json` stores `{ fileName, mimeType, byteSize }` plus intrinsic
   dimensions — never URLs, paths, or data URLs. Files are `media/<dialogueId>-<mediaId>.<ext>` with
   the extension derived from the MIME type, never from the upload's filename (untrusted, and both
@@ -162,14 +178,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **5**. To
-  evolve: add `ProjectFileV6`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **6**. To
+  evolve: add `ProjectFileV7`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV4(migrateV3(migrateV2(migrateV1(…))))` — so a new version adds one function and one case,
-  not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…)))))` — so a new version adds one function
+  and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -181,7 +197,16 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   migration (`migrateV4`) builds the project's `relevanceTags` once via the same `defaultRelevanceTags()`
   a brand new project seeds, then rewrites every dialogue's compiled-in relevance slugs into the
   matching tag ids — mirroring the V2→V3 pattern of calling the one function the live app also calls.
-  `DialogueV4` is kept beside `DialogueV3` as the pre-migration shape.
+  `DialogueV4` is kept beside `DialogueV3` as the pre-migration shape. The V5→V6 migration
+  (`migrateV5`) folds every profile's alphabet into the project's one, in profile order, keeping the
+  **first** naming of a repeated bitmap — and is the one migration that deliberately does *not* call
+  the function the live app calls, because `mergeGlyphs` replaces on identical bits and would let
+  the last profile taught overrule every earlier one. Profiles are appended in creation order, which
+  is the order they were taught in, and the fullest alphabet is the one taught first; a later
+  profile aimed at a second box on the same console is re-learning tiles, not correcting them. A
+  disagreement is fixable in two clicks now that `forgetGlyph` and the learner exist, which is what
+  lets this be a stated rule rather than a guess. `CaptureProfileV5` is kept beside `DialogueV4` as
+  the pre-migration shape, and is the only thing `readCaptureProfileV5` still builds.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

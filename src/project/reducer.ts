@@ -1,6 +1,6 @@
 import { assertNever } from '../assert-never.ts'
 import type { ProfileCalibration } from '../capture/capture-profile.ts'
-import { mergeGlyphs } from '../capture/glyph-matcher.ts'
+import { forgetGlyph, mergeGlyphs } from '../capture/glyph-matcher.ts'
 import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
 import { isSamePolygon } from '../map/geometry.ts'
 import type {
@@ -79,8 +79,9 @@ export type Action =
       profileId: CaptureProfileId
       calibration: ProfileCalibration
     }
-  | { kind: 'capture-profile/glyphs-learned'; profileId: CaptureProfileId; glyphs: readonly Glyph[] }
   | { kind: 'capture-profile/deleted'; profileId: CaptureProfileId }
+  | { kind: 'glyphs/learned'; glyphs: readonly Glyph[] }
+  | { kind: 'glyph/forgotten'; bits: string }
   | { kind: 'relevance-tag/added'; tag: RelevanceTag }
   | { kind: 'relevance-tag/renamed'; tagId: RelevanceTagId; name: string }
   | { kind: 'relevance-tag/hue-set'; tagId: RelevanceTagId; hue: number }
@@ -543,9 +544,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return withCaptureProfile(state, target, { ...target, name: action.name })
     }
 
-    // Re-calibrating keeps `glyphs`: an alphabet is 8 × 8 tiles in *native* pixels, so it
-    // survives the emulator window moving, resizing, or being re-outlined. Dropping it would
-    // make every window nudge cost the user their learned font.
     case 'capture-profile/calibrated': {
       if (state.kind !== 'ready') return state
       const target = findCaptureProfile(state.project, action.profileId)
@@ -553,19 +551,10 @@ function applyAction(state: AppState, action: Action): AppState {
       return withCaptureProfile(state, target, { ...target, ...action.calibration })
     }
 
-    case 'capture-profile/glyphs-learned': {
-      if (state.kind !== 'ready') return state
-      const target = findCaptureProfile(state.project, action.profileId)
-      if (target === null || action.glyphs.length === 0) return state
-      return withCaptureProfile(state, target, {
-        ...target,
-        glyphs: mergeGlyphs(target.glyphs, action.glyphs),
-      })
-    }
-
     // No cascade: a profile is how pixels were read, not something the document references.
     // Which profile is active is transient UI state and never enters the store, so there is
-    // nothing here to clear either.
+    // nothing here to clear either. The alphabet is the project's, so deleting a profile does
+    // not cost it — which is why the confirmation no longer warns about the glyphs.
     case 'capture-profile/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -579,6 +568,27 @@ function applyAction(state: AppState, action: Action): AppState {
           ),
         },
       }
+    }
+
+    // The alphabet belongs to the project, not to whichever profile happened to be aimed at the
+    // box when a tile was typed in — see CLAUDE.md. `mergeGlyphs` is the only addition path, and
+    // it replaces on identical bits, so re-learning a tile corrects it.
+    case 'glyphs/learned': {
+      if (state.kind !== 'ready') return state
+      if (action.glyphs.length === 0) return state
+      return {
+        ...state,
+        project: { ...state.project, glyphs: mergeGlyphs(state.project.glyphs, action.glyphs) },
+      }
+    }
+
+    // `forgetGlyph` hands back the array it was given when the bitmap was not in the alphabet,
+    // which is what makes a removal of nothing cost no undo step.
+    case 'glyph/forgotten': {
+      if (state.kind !== 'ready') return state
+      const glyphs = forgetGlyph(state.project.glyphs, action.bits)
+      if (glyphs === state.project.glyphs) return state
+      return { ...state, project: { ...state.project, glyphs } }
     }
 
     case 'relevance-tag/added': {

@@ -1,0 +1,125 @@
+/* An overlay for the same reason the learner is one: tiles have to be large enough to judge, and
+   the dialogue panel is a narrow column. */
+.glyph-set {
+  position: fixed;
+  inset: 0;
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.65);
+}
+
+.glyph-set__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(680px, 100%);
+  max-height: 100%;
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+}
+
+.glyph-set__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.glyph-set__title {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.glyph-set__hint,
+.glyph-set__empty {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+/* A grid rather than the learner's column: an alphabet is sixty-odd entries, and a column of them
+   would be a scroll from A to Z rather than something the eye can sweep for the wrong one. The
+   grid is what scrolls, so Done never leaves the panel. */
+.glyph-set__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.glyph-set__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+.glyph-set__tile {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  fill: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+/* Monospace and wide enough for the multi-character tiles a Gen 1 font packs, such as `'s`. */
+.glyph-set__char {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.glyph-set__char--none {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.glyph-set__forget {
+  flex: none;
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.glyph-set__forget:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.glyph-set__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.glyph-set__button {
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}

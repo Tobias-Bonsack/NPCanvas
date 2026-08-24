@@ -196,8 +196,8 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 6
-    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3, 4 or 5, but found 6')
+    data.schemaVersion = 7
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3, 4, 5 or 6, but found 7')
   })
 
   it('rejects a map with no placement', () => {
@@ -207,12 +207,12 @@ describe('parseProjectFile', () => {
     expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
   })
 
-  it('round trips a V5 document with its placements, quest hues and relevance tags unchanged', () => {
+  it('carries a V5 document through to V6 with its placements, hues and tags unchanged', () => {
     const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
@@ -349,13 +349,144 @@ function v1Document(): Record<string, unknown> {
   return data
 }
 
+describe('parseProjectFile: V5 migration', () => {
+  it('folds every profile’s alphabet into one the project owns', () => {
+    const result = parseProjectFile(JSON.stringify(twoProfileDocument()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.glyphs).toEqual([
+      { char: 'P', bits: 'fc8282fc80808000' },
+      { char: 'a', bits: '000038043c443e00' },
+      { char: '', bits: '00fefe7c38100000' },
+      { char: 'z', bits: '00007e0c18307e00' },
+    ])
+  })
+
+  it('keeps the first profile’s naming when two profiles read one bitmap differently', () => {
+    const result = parseProjectFile(JSON.stringify(twoProfileDocument()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    // Both profiles learned `fc8282fc80808000`; the second called it `p`. Profiles are appended in
+    // the order they were created, so the earlier answer is the one with the readings behind it.
+    expect(result.file.glyphs.filter((glyph) => glyph.bits === 'fc8282fc80808000')).toEqual([
+      { char: 'P', bits: 'fc8282fc80808000' },
+    ])
+  })
+
+  it('leaves the profiles themselves as measurements, with no alphabet of their own', () => {
+    const result = parseProjectFile(JSON.stringify(twoProfileDocument()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.captureProfiles.map((profile) => profile.name)).toEqual([
+      'Yellow',
+      'Pokedex',
+    ])
+    for (const profile of result.file.captureProfiles) {
+      expect(profile).not.toHaveProperty('glyphs')
+    }
+    expect(result.file.captureProfiles[1].textRect).toEqual({ x: 8, y: 88, width: 144, height: 40 })
+  })
+
+  it('gives a project with no profiles at all an empty alphabet rather than none', () => {
+    const result = parseProjectFile(JSON.stringify(validDocument()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.glyphs).toEqual([])
+  })
+
+  it('round trips a V6 document, alphabet included', () => {
+    const migrated = parseProjectFile(JSON.stringify(twoProfileDocument()))
+    expect(migrated.ok).toBe(true)
+    if (!migrated.ok) return
+
+    const reread = parseProjectFile(serializeProject(migrated.file))
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+    expect(reread.file.schemaVersion).toBe(6)
+    expect({ ...reread.file, savedAt: '' }).toEqual({ ...migrated.file, savedAt: '' })
+  })
+
+  it('writes a migrated two-profile project identically the second time', () => {
+    const first = parseProjectFile(JSON.stringify(twoProfileDocument()))
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+
+    const once = serializeProject(first.file)
+    const reread = parseProjectFile(once)
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+
+    const withoutSavedAt = (text: string): string =>
+      text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
+    expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(once))
+  })
+
+  it('rejects an alphabet that is not an array', () => {
+    const data = validDocument()
+    data.schemaVersion = 6
+    data.glyphs = { P: 'fc8282fc80808000' }
+    expect(rejectionMessage(data)).toBe('glyphs: expected an array')
+  })
+
+  it('rejects a glyph that is not a record of a character and a bitmap', () => {
+    const data = validDocument()
+    data.schemaVersion = 6
+    data.glyphs = [{ char: 'P' }]
+    expect(rejectionMessage(data)).toBe('glyphs[0].bits: expected a string')
+  })
+})
+
+/** A V5 document with two profiles whose alphabets overlap — and disagree once. */
+function twoProfileDocument(): Record<string, unknown> {
+  const data = validDocument()
+  data.captureProfiles = [
+    {
+      id: 'profile-1',
+      name: 'Yellow',
+      frameWidth: 3840,
+      frameHeight: 2088,
+      screenRect: { x: 814, y: 64, width: 2211, height: 1991 },
+      nativeWidth: 160,
+      nativeHeight: 144,
+      textRect: { x: 8, y: 104, width: 144, height: 32 },
+      glyphs: [
+        { char: 'P', bits: 'fc8282fc80808000' },
+        { char: 'a', bits: '000038043c443e00' },
+        // The blinking continuation arrow: recognised, and dropped from every transcript.
+        { char: '', bits: '00fefe7c38100000' },
+      ],
+    },
+    {
+      id: 'profile-2',
+      name: 'Pokedex',
+      frameWidth: 3840,
+      frameHeight: 2088,
+      screenRect: { x: 814, y: 64, width: 2211, height: 1989 },
+      nativeWidth: 160,
+      nativeHeight: 144,
+      textRect: { x: 8, y: 88, width: 144, height: 40 },
+      glyphs: [
+        { char: 'p', bits: 'fc8282fc80808000' },
+        { char: 'a', bits: '000038043c443e00' },
+        { char: 'z', bits: '00007e0c18307e00' },
+      ],
+    },
+  ]
+  return data
+}
+
 describe('parseProjectFile: V4 migration', () => {
   it('moves the compiled-in vocabulary into the document, seeding the same tags a fresh project gets', () => {
     const result = parseProjectFile(JSON.stringify(v4Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -395,7 +526,7 @@ describe('parseProjectFile: V3 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -449,7 +580,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -478,7 +609,7 @@ describe('parseProjectFile: V1 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
@@ -516,7 +647,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 5, maps: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 6, maps: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -627,8 +758,9 @@ describe('parseProjectFile: field validation', () => {
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(5)
+    expect(project.schemaVersion).toBe(6)
     expect(project.captureProfiles).toEqual([])
+    expect(project.glyphs).toEqual([])
     expect(project.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -639,7 +771,7 @@ describe('createEmptyProject', () => {
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(5)
+    expect(reread.file.schemaVersion).toBe(6)
   })
 })
 
@@ -857,7 +989,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(5)
+    expect(reread.file.schemaVersion).toBe(6)
   })
 })
 
@@ -980,7 +1112,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(5)
+    expect(result.file.schemaVersion).toBe(6)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })

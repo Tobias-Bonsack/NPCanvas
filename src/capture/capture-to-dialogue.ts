@@ -2,7 +2,7 @@ import { assertNever } from '../assert-never.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
-import type { CaptureProfile, Dialogue } from '../project/types.ts'
+import type { CaptureProfile, Dialogue, Glyph } from '../project/types.ts'
 import { appendWithoutOverlap } from './append-overlap.ts'
 import { profileApplies } from './capture-profile.ts'
 import type { CaptureSource } from './capture-session.ts'
@@ -81,9 +81,12 @@ export function captureBlocker(
 }
 
 /** The live frame and what the text box says, which is where every capture starts. */
-export async function readLiveBox(profile: CaptureProfile): Promise<BoxRead> {
+export async function readLiveBox(
+  profile: CaptureProfile,
+  glyphs: readonly Glyph[],
+): Promise<BoxRead> {
   const frame = await grabFrame()
-  return { frame, reading: readTextBox(frame, profile) }
+  return { frame, reading: readTextBox(frame, profile, glyphs) }
 }
 
 /**

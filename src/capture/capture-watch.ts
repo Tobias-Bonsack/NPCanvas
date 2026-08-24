@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { currentDialogue, getState } from '../project/store.ts'
-import type { CaptureProfile, CaptureProfileId, DialogueId } from '../project/types.ts'
+import type { CaptureProfile, CaptureProfileId, DialogueId, Glyph } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { activeCaptureProfile } from './active-profile.ts'
@@ -326,7 +326,8 @@ async function tick(mine: number): Promise<void> {
   if (mine !== session) return
   failures = 0
 
-  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile)), SETTLE_TICKS)
+  const glyphs = app.project.glyphs
+  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile, glyphs)), SETTLE_TICKS)
   settle = step.state
   markRead()
 
@@ -448,11 +449,11 @@ function holdsFrameFor(dialogueId: DialogueId): boolean {
  * The same deduplication `readTextBox` already does within one frame, extended across all of them:
  * three held boxes of the same conversation ask about one `e`, not three.
  */
-export function heldUnknownTiles(profile: CaptureProfile): UnknownTile[] {
+export function heldUnknownTiles(profile: CaptureProfile, glyphs: readonly Glyph[]): UnknownTile[] {
   const tiles: UnknownTile[] = []
   const seen = new Set<string>()
   for (const entry of heldFrames) {
-    for (const tile of readTextBox(entry.frame, profile).unknown) {
+    for (const tile of readTextBox(entry.frame, profile, glyphs).unknown) {
       if (seen.has(tile.bits)) continue
       seen.add(tile.bits)
       tiles.push(tile)
@@ -469,7 +470,10 @@ export function heldUnknownTiles(profile: CaptureProfile): UnknownTile[] {
  * frame whose line is gone: one the alphabet still cannot read, and one whose write failed, both
  * stay in the queue for the next round.
  */
-export async function replayHeldFrames(profile: CaptureProfile): Promise<HeldReplay> {
+export async function replayHeldFrames(
+  profile: CaptureProfile,
+  glyphs: readonly Glyph[],
+): Promise<HeldReplay> {
   // A snapshot to walk, while `heldFrames` stays the truth: an entry leaves the queue only once it
   // has been written or dropped, so a throw anywhere in here loses nothing. Frames the watcher
   // holds *while* this runs are not in the snapshot, and stay behind the ones being replayed —
@@ -493,7 +497,7 @@ export async function replayHeldFrames(profile: CaptureProfile): Promise<HeldRep
   flushDraft?.()
 
   try {
-    await replayInto(pending, profile, replay)
+    await replayInto(pending, profile, glyphs, replay)
   } finally {
     replaying = false
   }
@@ -504,6 +508,7 @@ export async function replayHeldFrames(profile: CaptureProfile): Promise<HeldRep
 async function replayInto(
   pending: readonly HeldFrame[],
   profile: CaptureProfile,
+  glyphs: readonly Glyph[],
   replay: { appended: number; gone: number; stillHeld: number; repeated: number; failures: string[] },
 ): Promise<void> {
   // Lines with a frame left behind in this round. Everything after it waits, for the reason the
@@ -516,7 +521,7 @@ async function replayInto(
       replay.gone += 1
       continue
     }
-    const reading = readTextBox(entry.frame, profile)
+    const reading = readTextBox(entry.frame, profile, glyphs)
     if (reading.unknown.length > 0 || blocked.has(entry.dialogueId)) {
       blocked.add(entry.dialogueId)
       replay.stillHeld += 1
