@@ -16,7 +16,16 @@ import {
 } from '../capture/capture-to-dialogue.ts'
 import { useCaptureSource } from '../capture/capture-session.ts'
 import type { WatchState } from '../capture/capture-watch.ts'
-import { startWatching, stopWatching, useWatchState, useWatching } from '../capture/capture-watch.ts'
+import {
+  describeReplay,
+  heldUnknownTiles,
+  replayHeldFrames,
+  startWatching,
+  stopWatching,
+  useHeldFrames,
+  useWatchState,
+  useWatching,
+} from '../capture/capture-watch.ts'
 import { GlyphLearner } from '../capture/GlyphLearner.tsx'
 import type { UnknownTile } from '../capture/glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
@@ -74,6 +83,11 @@ type CaptureState =
       frame: ImageData
       tiles: readonly UnknownTile[]
     }
+  /**
+   * The same questions, asked for the watcher's whole held queue at once. No single frame: the
+   * tiles are the union across all of them, and every frame is re-read on confirm.
+   */
+  | { kind: 'learning-held'; profile: CaptureProfile; tiles: readonly UnknownTile[] }
   | { kind: 'done'; message: string }
   | { kind: 'failed'; message: string }
 
@@ -261,7 +275,7 @@ export function DialoguePanel({
   // Only whether the loop runs, not what it has counted: see `useWatching`. The status line below
   // is what subscribes to the rest, so a box appended does not re-render the panel around it.
   const watching = useWatching()
-  const busy = captureState.kind === 'capturing' || captureState.kind === 'learning'
+  const busy = captureState.kind === 'capturing' || isLearning(captureState)
 
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
   // Escape aimed at "close this" would otherwise have to be pressed inside the panel first.
@@ -271,7 +285,7 @@ export function DialoguePanel({
   // field never loses what is being typed into it just because Escape was the key pressed —
   // and an open alertdialog or the quest picker claims the key before it can bubble this far;
   // see `useAlertDialogFocus` and `DialogueQuestLinks`'s picker.
-  const learning = captureState.kind === 'learning'
+  const learning = isLearning(captureState)
   useEffect(() => {
     if (learning || resizing) return
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -413,6 +427,41 @@ export function DialoguePanel({
     } catch (error) {
       setCaptureState({ kind: 'failed', message: describeError(error) })
     }
+  }
+
+  /**
+   * The held queue's questions, asked once for the whole queue.
+   *
+   * A queue that has nothing left to ask — the alphabet grew for another reason since — replays
+   * straight away rather than opening a learner with no tiles in it.
+   */
+  function answerHeld(): void {
+    if (busy || profile === null) return
+    const tiles = heldUnknownTiles(profile)
+    if (tiles.length === 0) {
+      void replayHeld(profile)
+      return
+    }
+    setCaptureState({ kind: 'learning-held', profile, tiles })
+  }
+
+  async function replayHeld(target: CaptureProfile): Promise<void> {
+    setCaptureState({ kind: 'capturing' })
+    try {
+      setCaptureState({ kind: 'done', message: describeReplay(await replayHeldFrames(target)) })
+    } catch (error) {
+      // `replayHeldFrames` keeps a frame it could not write, so nothing is lost here — but the
+      // panel must not be left reading "Capturing…" with every control disabled behind it.
+      setCaptureState({ kind: 'failed', message: describeError(error) })
+    }
+  }
+
+  function onHeldGlyphsLearned(target: CaptureProfile, glyphs: Glyph[]): void {
+    dispatch({ kind: 'capture-profile/glyphs-learned', profileId: target.id, glyphs })
+    // The store's own copy arrives on the next render and the frames are being re-read now, so
+    // the grown alphabet is applied here through the same merge the reducer just ran — as
+    // `CaptureBar` and `onGlyphsLearned` do.
+    void replayHeld({ ...target, glyphs: mergeGlyphs(target.glyphs, glyphs) })
   }
 
   function onGlyphsLearned(target: CaptureProfile, frame: ImageData, glyphs: Glyph[]): void {
@@ -669,6 +718,7 @@ export function DialoguePanel({
             </button>
           </div>
           <WatchNote />
+          <HeldNote onAnswer={answerHeld} disabled={busy || profile === null} />
           <input
             id={pickerId}
             className="visually-hidden dialogue-media__input"
@@ -736,6 +786,15 @@ export function DialoguePanel({
           }
         />
       )}
+      {/* Cancelling here discards nothing at all: the held frames are still in the queue, and the
+          control that opened this is still beside the capture button. */}
+      {captureState.kind === 'learning-held' && (
+        <GlyphLearner
+          tiles={captureState.tiles}
+          onCancel={() => setCaptureState({ kind: 'idle' })}
+          onConfirm={(glyphs) => onHeldGlyphsLearned(captureState.profile, glyphs)}
+        />
+      )}
     </aside>
   )
 }
@@ -786,11 +845,49 @@ function WatchNote(): ReactElement | null {
   )
 }
 
+/** Both learners stand in front of the panel and both block a second capture. */
+function isLearning(state: CaptureState): boolean {
+  return state.kind === 'learning' || state.kind === 'learning-held'
+}
+
+/**
+ * The boxes the alphabet could not name, and the one control that turns them back into lines.
+ *
+ * Shown whether or not the watcher is still running: the queue outlives it, and the alphabet is
+ * usually answered once the conversation is over. Its own subscription, like `WatchNote`.
+ */
+function HeldNote({
+  onAnswer,
+  disabled,
+}: {
+  onAnswer: () => void
+  disabled: boolean
+}): ReactElement | null {
+  const held = useHeldFrames()
+  if (held.waiting === 0 && held.dropped === 0) return null
+
+  return (
+    <div className="dialogue-media__held" role="status">
+      <p className="dialogue-media__watch-note">
+        {held.waiting === 1
+          ? '1 box is waiting for the alphabet'
+          : `${held.waiting} boxes are waiting for the alphabet`}
+        {held.dropped > 0 &&
+          ` · ${held.dropped} older ${held.dropped === 1 ? 'one was' : 'ones were'} pushed out of the queue and lost`}
+      </p>
+      {held.waiting > 0 && (
+        <button type="button" className="button" disabled={disabled} onClick={onAnswer}>
+          Name the tiles and write them
+        </button>
+      )}
+    </div>
+  )
+}
+
 /** The counters as one line: what has been written, what is waiting, and how long since a read. */
 function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>): string {
   const parts = [
     watch.appended === 1 ? '1 box appended' : `${watch.appended} boxes appended`,
-    watch.held === 0 ? null : `${watch.held} waiting for the alphabet`,
     sinceRead(watch.lastReadAt),
   ]
   return `Watching · ${parts.filter((part) => part !== null).join(' · ')}`
