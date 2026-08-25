@@ -18,11 +18,26 @@ type Entry = { char: string; notText: boolean }
  */
 export function GlyphLearner({
   tiles,
+  cancelLabel,
   onCancel,
+  keepPicture,
   onConfirm,
 }: {
   tiles: readonly UnknownTile[]
+  /**
+   * What the way out says it does. Required rather than defaulted to 'Cancel': the three callers
+   * abandon three different things — a trial read, a queue that stays put, and a frame that is
+   * thrown away — and one word for all of them would be wrong for two.
+   */
+  cancelLabel: string
+  /** Escape and the leftmost button. Whatever it does, it must not be the destructive surprise. */
   onCancel: () => void
+  /**
+   * The middle way out, for the caller that has a frame worth keeping without a transcript. Label
+   * and handler together rather than two optional props, so a button with no handler — or a handler
+   * with no words on it — cannot be expressed.
+   */
+  keepPicture?: { label: string; onKeep: () => void }
   onConfirm: (glyphs: Glyph[]) => void
 }): ReactElement {
   const [entries, setEntries] = useState<Entry[]>(() => tiles.map(() => ({ char: '', notText: false })))
@@ -94,9 +109,18 @@ export function GlyphLearner({
         </ol>
 
         <footer className="glyph-learner__footer">
-          <button type="button" className="glyph-learner__button" onClick={onCancel}>
-            Cancel
+          <button
+            type="button"
+            className="glyph-learner__button glyph-learner__button--cancel"
+            onClick={onCancel}
+          >
+            {cancelLabel}
           </button>
+          {keepPicture !== undefined && (
+            <button type="button" className="glyph-learner__button" onClick={keepPicture.onKeep}>
+              {keepPicture.label}
+            </button>
+          )}
           <button
             type="button"
             className="glyph-learner__button glyph-learner__button--primary"

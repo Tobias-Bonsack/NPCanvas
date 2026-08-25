@@ -320,3 +320,13 @@
   border-radius: var(--radius-2);
   background: var(--surface-2);
 }
+
+/* Both rows inside the held block: the two controls side by side, and the confirm that replaces
+   them. Mirrors `.capture-bar__confirm`, which asks the same kind of question. */
+.dialogue-media__held-actions,
+.dialogue-media__held-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

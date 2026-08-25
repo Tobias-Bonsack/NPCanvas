@@ -401,6 +401,7 @@ export function CaptureBar({
       {read.kind === 'read' && read.reading.unknown.length > 0 && active !== null && (
         <GlyphLearner
           tiles={read.reading.unknown}
+          cancelLabel="Cancel"
           onCancel={() => setRead({ kind: 'idle' })}
           onConfirm={(glyphs) => onGlyphsLearned(active, read.frame, glyphs)}
         />

@@ -647,6 +647,24 @@ async function replayInto(
   }
 }
 
+/**
+ * Throws the whole queue away, and says how many boxes went with it.
+ *
+ * The frames are the only record of those boxes, and a replay is the only other way out — one that
+ * needs an alphabet able to name them. So this is the single place the watcher loses data on
+ * purpose, which is why the panel confirms before calling it. `dropped` is cleared with them for
+ * the reason `replayHeldFrames` clears it: this round *is* the acknowledgement.
+ *
+ * Safe against a replay in flight only because the control is disabled while one runs — `release`
+ * filters an already-empty array and would quietly write frames the user just discarded.
+ */
+export function discardHeldFrames(): number {
+  const waiting = heldFrames.length
+  heldFrames = []
+  setHeld(NOTHING_HELD)
+  return waiting
+}
+
 /** Takes one entry out of the queue. Absent already — pushed out by the cap mid-replay — is fine. */
 function release(entry: HeldFrame): void {
   heldFrames = heldFrames.filter((candidate) => candidate !== entry)

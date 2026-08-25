@@ -157,3 +157,9 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* The way out sits apart from the two ways on, because for one caller it throws the captured frame
+   away — a destructive button next to the primary one is a misclick waiting to happen. */
+.glyph-learner__button--cancel {
+  margin-right: auto;
+}

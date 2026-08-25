@@ -155,7 +155,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   line's text is never touched: it was already joined from every box, and the removed frame's words
   are all still in it. A deliberate press keeps its frame unconditionally, exactly as it already
   keeps it against `appendOutcome` — only the caller that fires unattended judges a frame by what
-  came after it.
+  came after it. Unattended is the whole of that rule: nothing decides *for* the user, and the
+  three ways a `GlyphLearner` closes are what says so. Over a manual capture it offers all three
+  — discard the frame, keep the picture without a line, or name the tiles and get both — with
+  Escape on the discard, which is safe there because that frame has not been written yet. Over the
+  watcher's held queue and over the bar's trial read it offers only Cancel, because neither has
+  anything to throw away: the queue is emptied from `HeldNote` (`discardHeldFrames`), where it is
+  visible whether or not a learner could ask anything, and behind a confirmation, since a held
+  frame is the only record of a box the game has long since advanced past.
 - **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
   user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a

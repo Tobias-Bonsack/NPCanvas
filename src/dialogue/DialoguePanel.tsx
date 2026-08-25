@@ -18,6 +18,7 @@ import { useCaptureSource } from '../capture/capture-session.ts'
 import type { WatchState } from '../capture/capture-watch.ts'
 import {
   describeReplay,
+  discardHeldFrames,
   heldUnknownTiles,
   replayHeldFrames,
   setDraftFlush,
@@ -483,6 +484,21 @@ export function DialoguePanel({
     setCaptureState({ kind: 'learning-held', profile, glyphs: project.glyphs, tiles })
   }
 
+  /**
+   * Empties the queue without writing any of it. The frames are the only record of those boxes, so
+   * `HeldNote` asks first — this runs after that answer, and says how much went.
+   */
+  function discardHeld(): void {
+    const waiting = discardHeldFrames()
+    setCaptureState({
+      kind: 'done',
+      message:
+        waiting === 1
+          ? '1 waiting box was discarded. Nothing was written.'
+          : `${waiting} waiting boxes were discarded. Nothing was written.`,
+    })
+  }
+
   async function replayHeld(target: CaptureProfile, alphabet: readonly Glyph[]): Promise<void> {
     setCaptureState({ kind: 'capturing' })
     try {
@@ -800,7 +816,12 @@ export function DialoguePanel({
             </button>
           </div>
           <WatchNote />
-          <HeldNote onAnswer={answerHeld} disabled={busy || profile === null} />
+          <HeldNote
+            onAnswer={answerHeld}
+            onDiscard={discardHeld}
+            answerDisabled={busy || profile === null}
+            discardDisabled={busy}
+          />
           <input
             id={pickerId}
             className="visually-hidden dialogue-media__input"
@@ -857,12 +878,26 @@ export function DialoguePanel({
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
       </div>
-      {/* Cancelling keeps the picture and says the text was not transcribed — the frame is the
-          record, and it is the half that cannot be produced again once the game has advanced. */}
+      {/* Three ways out, because a frame the alphabet cannot read is worth all three answers. The
+          picture is the record and the half that cannot be produced again once the game has
+          advanced — but a frame grabbed by mistake, of a menu or through a mis-calibrated profile,
+          is not, and nothing has been written to `media/` yet, so discarding costs one setState.
+          Escape is the discard, as it is in both other learners: nothing this one opened over has
+          been written, so the harmless reading of Escape is also the literal one. */}
       {captureState.kind === 'learning' && (
         <GlyphLearner
           tiles={captureState.tiles}
-          onCancel={() => void write(captureState.profile, captureState.frame, null)}
+          cancelLabel="Discard the capture"
+          onCancel={() =>
+            setCaptureState({
+              kind: 'done',
+              message: 'Discarded. No picture and no line were written.',
+            })
+          }
+          keepPicture={{
+            label: 'Keep the picture only',
+            onKeep: () => void write(captureState.profile, captureState.frame, null),
+          }}
           onConfirm={(learned) =>
             onGlyphsLearned(
               captureState.profile,
@@ -878,6 +913,7 @@ export function DialoguePanel({
       {captureState.kind === 'learning-held' && (
         <GlyphLearner
           tiles={captureState.tiles}
+          cancelLabel="Cancel"
           onCancel={() => setCaptureState({ kind: 'idle' })}
           onConfirm={(learned) =>
             onHeldGlyphsLearned(captureState.profile, captureState.glyphs, learned)
@@ -947,12 +983,24 @@ function isLearning(state: CaptureState): boolean {
  */
 function HeldNote({
   onAnswer,
-  disabled,
+  onDiscard,
+  answerDisabled,
+  discardDisabled,
 }: {
   onAnswer: () => void
-  disabled: boolean
+  onDiscard: () => void
+  answerDisabled: boolean
+  /**
+   * Its own flag, and deliberately not `answerDisabled`: writing the queue needs a profile to read
+   * the frames with, throwing it away needs nothing. A queue stuck behind a profile that was
+   * deleted or re-calibrated is exactly the one the user wants rid of, so the two controls cannot
+   * share a condition.
+   */
+  discardDisabled: boolean
 }): ReactElement | null {
   const held = useHeldFrames()
+  /** The confirm step, local and transient — `CaptureBar`'s `confirming-delete` in miniature. */
+  const [confirming, setConfirming] = useState(false)
   if (held.waiting === 0 && held.dropped === 0) return null
 
   return (
@@ -973,11 +1021,46 @@ function HeldNote({
           order.
         </p>
       )}
-      {held.waiting > 0 && (
-        <button type="button" className="button" disabled={disabled} onClick={onAnswer}>
-          Name the tiles and write them
-        </button>
-      )}
+      {held.waiting > 0 &&
+        (confirming ? (
+          /* Confirmed rather than done on the click: a replay is the only other way these frames
+             leave the queue, and the pixels are gone for good — the game has long since advanced
+             past the box they show. */
+          <div className="dialogue-media__held-confirm">
+            <span>
+              Discard {held.waiting === 1 ? 'the waiting box' : `all ${held.waiting} waiting boxes`}?
+              Nothing is written, and the pictures cannot be captured again.
+            </span>
+            <button
+              type="button"
+              className="button button--danger"
+              onClick={() => {
+                setConfirming(false)
+                onDiscard()
+              }}
+            >
+              Discard them
+            </button>
+            <button type="button" className="button" onClick={() => setConfirming(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="dialogue-media__held-actions">
+            <button type="button" className="button" disabled={answerDisabled} onClick={onAnswer}>
+              Name the tiles and write them
+            </button>
+            <button
+              type="button"
+              className="button"
+              disabled={discardDisabled}
+              title="Throw the waiting boxes away. The line they were read for keeps whatever is already in it."
+              onClick={() => setConfirming(true)}
+            >
+              Discard them
+            </button>
+          </div>
+        ))}
     </div>
   )
 }
