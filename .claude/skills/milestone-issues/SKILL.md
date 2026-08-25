@@ -9,7 +9,7 @@ Work is planned as GitHub issues in numbered milestones. The format is uniform o
 session reads one issue and knows what to build, what not to build, and when it is done — without
 reading the other 50. Deviating costs that property, so match the shape exactly.
 
-Repo: `Tobias-Bonsack/NPCanvas`. Everything is **English**, including when the user writes German.
+Repo: `Tonsias/NPCanvas`. Everything is **English**, including when the user writes German.
 
 ## The rules that decide the shape
 
@@ -149,7 +149,7 @@ criteria.
 `gh` has no `milestone create`, so the milestone goes through the API:
 
 ```bash
-gh api repos/Tobias-Bonsack/NPCanvas/milestones \
+gh api repos/Tonsias/NPCanvas/milestones \
   -f title='M7.5 Capture from the screen' \
   -f description='…' -q '"#\(.number) \(.title)"'
 ```

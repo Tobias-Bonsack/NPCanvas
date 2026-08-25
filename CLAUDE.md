@@ -318,7 +318,7 @@ whose real failure modes are browser permission behaviour.
 
 ## Deployment
 
-Published to GitHub Pages at `https://tobias-bonsack.github.io/NPCanvas/` by
+Published to GitHub Pages at `https://tonsias.github.io/NPCanvas/` by
 `.github/workflows/deploy.yml` — every push to `main` builds and deploys via
 `upload-pages-artifact` / `deploy-pages`. There is no `gh-pages` branch. Pages source must stay set
 to "GitHub Actions" in repo settings.
