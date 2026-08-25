@@ -93,6 +93,11 @@ export type Action =
   | { kind: 'pending-capture/text-set'; captureId: PendingCaptureId; text: string }
   | { kind: 'pending-capture/media-added'; captureId: PendingCaptureId; media: DialogueMedia }
   | { kind: 'pending-capture/renamed'; captureId: PendingCaptureId; npcName: string }
+  | {
+      kind: 'pending-capture/relevance-set'
+      captureId: PendingCaptureId
+      relevance: readonly RelevanceTagId[]
+    }
   | { kind: 'pending-capture/deleted'; captureId: PendingCaptureId }
   | {
       kind: 'pending-capture/placed'
@@ -718,6 +723,16 @@ function applyAction(state: AppState, action: Action): AppState {
       const target = findPendingCapture(state.project, action.captureId)
       if (target === null || target.npcName === action.npcName) return state
       return withPendingCapture(state, target, { ...target, npcName: action.npcName })
+    }
+
+    // Mirrors `dialogue/relevance-set` exactly, normalized against the same `relevanceTags`.
+    case 'pending-capture/relevance-set': {
+      if (state.kind !== 'ready') return state
+      const target = findPendingCapture(state.project, action.captureId)
+      if (target === null) return state
+      const relevance = normalizeRelevance(action.relevance, state.project.relevanceTags)
+      if (isSameRelevance(target.relevance, relevance)) return state
+      return withPendingCapture(state, target, { ...target, relevance })
     }
 
     // No cascade in the reducer: the caller collects the capture's media file names before

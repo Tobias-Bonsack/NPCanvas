@@ -4,6 +4,7 @@ import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
+import { PendingCaptureList } from '../capture/PendingCaptureList.tsx'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { dispatch } from '../project/store.ts'
@@ -12,6 +13,7 @@ import type {
   CanvasTool,
   DialogueId,
   GameMap,
+  PendingCaptureId,
   ProjectFile,
   RelevanceTagId,
   Selection,
@@ -57,9 +59,34 @@ export function MapScreen({
   // functional update rather than a closure over `viewState`, which is what keeps the global
   // keydown listener correct without needing `viewState` itself in its dependency list.
   const { tool, questFilter, trail, viewport, panelWidth } = viewState
+
+  // The pending capture armed for placement from `PendingCaptureList`, or `null` — see
+  // `MapCanvas`'s own `armedCaptureId` prop. Component state, not the store: exactly as
+  // transient as `tool`, which is why `setTool` below clears it whenever the tool leaves
+  // `place-dialogue` — a stale arm must not silently place itself on a later click after the
+  // tool was switched away and back.
+  const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
   const setTool = useCallback(
-    (tool: CanvasTool) => onViewStateChange((prev) => ({ ...prev, tool })),
+    (tool: CanvasTool) => {
+      onViewStateChange((prev) => ({ ...prev, tool }))
+      if (tool.kind !== 'place-dialogue') setArmedCaptureId(null)
+    },
     [onViewStateChange],
+  )
+  // Arming is a toggle: clicking the row that is already armed cancels it without touching the
+  // tool, matching the row's own "Placing…" affordance. Arming a different (or the first)
+  // capture also switches to `place-dialogue`, since that tool is what makes the branch in
+  // `MapCanvas` reachable at all — no second tool exists for this.
+  const onArmCapture = useCallback(
+    (captureId: PendingCaptureId) => {
+      if (armedCaptureId === captureId) {
+        setArmedCaptureId(null)
+        return
+      }
+      setArmedCaptureId(captureId)
+      setTool({ kind: 'place-dialogue' })
+    },
+    [armedCaptureId, setTool],
   )
   const toggleQuestFilter = useCallback(
     () => onViewStateChange((prev) => ({ ...prev, questFilter: !prev.questFilter })),
@@ -330,6 +357,11 @@ export function MapScreen({
         {/* A sidebar rather than a row in the bar: the list grows with the project, and it
             has to scroll on its own instead of pushing the canvas off screen. */}
         <aside className="map-screen__sidebar">
+          <PendingCaptureList
+            project={project}
+            armedCaptureId={armedCaptureId}
+            onArm={onArmCapture}
+          />
           <MapList project={project} />
           <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />
         </aside>
@@ -347,6 +379,7 @@ export function MapScreen({
             onZoneDrag={setZoneDrag}
             onVisibleRectChange={setVisibleRect}
             onDialoguePlaced={onDialoguePlaced}
+            armedCaptureId={armedCaptureId}
             initialViewport={viewport}
             onViewportChange={setViewport}
           >

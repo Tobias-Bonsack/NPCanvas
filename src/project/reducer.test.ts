@@ -276,6 +276,11 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     captureId: asPendingCaptureId('capture-1'),
     npcName: 'Ferryman',
   },
+  {
+    kind: 'pending-capture/relevance-set',
+    captureId: asPendingCaptureId('capture-1'),
+    relevance: [asRelevanceTagId('other')],
+  },
   { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('capture-1') },
   {
     kind: 'pending-capture/placed',
@@ -957,6 +962,24 @@ describe('reduce: pending captures', () => {
     expect(
       withMedia.kind === 'ready' && withMedia.project.pendingCaptures[0].media.map((it) => it.id),
     ).toEqual(['media-1'])
+
+    const tagged = reduce(withMedia, {
+      kind: 'pending-capture/relevance-set',
+      captureId: asPendingCaptureId('capture-1'),
+      relevance: [OTHER.id, WORLDBUILDING.id],
+    })
+    // Normalized into the project's own tag order, exactly like `dialogue/relevance-set`.
+    expect(tagged.kind === 'ready' && tagged.project.pendingCaptures[0].relevance).toEqual([
+      WORLDBUILDING.id,
+      OTHER.id,
+    ])
+    expect(
+      reduce(tagged, {
+        kind: 'pending-capture/relevance-set',
+        captureId: asPendingCaptureId('capture-1'),
+        relevance: [WORLDBUILDING.id, OTHER.id],
+      }),
+    ).toBe(tagged)
   })
 
   it('deletes a capture, and ignores one that does not exist', () => {

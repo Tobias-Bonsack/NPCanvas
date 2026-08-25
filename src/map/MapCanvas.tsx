@@ -16,6 +16,7 @@ import type {
   DialogueId,
   GameMap,
   MapId,
+  PendingCaptureId,
   Point,
   Polygon,
   Selection,
@@ -212,6 +213,7 @@ export function MapCanvas({
   onZoneDrag,
   onVisibleRectChange,
   onDialoguePlaced,
+  armedCaptureId,
   initialViewport,
   onViewportChange,
   children,
@@ -252,6 +254,14 @@ export function MapCanvas({
    * id, which is what keeps the two paths from fighting over focus in the same commit.
    */
   onDialoguePlaced: (dialogueId: DialogueId) => void
+  /**
+   * A pending capture armed for placement from `PendingCaptureList`, or `null`. When set, a
+   * `place-dialogue` click dispatches `pending-capture/placed` instead of building an empty
+   * `Dialogue` — the same click, the same hit-test, the same map resolution; only what gets
+   * dispatched differs. `MapScreen` clears it whenever the tool leaves `place-dialogue`, which is
+   * what `onDialoguePlaced`'s own tool reset already does after a successful placement.
+   */
+  armedCaptureId: PendingCaptureId | null
   /**
    * The last viewport this canvas settled on, persisted one level up so a switch away and back
    * lands where the user left it — see CLAUDE.md's view-state note. `null` on a project's very
@@ -805,9 +815,28 @@ export function MapCanvas({
         const map = mapAtCanvasPoint(maps, canvasPoint)
         // A Dialogue requires a real mapId, so a click on bare canvas places nothing rather
         // than inventing an association — said here rather than left silent, since the draft
-        // rectangle case a few lines up already sets the precedent for a rejected gesture.
+        // rectangle case a few lines up already sets the precedent for a rejected gesture. A
+        // capture armed for placement is not lost on a miss either: it stays armed for the
+        // next click, exactly like this notice already lets a blank placement be retried.
         if (map === null) {
           showNotice('No map there — place a dialogue on top of a map.')
+          return
+        }
+
+        // Arming a capture from `PendingCaptureList` turns this same click into a placement
+        // instead of a blank dialogue — no second tool, no second hit-test. Everything above
+        // this line already resolved the map and the point either way.
+        if (armedCaptureId !== null) {
+          const dialogueId = newDialogueId()
+          dispatch({
+            kind: 'pending-capture/placed',
+            captureId: armedCaptureId,
+            dialogueId,
+            mapId: map.id,
+            position: canvasToMapLocal(map, canvasPoint),
+          })
+          selectDialogue(dialogueId)
+          onDialoguePlaced(dialogueId)
           return
         }
 

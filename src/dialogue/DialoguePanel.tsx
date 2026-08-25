@@ -42,13 +42,13 @@ import type {
   Glyph,
   MediaId,
   ProjectFile,
-  RelevanceTagId,
   Zone,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { DialogueForm } from './DialogueForm.tsx'
 import { MIN_CANVAS_WIDTH, MIN_PANEL_WIDTH, clampPanelWidth } from './panel-width.ts'
+import { npcNamesIn, previousRecordFor } from './recency.ts'
 import './DialoguePanel.css'
 
 /**
@@ -347,9 +347,9 @@ export function DialoguePanel({
   const map = project.maps.find((candidate) => candidate.id === dialogue.mapId) ?? null
   // What the *previous* line was tagged, offered as a one-click carry-over on a freshly placed
   // dialogue — most projects talk to the same NPC, in the same relevance, for several lines in
-  // a row. `spokenAt` is the only ordering a dialogue carries; see `previousRelevanceFor`.
+  // a row. `spokenAt` is the only ordering a dialogue carries; see `previousRecordFor`.
   const previousRelevance = useMemo(
-    () => previousRelevanceFor(project.dialogues, dialogue.id),
+    () => previousRecordFor(project.dialogues, dialogue.id)?.relevance ?? [],
     [project.dialogues, dialogue.id],
   )
 
@@ -980,41 +980,3 @@ function batchOutcome(
   return { kind: 'idle' }
 }
 
-/** How many of the most-recently-spoken NPCs lead the list before it falls back to alphabetical. */
-const RECENT_NPC_LIMIT = 5
-
-/**
- * Every NPC name in the project, deduplicated and blanks dropped — the most recently spoken
- * `RECENT_NPC_LIMIT` first, in that order, then everyone else in locale order. While playing,
- * the next line is usually one of the last few people talked to; alphabetical order made every
- * one of them equally far from the top.
- */
-function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
-  const byRecency = [...dialogues].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
-  const ordered: string[] = []
-  const seen = new Set<string>()
-  for (const dialogue of byRecency) {
-    const trimmed = dialogue.npcName.trim()
-    if (trimmed === '' || seen.has(trimmed)) continue
-    seen.add(trimmed)
-    ordered.push(trimmed)
-  }
-  const recent = ordered.slice(0, RECENT_NPC_LIMIT)
-  const rest = ordered.slice(RECENT_NPC_LIMIT).sort((a, b) => a.localeCompare(b))
-  return [...recent, ...rest]
-}
-
-/**
- * The relevance tags of the most recently spoken line other than `excludeId` — the "previous
- * line" a freshly placed dialogue offers to copy. `[]` when there is no other line, or the one
- * found carries no tags to offer.
- */
-function previousRelevanceFor(
-  dialogues: readonly Dialogue[],
-  excludeId: Dialogue['id'],
-): readonly RelevanceTagId[] {
-  const previous = dialogues
-    .filter((candidate) => candidate.id !== excludeId)
-    .sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))[0]
-  return previous?.relevance ?? []
-}
