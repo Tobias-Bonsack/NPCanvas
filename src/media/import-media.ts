@@ -6,6 +6,7 @@ import type {
   GameMap,
   MediaFile,
   MediaId,
+  PendingCaptureId,
 } from '../project/types.ts'
 import { writeMediaFile } from '../storage/project-directory.ts'
 import { invalidateMediaFile } from './media-url-cache.ts'
@@ -134,14 +135,15 @@ export type DialogueMediaImport = {
 }
 
 /**
- * Copies a picked file into `media/<dialogueId>-<mediaId>.<ext>`, probes its intrinsic size, and
- * returns the medium for the caller to dispatch. Both ids are in the name, so a dialogue can own
- * several files and a collision remains impossible by construction. The URL cache is invalidated
- * here rather than left to each caller, because a fresh id could still land on a name a previous
- * session wrote and then deleted.
+ * Copies a picked file into `media/<ownerId>-<mediaId>.<ext>`, probes its intrinsic size, and
+ * returns the medium for the caller to dispatch. `ownerId` is a `DialogueId` when a line already
+ * has its place, or a `PendingCaptureId` when the watcher is still recording a conversation that
+ * has not found one yet (see `PendingCapture`) — this function does nothing with it beyond
+ * building the file name, so either id keeps a picture's file collision-free by construction and
+ * placement (`pending-capture/placed`) can move the record without touching the file at all.
  */
 export async function importDialogueMedia(
-  dialogueId: DialogueId,
+  ownerId: DialogueId | PendingCaptureId,
   file: File,
 ): Promise<DialogueMediaImport> {
   const type = DIALOGUE_MEDIA_TYPES[file.type]
@@ -157,7 +159,7 @@ export async function importDialogueMedia(
   // Probed before the write, so a corrupt file is rejected without leaving bytes in media/
   // that no dialogue references.
   const media = await probeMedia(id, type.kind, file, {
-    fileName: `${dialogueId}-${id}.${type.extension}`,
+    fileName: `${ownerId}-${id}.${type.extension}`,
     mimeType: file.type,
     byteSize: file.size,
   })

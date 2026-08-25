@@ -1,3 +1,4 @@
+import type { DialogueMedia } from '../project/types.ts'
 import { deleteMediaFile } from '../storage/project-directory.ts'
 import { invalidateMediaFile } from './media-url-cache.ts'
 
@@ -20,4 +21,14 @@ export async function discardMediaFile(fileName: string): Promise<void> {
     console.error('Could not delete media file', error)
   }
   invalidateMediaFile(fileName)
+}
+
+/**
+ * Every file a `Dialogue` or a `PendingCapture` owns, discarded in order. Deleting either record
+ * cascades its media the same way — nothing names the files once the record is gone, and an
+ * orphan in `media/` is invisible from inside the app. Callers still collect the list *before*
+ * dispatching the delete, since the record naming the files is what the dispatch removes.
+ */
+export async function discardMedia(media: readonly DialogueMedia[]): Promise<void> {
+  for (const medium of media) await discardMediaFile(medium.file.fileName)
 }

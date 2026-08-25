@@ -3,6 +3,7 @@ import type {
   DialogueId,
   MapId,
   MediaId,
+  PendingCaptureId,
   QuestId,
   RelevanceTagId,
   ZoneId,
@@ -39,6 +40,10 @@ export function newRelevanceTagId(): RelevanceTagId {
   return crypto.randomUUID() as RelevanceTagId
 }
 
+export function newPendingCaptureId(): PendingCaptureId {
+  return crypto.randomUUID() as PendingCaptureId
+}
+
 // Ids arriving from outside the document — the URL hash and `data.json`. Branding a raw
 // string is not a claim that the entity exists; callers must still look it up and handle a miss.
 
@@ -68,4 +73,8 @@ export function asCaptureProfileId(raw: string): CaptureProfileId {
 
 export function asRelevanceTagId(raw: string): RelevanceTagId {
   return raw as RelevanceTagId
+}
+
+export function asPendingCaptureId(raw: string): PendingCaptureId {
+  return raw as PendingCaptureId
 }

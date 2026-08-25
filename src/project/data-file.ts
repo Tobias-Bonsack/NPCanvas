@@ -6,6 +6,7 @@ import {
   asDialogueId,
   asMapId,
   asMediaId,
+  asPendingCaptureId,
   asQuestId,
   asRelevanceTagId,
   asZoneId,
@@ -26,6 +27,8 @@ import type {
   MapId,
   MediaFile,
   MediaId,
+  PendingCapture,
+  PendingCaptureId,
   PixelRect,
   Point,
   Polygon,
@@ -36,6 +39,7 @@ import type {
   ProjectFileV4,
   ProjectFileV5,
   ProjectFileV6,
+  ProjectFileV7,
   ProjectRepairs,
   Quest,
   QuestId,
@@ -52,7 +56,7 @@ import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -62,6 +66,7 @@ export function createEmptyProject(name: string): ProjectFile {
     captureProfiles: [],
     relevanceTags: defaultRelevanceTags(),
     glyphs: [],
+    pendingCaptures: [],
   }
 }
 
@@ -239,6 +244,10 @@ function readMediaId(value: unknown, path: string): MediaId {
 
 function readCaptureProfileId(value: unknown, path: string): CaptureProfileId {
   return asCaptureProfileId(readString(value, path))
+}
+
+function readPendingCaptureId(value: unknown, path: string): PendingCaptureId {
+  return asPendingCaptureId(readString(value, path))
 }
 
 // ---- domain ----
@@ -507,6 +516,23 @@ function readDialogue(value: unknown, path: string, tagOrder: readonly Relevance
   }
 }
 
+/** Everything a `Dialogue` is read as, minus `mapId` and `position` — see `PendingCapture`. */
+function readPendingCapture(
+  value: unknown,
+  path: string,
+  tagOrder: readonly RelevanceTagId[],
+): PendingCapture {
+  const raw = readObject(value, path)
+  return {
+    id: readPendingCaptureId(raw.id, `${path}.id`),
+    npcName: readString(raw.npcName, `${path}.npcName`),
+    text: readString(raw.text, `${path}.text`),
+    media: readMedia(raw.media, `${path}.media`),
+    spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
+    relevance: readRelevanceV5(raw.relevance, `${path}.relevance`, tagOrder),
+  }
+}
+
 /**
  * A `MediaId` is what a remove or a reorder addresses, so two media sharing one inside a
  * single dialogue is the same defect duplicate dialogue ids are — removing either takes both.
@@ -612,13 +638,22 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
     return { ...dialogue, relevance: kept }
   })
 
+  // A pending capture carries no `mapId`, so it has nothing to be orphaned from — only its
+  // relevance ids can dangle, repaired the same way and folded into the same count.
+  const pendingCaptures = file.pendingCaptures.map((capture) => {
+    const kept = capture.relevance.filter((id) => tagIds.has(id))
+    if (kept.length === capture.relevance.length) return capture
+    relevance += capture.relevance.length - kept.length
+    return { ...capture, relevance: kept }
+  })
+
   const droppedDialogues = file.dialogues.length - dialogues.length
   const droppedZones = file.zones.length - zones.length
   if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0 && relevance === 0) {
     return { file, repairs: { kind: 'none' } }
   }
   return {
-    file: { ...file, dialogues, zones, quests },
+    file: { ...file, dialogues, zones, quests, pendingCaptures },
     repairs: {
       kind: 'repaired',
       dialogues: droppedDialogues,
@@ -656,27 +691,37 @@ function assertUniqueFileNames(file: ProjectFile): void {
       )
     })
   })
+  file.pendingCaptures.forEach((capture, captureIndex) => {
+    capture.media.forEach((medium, mediaIndex) => {
+      claim(
+        medium.file.fileName,
+        `pendingCaptures[${captureIndex}].media[${mediaIndex}].file.fileName`,
+      )
+    })
+  })
 }
 
 function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))
+      return migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw)))))))
     case 2:
-      return migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw)))))
+      return migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))
     case 3:
-      return migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))
+      return migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw)))))
     case 4:
-      return migrateV5(migrateV4(readProjectFileV4(raw)))
+      return migrateV6(migrateV5(migrateV4(readProjectFileV4(raw))))
     case 5:
-      return migrateV5(readProjectFileV5(raw))
+      return migrateV6(migrateV5(readProjectFileV5(raw)))
     case 6:
-      return readProjectFileV6(raw)
+      return migrateV6(readProjectFileV6(raw))
+    case 7:
+      return readProjectFileV7(raw)
     default:
       throw new SchemaError(
         'schemaVersion',
-        `1, 2, 3, 4, 5 or 6, but found ${String(schemaVersion)}`,
+        `1, 2, 3, 4, 5, 6 or 7, but found ${String(schemaVersion)}`,
       )
   }
 }
@@ -784,6 +829,34 @@ function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
     relevanceTags,
     glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+  }
+}
+
+/**
+ * V7 reads `pendingCaptures` last, against the same `tagOrder` `dialogues` already normalized
+ * relevance ids against — a capture's relevance is read no differently than a dialogue's.
+ * Otherwise identical to V6.
+ */
+function readProjectFileV7(raw: Record<string, unknown>): ProjectFileV7 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 7,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
   }
 }
 
@@ -907,4 +980,13 @@ function stripGlyphs(profile: CaptureProfileV5): CaptureProfile {
     nativeHeight: profile.nativeHeight,
     textRect: profile.textRect,
   }
+}
+
+/**
+ * V6 had no way to record a conversation before it had a place to be. V7 adds the empty list —
+ * nothing before this version could have written a `PendingCapture`, so there is nothing to
+ * carry over.
+ */
+function migrateV6(file: ProjectFileV6): ProjectFileV7 {
+  return { ...file, schemaVersion: 7, pendingCaptures: [] }
 }

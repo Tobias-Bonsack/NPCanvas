@@ -196,8 +196,10 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 7
-    expect(rejectionMessage(data)).toBe('schemaVersion: expected 1, 2, 3, 4, 5 or 6, but found 7')
+    data.schemaVersion = 8
+    expect(
+      rejectionMessage(data),
+    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6 or 7, but found 8')
   })
 
   it('rejects a map with no placement', () => {
@@ -207,15 +209,16 @@ describe('parseProjectFile', () => {
     expect(rejectionMessage(data)).toBe('maps[0].origin: expected an object')
   })
 
-  it('carries a V5 document through to V6 with its placements, hues and tags unchanged', () => {
+  it('carries a V5 document through to V7 with its placements, hues and tags unchanged', () => {
     const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
+    expect(result.file.pendingCaptures).toEqual([])
     expect(result.file.relevanceTags).toEqual([
       { id: 'out-of-world', name: 'Out of world', hue: 220 },
       { id: 'worldbuilding', name: 'Worldbuilding', hue: 150 },
@@ -355,7 +358,7 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.glyphs).toEqual([
       { char: 'P', bits: 'fc8282fc80808000' },
       { char: 'a', bits: '000038043c443e00' },
@@ -399,7 +402,7 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.file.glyphs).toEqual([])
   })
 
-  it('round trips a V6 document, alphabet included', () => {
+  it('round trips a migrated document, alphabet included', () => {
     const migrated = parseProjectFile(JSON.stringify(twoProfileDocument()))
     expect(migrated.ok).toBe(true)
     if (!migrated.ok) return
@@ -407,7 +410,7 @@ describe('parseProjectFile: V5 migration', () => {
     const reread = parseProjectFile(serializeProject(migrated.file))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(6)
+    expect(reread.file.schemaVersion).toBe(7)
     expect({ ...reread.file, savedAt: '' }).toEqual({ ...migrated.file, savedAt: '' })
   })
 
@@ -480,13 +483,35 @@ function twoProfileDocument(): Record<string, unknown> {
   return data
 }
 
+/** A V6 document: today's shape minus `pendingCaptures`, which V7 adds. */
+function v6Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 6
+  data.glyphs = []
+  return data
+}
+
+describe('parseProjectFile: V6 migration', () => {
+  it('adds an empty pendingCaptures list, since nothing before V7 could have written one', () => {
+    const result = parseProjectFile(JSON.stringify(v6Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.pendingCaptures).toEqual([])
+    // Everything else survives untouched.
+    expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
+    expect(result.file.dialogues).toHaveLength(4)
+  })
+})
+
 describe('parseProjectFile: V4 migration', () => {
   it('moves the compiled-in vocabulary into the document, seeding the same tags a fresh project gets', () => {
     const result = parseProjectFile(JSON.stringify(v4Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -526,7 +551,7 @@ describe('parseProjectFile: V3 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -580,7 +605,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -604,17 +629,19 @@ describe('parseProjectFile: V2 migration', () => {
 })
 
 describe('parseProjectFile: V1 migration', () => {
-  it('chains V1 through V2, V3 and V4 to V5, placing the maps and colouring the quests', () => {
+  it('chains V1 all the way through to V7, placing the maps and colouring the quests', () => {
     const result = parseProjectFile(JSON.stringify(v1Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
     expect(result.file.captureProfiles).toEqual([])
     expect(result.file.relevanceTags).toHaveLength(4)
+    expect(result.file.glyphs).toEqual([])
+    expect(result.file.pendingCaptures).toEqual([])
     expect(result.file.zones[0].name).toBe('Harbour')
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
@@ -647,7 +674,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 6, maps: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 7, maps: [], pendingCaptures: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -755,12 +782,111 @@ describe('parseProjectFile: field validation', () => {
   })
 })
 
+/** A valid V7 document whose `pendingCaptures` carries one capture with a picture and a tag. */
+function documentWithPendingCapture(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 7
+  data.glyphs = []
+  data.pendingCaptures = [
+    {
+      id: 'capture-1',
+      npcName: 'NPC 1',
+      text: 'Have you seen my boat?',
+      media: [
+        {
+          id: 'media-c1',
+          kind: 'image',
+          file: { fileName: 'capture-1-media-c1.png', mimeType: 'image/png', byteSize: 512 },
+          width: 400,
+          height: 300,
+        },
+      ],
+      spokenAt: '2026-08-14T09:00:00.000Z',
+      relevance: ['worldbuilding'],
+    },
+  ]
+  return data
+}
+
+describe('parseProjectFile: pendingCaptures', () => {
+  it('reads a capture verbatim — no mapId, no position, its own media and relevance', () => {
+    const result = parseProjectFile(JSON.stringify(documentWithPendingCapture()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.pendingCaptures).toHaveLength(1)
+    const [capture] = result.file.pendingCaptures
+    expect(capture).not.toHaveProperty('mapId')
+    expect(capture).not.toHaveProperty('position')
+    expect(capture.npcName).toBe('NPC 1')
+    expect(capture.text).toBe('Have you seen my boat?')
+    expect(capture.media).toHaveLength(1)
+    expect(capture.media[0]).toMatchObject({ kind: 'image', width: 400, height: 300 })
+    expect(capture.relevance).toEqual(
+      result.file.relevanceTags.filter((tag) => tag.name === 'Worldbuilding').map((tag) => tag.id),
+    )
+  })
+
+  it('rejects two captures sharing an id', () => {
+    const data = documentWithPendingCapture()
+    const captures = data.pendingCaptures as Record<string, unknown>[]
+    data.pendingCaptures = [captures[0], { ...captures[0] }]
+    expect(rejectionMessage(data)).toBe(
+      'pendingCaptures[1].id: expected an id not already used, but "capture-1" is',
+    )
+  })
+
+  it('rejects a file a dialogue already claims', () => {
+    const data = documentWithPendingCapture()
+    const captures = data.pendingCaptures as Record<string, unknown>[]
+    const media = captures[0].media as Record<string, unknown>[]
+    ;(media[0].file as Record<string, unknown>).fileName = 'dialogue-2-media-2a.png'
+    expect(rejectionMessage(data)).toBe(
+      'pendingCaptures[0].media[0].file.fileName: expected a file no other record names, but ' +
+        '"dialogue-2-media-2a.png" is taken',
+    )
+  })
+
+  it('repairs a capture’s relevance id that names no current tag, without dropping the capture', () => {
+    const data = documentWithPendingCapture()
+    const captures = data.pendingCaptures as Record<string, unknown>[]
+    captures[0].relevance = ['worldbuilding', 'a-deleted-tag']
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.pendingCaptures).toHaveLength(1)
+    expect(result.file.pendingCaptures[0].relevance).toEqual(
+      result.file.relevanceTags.filter((tag) => tag.name === 'Worldbuilding').map((tag) => tag.id),
+    )
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 0,
+      questDialogueIds: 0,
+      relevance: 1,
+    })
+  })
+
+  it('round trips a document with a pending capture unchanged', () => {
+    const result = parseProjectFile(JSON.stringify(documentWithPendingCapture()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const reread = parseProjectFile(serializeProject(result.file))
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+    expect(reread.file.pendingCaptures).toEqual(result.file.pendingCaptures)
+  })
+})
+
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(6)
+    expect(project.schemaVersion).toBe(7)
     expect(project.captureProfiles).toEqual([])
     expect(project.glyphs).toEqual([])
+    expect(project.pendingCaptures).toEqual([])
     expect(project.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -771,7 +897,7 @@ describe('createEmptyProject', () => {
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(6)
+    expect(reread.file.schemaVersion).toBe(7)
   })
 })
 
@@ -989,7 +1115,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(6)
+    expect(reread.file.schemaVersion).toBe(7)
   })
 })
 
@@ -1112,7 +1238,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(6)
+    expect(result.file.schemaVersion).toBe(7)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })

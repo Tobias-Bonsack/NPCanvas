@@ -6,6 +6,7 @@ import {
   asDialogueId,
   asMapId,
   asMediaId,
+  asPendingCaptureId,
   asQuestId,
   asRelevanceTagId,
   asZoneId,
@@ -21,6 +22,7 @@ import type {
   Glyph,
   History,
   MapId,
+  PendingCapture,
   ProjectFile,
   Quest,
   RelevanceTag,
@@ -134,6 +136,17 @@ const CALIBRATION: ProfileCalibration = {
 
 function captureProfile(id: string, name = id): CaptureProfile {
   return { id: asCaptureProfileId(id), name, ...CALIBRATION }
+}
+
+function pendingCapture(id: string): PendingCapture {
+  return {
+    id: asPendingCaptureId(id),
+    npcName: id,
+    text: '',
+    media: [],
+    spokenAt: '2026-08-14T10:00:00.000Z',
+    relevance: [],
+  }
 }
 
 /** Two maps, each with a dialogue and a zone, plus a quest spanning both. */
@@ -251,6 +264,26 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('other'), hue: 10 },
   { kind: 'relevance-tag/reordered', tagId: asRelevanceTagId('other'), toIndex: 0 },
   { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('other') },
+  { kind: 'pending-capture/added', capture: pendingCapture('capture-1') },
+  { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi' },
+  {
+    kind: 'pending-capture/media-added',
+    captureId: asPendingCaptureId('capture-1'),
+    media: medium('media-1'),
+  },
+  {
+    kind: 'pending-capture/renamed',
+    captureId: asPendingCaptureId('capture-1'),
+    npcName: 'Ferryman',
+  },
+  { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('capture-1') },
+  {
+    kind: 'pending-capture/placed',
+    captureId: asPendingCaptureId('capture-1'),
+    dialogueId: asDialogueId('dialogue-1'),
+    mapId: asMapId('harbour'),
+    position: { x: 0, y: 0 },
+  },
   { kind: 'history/undo' },
   { kind: 'history/redo' },
 ]
@@ -885,6 +918,118 @@ describe('reduce: dialogue field edits', () => {
       { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('nope'), relevance: [OTHER.id] },
     ]
     for (const action of edits) expect(reduce(state, action)).toBe(state)
+  })
+})
+
+describe('reduce: pending captures', () => {
+  it('adds, edits and renames a capture', () => {
+    const added = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    expect(
+      added.kind === 'ready' && added.project.pendingCaptures.map((it) => it.id),
+    ).toEqual(['capture-1'])
+
+    const texted = reduce(added, {
+      kind: 'pending-capture/text-set',
+      captureId: asPendingCaptureId('capture-1'),
+      text: 'Have you seen my boat?',
+    })
+    expect(
+      texted.kind === 'ready' && texted.project.pendingCaptures[0].text,
+    ).toBe('Have you seen my boat?')
+
+    const renamed = reduce(texted, {
+      kind: 'pending-capture/renamed',
+      captureId: asPendingCaptureId('capture-1'),
+      npcName: 'Old Fisher',
+    })
+    expect(
+      renamed.kind === 'ready' && renamed.project.pendingCaptures[0].npcName,
+    ).toBe('Old Fisher')
+
+    const withMedia = reduce(renamed, {
+      kind: 'pending-capture/media-added',
+      captureId: asPendingCaptureId('capture-1'),
+      media: medium('media-1'),
+    })
+    expect(
+      withMedia.kind === 'ready' && withMedia.project.pendingCaptures[0].media.map((it) => it.id),
+    ).toEqual(['media-1'])
+  })
+
+  it('deletes a capture, and ignores one that does not exist', () => {
+    const state = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    const deleted = reduce(state, {
+      kind: 'pending-capture/deleted',
+      captureId: asPendingCaptureId('capture-1'),
+    })
+    expect(deleted.kind === 'ready' && deleted.project.pendingCaptures).toEqual([])
+    expect(
+      reduce(deleted, { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('nope') }),
+    ).toBe(deleted)
+  })
+
+  it('ignores a capture placed on a map that does not exist', () => {
+    const state = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    expect(
+      reduce(state, {
+        kind: 'pending-capture/placed',
+        captureId: asPendingCaptureId('capture-1'),
+        dialogueId: asDialogueId('dialogue-new'),
+        mapId: asMapId('nope'),
+        position: { x: 0, y: 0 },
+      }),
+    ).toBe(state)
+  })
+
+  it('placing a capture removes it from pendingCaptures and adds a dialogue holding the same media verbatim, undone in one step', () => {
+    const capture: PendingCapture = {
+      ...pendingCapture('capture-1'),
+      npcName: 'Old Fisher',
+      text: 'The tide took it.',
+      media: [medium('media-1')],
+      relevance: [WORLDBUILDING.id],
+    }
+    const withCapture = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture,
+    })
+
+    const placed = reduce(withCapture, {
+      kind: 'pending-capture/placed',
+      captureId: asPendingCaptureId('capture-1'),
+      dialogueId: asDialogueId('dialogue-new'),
+      mapId: asMapId('harbour'),
+      position: { x: 12, y: 34 },
+    })
+    expect(placed.kind === 'ready' && placed.project.pendingCaptures).toEqual([])
+    const newDialogue =
+      placed.kind === 'ready' &&
+      placed.project.dialogues.find((it) => it.id === asDialogueId('dialogue-new'))
+    expect(newDialogue).toMatchObject({
+      mapId: asMapId('harbour'),
+      position: { x: 12, y: 34 },
+      npcName: 'Old Fisher',
+      text: 'The tide took it.',
+      relevance: [WORLDBUILDING.id],
+    })
+    // The medium's fileName is unchanged — placement moves no file in media/.
+    expect(newDialogue && newDialogue.media).toEqual(capture.media)
+
+    const undone = reduce(placed, { kind: 'history/undo' })
+    expect(undone.kind === 'ready' && undone.project.pendingCaptures).toEqual([capture])
+    expect(
+      undone.kind === 'ready' &&
+        undone.project.dialogues.some((it) => it.id === asDialogueId('dialogue-new')),
+    ).toBe(false)
   })
 })
 

@@ -163,6 +163,20 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   anything to throw away: the queue is emptied from `HeldNote` (`discardHeldFrames`), where it is
   visible whether or not a learner could ask anything, and behind a confirmation, since a held
   frame is the only record of a box the game has long since advanced past.
+- **An unplaced capture is a second list, not a widened `Dialogue`.** `PendingCapture` is
+  everything a `Dialogue` is except `mapId` and `position`, for a conversation the watcher
+  recorded before anyone said where it happened. There is deliberately no field to spell
+  "unknown" in — **location is derived, never stored** (below), so an invented position would
+  read as a confident claim rather than as missing. The other obvious shape, a placed/unplaced
+  union on `Dialogue`, is worse: every reader that already knows a dialogue has a position —
+  `PinLayer`, `zone-index.ts`, `search-index.ts`, `insights/filters.ts`, the quest board — would
+  have to narrow past the new state to make one thing representable. A second list leaves every
+  one of them untouched by construction: a capture is invisible to search, insights and quests
+  until `pending-capture/placed` turns it into a real `Dialogue`, which is correct rather than an
+  oversight. Placement is one reducer action carrying a **new** `DialogueId`, so the capture
+  leaving `pendingCaptures` and the dialogue appearing in `dialogues` are one undo step and cannot
+  half-happen; every field but the placement — `npcName`, `text`, `media`, `spokenAt`,
+  `relevance` — carries over verbatim, media's `fileName` included (see Media contract).
 - **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
   user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
@@ -191,19 +205,24 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   files). A `MediaId` is what a remove or a reorder addresses, so the list needs no index
   arithmetic anywhere outside the reducer. Files migrated from V3 keep their old
   `<dialogueId>.<ext>` name: `fileName` has always been stored rather than derived, and a migration
-  is pure and must not touch `media/`. Object URLs are ref-counted with a 30 s deferred revoke in
-  `src/media/media-url-cache.ts`, because pins remount constantly while panning.
+  is pure and must not touch `media/`. A capture's files are named from its `PendingCaptureId`
+  instead — `media/<pendingCaptureId>-<mediaId>.<ext>` — and keep that name after
+  `pending-capture/placed` turns the capture into a `Dialogue`: placement moves no file in
+  `media/`, only the record that names it, so `importDialogueMedia`'s owner parameter is
+  `DialogueId | PendingCaptureId` and builds the file name from whichever it is handed. Object
+  URLs are ref-counted with a 30 s deferred revoke in `src/media/media-url-cache.ts`, because pins
+  remount constantly while panning.
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **6**. To
-  evolve: add `ProjectFileV7`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **7**. To
+  evolve: add `ProjectFileV8`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…)))))` — so a new version adds one function
-  and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…))))))` — so a new version adds one
+  function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -224,7 +243,10 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   profile aimed at a second box on the same console is re-learning tiles, not correcting them. A
   disagreement is fixable in two clicks now that `forgetGlyph` and the learner exist, which is what
   lets this be a stated rule rather than a guess. `CaptureProfileV5` is kept beside `DialogueV4` as
-  the pre-migration shape, and is the only thing `readCaptureProfileV5` still builds.
+  the pre-migration shape, and is the only thing `readCaptureProfileV5` still builds. The V6→V7
+  migration (`migrateV6`) is the simplest one on record: it sets `pendingCaptures: []` and nothing
+  else, because nothing before V7 could have written a `PendingCapture` — there is no earlier shape
+  to fold, rename or reconcile.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first
@@ -284,7 +306,13 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   (`crypto.randomUUID()`), `date-fns` (`Intl.DateTimeFormat`), any charting library (inline SVG by
   hand), `@types/wicg-file-system-access` (conflicts with the interfaces `lib.dom` already ships).
   One tripwire: if `parseProjectFile` exceeds ~250 lines, or a second schema version forces
-  per-version validation, `zod` becomes justified — nothing else on that list does.
+  per-version validation, `zod` becomes justified — nothing else on that list does. Measured at
+  V7 (`src/project/data-file.ts` is ~990 lines total): the exported `parseProjectFile` function
+  itself is still ~15 lines and delegates outright, and the file's size is the seven versions'
+  worth of small, uniform `readVN`/`migrateVN` pairs sitting side by side, not one function that
+  grew branches. Each new version has cost one new reader and one new migration function — V7's
+  `migrateV6` is three lines — so the growth is linear and mechanical rather than the per-version
+  branching the tripwire is actually about. `zod` is still not adopted.
 - **File System Access typings.** `lib.dom.d.ts` ships the handle interfaces but not
   `showDirectoryPicker`, `queryPermission`/`requestPermission`, or `values()`. Those live in
   `src/storage/file-system-access.d.ts` as augmentations, not redefinitions.

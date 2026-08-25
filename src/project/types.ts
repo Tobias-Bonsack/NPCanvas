@@ -7,6 +7,7 @@ export type QuestId = string & { readonly brand: 'QuestId' }
 export type MediaId = string & { readonly brand: 'MediaId' }
 export type CaptureProfileId = string & { readonly brand: 'CaptureProfileId' }
 export type RelevanceTagId = string & { readonly brand: 'RelevanceTagId' }
+export type PendingCaptureId = string & { readonly brand: 'PendingCaptureId' }
 
 /**
  * A coordinate pair, in whichever space the field holding it names.
@@ -109,6 +110,25 @@ export type Dialogue = {
   /** ISO 8601 from Date#toISOString — when the line was heard in real time. */
   spokenAt: string
   /** Deduplicated, stored in `project.relevanceTags` order. Empty = untagged. */
+  relevance: RelevanceTagId[]
+}
+
+/**
+ * A conversation the watcher recorded before anyone said where it happened — everything a
+ * `Dialogue` is except its placement, `mapId` and `position`. The absence of those two fields
+ * *is* the meaning: there is deliberately no field to spell "unknown" in (see CLAUDE.md's
+ * "location is derived, never stored"), so a capture that has not found its place lives in its
+ * own list rather than in a placed/unplaced union `Dialogue` would have to become. Every reader
+ * of `dialogues` is unaffected by construction — a capture is invisible to search, insights and
+ * the quest board until `pending-capture/placed` turns it into a real `Dialogue`, carrying
+ * `npcName`, `text`, `media`, `spokenAt` and `relevance` across verbatim.
+ */
+export type PendingCapture = {
+  id: PendingCaptureId
+  npcName: string
+  text: string
+  media: DialogueMedia[]
+  spokenAt: string
   relevance: RelevanceTagId[]
 }
 
@@ -327,6 +347,24 @@ export type ProjectFileV6 = {
 }
 
 /**
+ * V7 adds `pendingCaptures`: conversations the watcher recorded before anyone said where they
+ * happened. See `PendingCapture` for why that is a second list rather than a widened `Dialogue`.
+ */
+export type ProjectFileV7 = {
+  schemaVersion: 7
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
+  captureProfiles: CaptureProfile[]
+  relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
+  pendingCaptures: PendingCapture[]
+}
+
+/**
  * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
  * it migrates anything older forward, so nothing downstream branches on a version.
  */
@@ -337,9 +375,10 @@ export type StoredProjectFile =
   | ProjectFileV4
   | ProjectFileV5
   | ProjectFileV6
+  | ProjectFileV7
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV6
+export type ProjectFile = ProjectFileV7
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
