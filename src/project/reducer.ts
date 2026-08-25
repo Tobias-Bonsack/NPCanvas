@@ -92,6 +92,7 @@ export type Action =
   | { kind: 'pending-capture/added'; capture: PendingCapture }
   | { kind: 'pending-capture/text-set'; captureId: PendingCaptureId; text: string }
   | { kind: 'pending-capture/media-added'; captureId: PendingCaptureId; media: DialogueMedia }
+  | { kind: 'pending-capture/media-removed'; captureId: PendingCaptureId; mediaId: MediaId }
   | { kind: 'pending-capture/renamed'; captureId: PendingCaptureId; npcName: string }
   | {
       kind: 'pending-capture/relevance-set'
@@ -716,6 +717,21 @@ function applyAction(state: AppState, action: Action): AppState {
       const target = findPendingCapture(state.project, action.captureId)
       if (target === null) return state
       return withPendingCapture(state, target, { ...target, media: [...target.media, action.media] })
+    }
+
+    // Mirrors `dialogue/media-removed`: deleting the file is the caller's job, exactly as it is
+    // there. What `keepWindow` in capture-watch.ts takes back a scrolled-through middle frame
+    // with, once the queue is what it was written into instead of a placed line.
+    case 'pending-capture/media-removed': {
+      if (state.kind !== 'ready') return state
+      const target = findPendingCapture(state.project, action.captureId)
+      if (target === null || !target.media.some((medium) => medium.id === action.mediaId)) {
+        return state
+      }
+      return withPendingCapture(state, target, {
+        ...target,
+        media: target.media.filter((medium) => medium.id !== action.mediaId),
+      })
     }
 
     case 'pending-capture/renamed': {

@@ -272,6 +272,11 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     media: medium('media-1'),
   },
   {
+    kind: 'pending-capture/media-removed',
+    captureId: asPendingCaptureId('capture-1'),
+    mediaId: asMediaId('media-1'),
+  },
+  {
     kind: 'pending-capture/renamed',
     captureId: asPendingCaptureId('capture-1'),
     npcName: 'Ferryman',
@@ -962,6 +967,22 @@ describe('reduce: pending captures', () => {
     expect(
       withMedia.kind === 'ready' && withMedia.project.pendingCaptures[0].media.map((it) => it.id),
     ).toEqual(['media-1'])
+
+    const withoutMedia = reduce(withMedia, {
+      kind: 'pending-capture/media-removed',
+      captureId: asPendingCaptureId('capture-1'),
+      mediaId: asMediaId('media-1'),
+    })
+    expect(
+      withoutMedia.kind === 'ready' && withoutMedia.project.pendingCaptures[0].media,
+    ).toEqual([])
+    expect(
+      reduce(withoutMedia, {
+        kind: 'pending-capture/media-removed',
+        captureId: asPendingCaptureId('capture-1'),
+        mediaId: asMediaId('media-1'),
+      }),
+    ).toBe(withoutMedia)
 
     const tagged = reduce(withMedia, {
       kind: 'pending-capture/relevance-set',

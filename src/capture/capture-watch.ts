@@ -200,8 +200,15 @@ let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
 
+/** Which line or capture a written frame belongs to — the two things `keepWindow` can write into. */
+type WrittenOwner = { kind: 'dialogue'; id: DialogueId } | { kind: 'queue'; id: PendingCaptureId }
+
+function sameOwner(a: WrittenOwner, b: WrittenOwner): boolean {
+  return a.kind === b.kind && a.id === b.id
+}
+
 /** One picture the watcher wrote, kept only long enough to judge the box that follows it. */
-type WrittenFrame = { dialogueId: DialogueId; media: DialogueMedia; text: string }
+type WrittenFrame = { owner: WrittenOwner; media: DialogueMedia; text: string }
 
 /**
  * The last two boxes written, oldest first — the window `middleAddsNothing` judges a middle in.
@@ -506,6 +513,21 @@ async function writeIntoQueue(
   frame: ImageData,
   transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
+  // Checked before anything is written, exactly like `writeBox` checks the dialogue it is
+  // appending to: a box that says nothing new a capture in progress does not already say must
+  // not cost a picture. Only meaningful once a capture exists — a conversation's first box has
+  // nothing yet to be unchanged against, so this is skipped for it.
+  if (currentCaptureId !== null) {
+    const existing = currentPendingCapture(currentCaptureId)
+    if (existing === null) {
+      // Placed or deleted since the last tick. Not 'gone' — the conversation itself is not gone,
+      // only the capture that was holding it; falling through starts a fresh one for this box.
+      currentCaptureId = null
+    } else if (appendOutcome(existing.text, transcript).text !== 'appended') {
+      return 'unchanged'
+    }
+  }
+
   if (currentCaptureId === null) {
     const app = getState()
     const pendingCaptures = app.kind === 'ready' ? app.project.pendingCaptures : []
@@ -537,10 +559,10 @@ async function writeIntoQueue(
   }
 
   const outcome = appendOutcome(into.text, transcript)
-  if (outcome.text === 'appended') {
-    dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
-  }
-  return outcome.text === 'appended' ? 'appended' : 'unchanged'
+  if (outcome.text !== 'appended') return 'unchanged'
+  dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
+  await keepWindow({ kind: 'queue', id: captureId }, media, transcript)
+  return 'appended'
 }
 
 /** The pending capture as the document holds it now, or null once it is gone — mirrors
@@ -587,7 +609,7 @@ async function writeBox(
   // that window. Its verdict is the one that describes what the document actually took.
   const result = await captureIntoDialogue(target, profile, frame, text)
   if (result.text !== 'appended') return 'unchanged'
-  await keepWindow(dialogueId, result.media, text)
+  await keepWindow({ kind: 'dialogue', id: dialogueId }, result.media, text)
   return 'appended'
 }
 
@@ -604,24 +626,20 @@ async function writeBox(
  * rather than a scrolling one. After a removal `before` stays the anchor, so a whole run of
  * in-between boxes falls away one at a time as the run goes on.
  */
-async function keepWindow(
-  dialogueId: DialogueId,
-  media: DialogueMedia,
-  text: string,
-): Promise<void> {
-  // A replay walks several lines in one pass, and two boxes of different conversations have no
-  // window in common.
-  if (written.length > 0 && written[0].dialogueId !== dialogueId) written = []
+async function keepWindow(owner: WrittenOwner, media: DialogueMedia, text: string): Promise<void> {
+  // A replay walks several lines in one pass, and two boxes of different conversations — or one
+  // in a line and the next in the queue — have no window in common.
+  if (written.length > 0 && !sameOwner(written[0].owner, owner)) written = []
 
   const middle = written.at(-1) ?? null
   const before = written.at(-2)?.text ?? ''
-  const entry: WrittenFrame = { dialogueId, media, text }
+  const entry: WrittenFrame = { owner, media, text }
 
   if (middle !== null && middleAddsNothing(before, middle.text, text)) {
     // Written before the await, so a write landing underneath this one cannot judge the same middle
     // a second time and try to remove it twice.
     written = [...written.slice(0, -1), entry]
-    await takeBack(dialogueId, middle.media)
+    await takeBack(middle.owner, middle.media)
     return
   }
   written = [...written, entry].slice(-2)
@@ -636,12 +654,20 @@ async function keepWindow(
  * words are all still in it, carried by the two frames around it.
  *
  * A picture the user removed by hand in the meantime is left alone, rather than relying on the
- * reducer's no-op and deleting a file the document may since have handed to something else.
+ * reducer's no-op and deleting a file the document may since have handed to something else. The
+ * same holds for a capture placed or deleted in the meantime — `currentPendingCapture` returning
+ * `null` is that check for the queue.
  */
-async function takeBack(dialogueId: DialogueId, media: DialogueMedia): Promise<void> {
-  const target = currentDialogue(dialogueId)
-  if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
-  dispatch({ kind: 'dialogue/media-removed', dialogueId, mediaId: media.id })
+async function takeBack(owner: WrittenOwner, media: DialogueMedia): Promise<void> {
+  if (owner.kind === 'dialogue') {
+    const target = currentDialogue(owner.id)
+    if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
+    dispatch({ kind: 'dialogue/media-removed', dialogueId: owner.id, mediaId: media.id })
+  } else {
+    const target = currentPendingCapture(owner.id)
+    if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
+    dispatch({ kind: 'pending-capture/media-removed', captureId: owner.id, mediaId: media.id })
+  }
   await discardMediaFile(media.file.fileName)
   countDropped()
 }
