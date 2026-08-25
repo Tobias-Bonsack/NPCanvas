@@ -96,6 +96,25 @@
   text-overflow: ellipsis;
 }
 
+/* Quiet on purpose: it is a shortcut for something Escape and a bare-canvas click already do,
+   not a new capability, so it must not compete with the toggle for attention. */
+.nav__watch-clear {
+  font: inherit;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-1);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.nav__watch-clear:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
 /* Outlined rather than filled while it is off, so a filled toggle only ever means "recording". */
 .nav__watch-toggle {
   font: inherit;
