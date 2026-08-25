@@ -1,10 +1,10 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { selectZone } from '../app/select.ts'
 import { assertNever } from '../assert-never.ts'
 import { dialogueSnippet, formatSpokenAt, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { npcLabel } from '../insights/filters.ts'
-import { dispatch } from '../project/store.ts'
 import type { ProjectFile, Quest } from '../project/types.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import type { SearchResult } from './search-index.ts'
@@ -101,7 +101,7 @@ export function SearchPalette({
         navigate({ kind: 'quests', editQuestId: result.quest.id })
         return
       case 'zone':
-        dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: result.zone.id } })
+        selectZone(result.zone.id)
         navigate({
           kind: 'canvas',
           dialogueId: null,

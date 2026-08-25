@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
+import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
@@ -245,8 +246,7 @@ export function MapScreen({
   // Closing is a deselection *and* a navigation: the hash carries the open panel, so leaving
   // the parameter behind would reopen it on the next render pass through the effect above.
   const onCloseDialogue = useCallback(() => {
-    dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-    navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
+    clearSelection()
   }, [])
 
   if (project.maps.length === 0) {

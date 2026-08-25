@@ -1,6 +1,7 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { selectDialogue } from '../app/select.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { relevanceHues, relevancePinBackground } from '../dialogue/relevance.ts'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
@@ -388,10 +389,7 @@ const PinMapGroup = memo(function PinMapGroup({
  * `useCallback` whose dependency list must stay empty for `memo(Pin)` to hold.
  */
 function select(id: DialogueId): void {
-  dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id } })
-  // `replace`: selecting a pin refines what the panel shows rather than opening a new page, so
-  // ten pins clicked in a row must not push ten history entries — see CLAUDE.md's view-state note.
-  navigate({ kind: 'canvas', dialogueId: id, focus: null }, { replace: true })
+  selectDialogue(id)
 }
 
 /** One shared empty array, so a pin in no quest is handed the same reference every render. */

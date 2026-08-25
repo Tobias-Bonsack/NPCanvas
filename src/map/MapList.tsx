@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { selectMap } from '../app/select.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile } from '../project/types.ts'
@@ -28,7 +29,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
 
   /** Focus is carried in the hash so the jump is one navigation, not a second channel. */
   function onFocus(map: GameMap): void {
-    dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
+    selectMap(map.id)
     navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'map', id: map.id } })
   }
 

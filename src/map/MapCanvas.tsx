@@ -7,6 +7,7 @@ import type {
 } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
+import { clearSelection, selectDialogue, selectMap, selectZone } from '../app/select.ts'
 import { newDialogueId, newZoneId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -22,7 +23,6 @@ import type {
   ZoneId,
 } from '../project/types.ts'
 import type { FocusTarget } from '../app/route.ts'
-import { navigate } from '../app/route.ts'
 import {
   MAX_MAP_SCALE,
   MIN_MAP_SCALE,
@@ -638,7 +638,7 @@ export function MapCanvas({
       onZoneDrag(null)
       if (!end.moved || final === null) {
         // A press that never moved is how a zone is picked up *and* how it is selected.
-        dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: gesture.target.id } })
+        selectZone(gesture.target.id)
         return
       }
       // One action for both, because a zone is its polygon however that polygon was arrived
@@ -670,7 +670,7 @@ export function MapCanvas({
       hue: nextZoneHue(zones, gesture.map.id),
     }
     dispatch({ kind: 'zone/added', zone: created })
-    dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: created.id } })
+    selectZone(created.id)
   }
 
   /**
@@ -729,7 +729,7 @@ export function MapCanvas({
       latest: null,
     })
     if (!began) return
-    dispatch({ kind: 'selection/set', selection: { kind: 'map', id: map.id } })
+    selectMap(map.id)
   }, [tool])
 
   const onMapPointerMove = useCallback(function onMapPointerMove(
@@ -780,11 +780,8 @@ export function MapCanvas({
   function onCanvasClick(anchor: Point, at: Viewport): void {
     switch (tool.kind) {
       case 'move-map':
-        // A click on bare canvas is how a selection is dismissed. `replace`, like every
-        // selection change below: it refines what is on screen rather than opening a new page,
-        // so Back should leave the canvas instead of walking selection by selection.
-        dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
-        navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
+        // A click on bare canvas is how a selection is dismissed.
+        clearSelection()
         return
 
       // Pins stop propagation, so a click reaching here missed every pin: what is left under
@@ -794,15 +791,12 @@ export function MapCanvas({
         const canvasPoint = screenToWorld(at, anchor)
         const hitZone = zoneAtCanvasPoint(maps, zones, canvasPoint)
         if (hitZone !== null) {
-          dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: hitZone.id } })
+          selectZone(hitZone.id)
         } else {
           const hitMap = mapAtCanvasPoint(maps, canvasPoint)
-          dispatch({
-            kind: 'selection/set',
-            selection: hitMap === null ? { kind: 'none' } : { kind: 'map', id: hitMap.id },
-          })
+          if (hitMap === null) clearSelection()
+          else selectMap(hitMap.id)
         }
-        navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
         return
       }
 
@@ -828,8 +822,7 @@ export function MapCanvas({
           relevance: [],
         }
         dispatch({ kind: 'dialogue/added', dialogue })
-        dispatch({ kind: 'selection/set', selection: { kind: 'dialogue', id: dialogue.id } })
-        navigate({ kind: 'canvas', dialogueId: dialogue.id, focus: null }, { replace: true })
+        selectDialogue(dialogue.id)
         onDialoguePlaced(dialogue.id)
         return
       }
@@ -919,7 +912,7 @@ export function MapCanvas({
 
     switch (event.key) {
       case 'Escape':
-        dispatch({ kind: 'selection/set', selection: { kind: 'none' } })
+        clearSelection()
         return
 
       case '+':

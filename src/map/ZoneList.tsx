@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { selectZone } from '../app/select.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types.ts'
@@ -51,7 +52,7 @@ export function ZoneList({
    * `FocusTarget` — so a zone off screen reads as "jumped to" instead of "nothing happened".
    */
   function onFocus(zone: Zone): void {
-    dispatch({ kind: 'selection/set', selection: { kind: 'zone', id: zone.id } })
+    selectZone(zone.id)
     navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'zone', id: zone.id } })
   }
 
