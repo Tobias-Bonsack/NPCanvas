@@ -177,6 +177,21 @@ export function MapScreen({
     navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
   }, [dialogueId, dialogues])
 
+  // The other half of the invariant above: a selected dialogue is named by the canvas route.
+  // That effect reads the route into the selection; this one writes a dialogue selection back
+  // out to the route when the route doesn't already carry it — reached whenever `Nav` lands on a
+  // bare `#/canvas` with a dialogue still selected in the store (`src/app/Nav.tsx`'s links are
+  // bare on purpose). Scoped to `selection.kind === 'dialogue'`: a zone or map selection has no
+  // route representation, and a bare canvas is the honest URL for both. Converges in one step —
+  // after the navigate, `dialogueId` matches `selection.id`, the effect above dispatches the
+  // selection that is already there (a no-op the reducer returns identically for), and this
+  // effect's own condition is then false.
+  useEffect(() => {
+    if (dialogueId !== null) return
+    if (selection.kind !== 'dialogue') return
+    navigate({ kind: 'canvas', dialogueId: selection.id, focus: null }, { replace: true })
+  }, [dialogueId, selection])
+
   // The derived locations, computed once per state change rather than per render. Built from
   // the document's own zones *and* its own maps, so neither a zone drag nor a map drag touches it
   // for the length of the gesture — `placedMaps` is a new array every frame, and feeding it here
