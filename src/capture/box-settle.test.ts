@@ -201,6 +201,59 @@ describe('nextSettle: conversationEnded', () => {
   it('ends immediately when the threshold is one tick', () => {
     expect(nextSettle(NOTHING_SEEN, EMPTY, SETTLE_TICKS, 1).conversationEnded).toBe(true)
   })
+
+  // A gap is not always literally `empty`: the fixed rect a profile reads keeps being read once a
+  // conversation is over, and what shows there instead — the overworld, a menu — essentially
+  // never binarises to all-background tiles. It reads as `held`, changing on every poll. A box
+  // still typing itself out also changes on every poll, so the two have to be told apart by
+  // *how* they change: real typing only ever extends what it already showed.
+
+  it('does not end a conversation while a box keeps growing, however long that takes', () => {
+    // Simulates a box typing itself out slower than the threshold: each poll adds one more
+    // character, well past END_TICKS polls, and none of it should ever look like a gap.
+    let state = NOTHING_SEEN
+    let text = ''
+    for (let i = 0; i < END_TICKS + 10; i++) {
+      text += 'A'
+      const step = nextSettle(state, { kind: 'text', text }, SETTLE_TICKS, END_TICKS)
+      expect(step.conversationEnded).toBe(false)
+      state = step.state
+    }
+  })
+
+  it('ends a conversation on sustained noise that never repeats or extends, same as empty', () => {
+    // Simulates the overworld showing through the same rect: a different, unrelated reading on
+    // every poll — nothing about it grows out of the one before it the way real typing would.
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    let ended = false
+    for (let i = 0; i < END_TICKS + 5; i++) {
+      const step = nextSettle(
+        state,
+        { kind: 'held', signature: `NOISE${i}`, unreadable: 40 },
+        SETTLE_TICKS,
+        END_TICKS,
+      )
+      state = step.state
+      if (step.conversationEnded) ended = true
+    }
+    expect(ended).toBe(true)
+  })
+
+  it('does not end a conversation while a held box merely gains unreadable tiles at a stable signature', () => {
+    // The legible prefix stays put — `unreadable` growing alone (a character the alphabet does
+    // not know yet, further into the box) is progress too, not noise.
+    let state = NOTHING_SEEN
+    for (let i = 1; i <= END_TICKS + 5; i++) {
+      const step = nextSettle(
+        state,
+        { kind: 'held', signature: 'HELLO', unreadable: i },
+        SETTLE_TICKS,
+        END_TICKS,
+      )
+      expect(step.conversationEnded).toBe(false)
+      state = step.state
+    }
+  })
 })
 
 describe('boxReadingFrom', () => {

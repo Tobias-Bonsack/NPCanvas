@@ -22,6 +22,20 @@ import type { TextBoxReading } from './glyph-matcher.ts'
 //
 // Pure, and its own module for the same reason `append-overlap.ts` is one: the loop is four lines
 // and the judgement around it is the rest.
+//
+// **A conversation's end is not the same question as a box's stillness, and cannot reuse "empty"
+// alone to answer it.** The fixed screen rect a profile reads keeps being read after the last box
+// closes — nothing tells this module a dialogue is no longer on screen — and what shows there
+// instead (the overworld, a menu, a battle) essentially never binarises to the all-background
+// tiles `boxReadingFrom` calls `empty`: real scenery has ink in it. So a gap between two
+// conversations reads as `held`, with a signature that changes on every poll — pixels drawn by
+// something that has nothing to do with dialogue never repeat frame to frame the way a paused
+// box does. That is the tell: a box genuinely still typing extends what it already showed —
+// each poll's signature is the last one plus more, never less, never different — while unrelated
+// noise's "signature" bears no relation to the poll before it. `nextSettle` credits a growing
+// signature as progress and starts the gap counter on everything else, `empty` included, which is
+// what lets it tell a conversation that is still going from a screen that no longer has one on it,
+// without needing the alphabet fully taught to do it.
 
 /**
  * One tick's reading of the text box, reduced to what settling cares about.
@@ -62,13 +76,15 @@ export type SettleState = {
    */
   best: SettledBox | null
   /**
-   * Consecutive `empty` readings since the box last held something — what `conversationEnded` is
+   * Consecutive polls that showed no *progressing* dialogue — what `conversationEnded` is
    * measured against. Kept in state rather than a module variable so `nextSettle` stays pure.
+   * Not only literal `empty` readings — see the module comment on why a box that keeps changing
+   * without ever extending what it already showed counts the same way.
    */
-  emptyTicks: number
+  gapTicks: number
   /**
-   * Whether `conversationEnded` has already fired for the *current* run of empty readings — the
-   * flag that makes it fire once per gap rather than on every subsequent empty poll.
+   * Whether `conversationEnded` has already fired for the *current* run of gap ticks — the flag
+   * that makes it fire once per gap rather than on every subsequent one.
    */
   conversationEndEmitted: boolean
 }
@@ -80,7 +96,7 @@ export const NOTHING_SEEN: SettleState = {
   repeats: 0,
   emitted: false,
   best: null,
-  emptyTicks: 0,
+  gapTicks: 0,
   conversationEndEmitted: false,
 }
 
@@ -94,11 +110,10 @@ export const NOTHING_SEEN: SettleState = {
  * holding it can compare by identity — true for the `settled`/`conversationEnded` fields together,
  * never one without the other.
  *
- * `conversationEnded` is `true` on exactly the tick `emptyTicks` reaches `conversationEndTicks`,
- * counting consecutive `empty` readings — see the module comment for why a threshold rather than
- * the first empty tick. It does not require a box to have been read first: an idle watcher with
- * nothing selected crossing the threshold is harmless, since there is nothing for a caller to
- * close out.
+ * `conversationEnded` is `true` on exactly the tick `gapTicks` reaches `conversationEndTicks` —
+ * see the module comment for what counts as a gap tick, and why a threshold rather than the
+ * first one. It does not require a box to have been read first: an idle watcher with nothing
+ * selected crossing the threshold is harmless, since there is nothing for a caller to close out.
  */
 export function nextSettle(
   state: SettleState,
@@ -108,19 +123,14 @@ export function nextSettle(
 ): { state: SettleState; settled: SettledBox | null; conversationEnded: boolean } {
   // An empty box is the gap between two boxes, and that gap is what makes the same sentence said
   // twice in a row two boxes rather than one: the signature has to be forgotten, not superseded.
-  // `emptyTicks` is the one thing carried across that forgetting, which is what lets a gap be
-  // measured across several empty polls instead of resetting with everything else.
+  // `gapTicks` is the one thing carried across that forgetting, which is what lets a gap be
+  // measured across several polls instead of resetting with everything else.
   if (reading.kind === 'empty') {
-    const emptyTicks = state.emptyTicks + 1
-    const crossed = emptyTicks >= Math.max(1, conversationEndTicks)
+    const gap = withGap(state, true, conversationEndTicks)
     return {
-      state: {
-        ...NOTHING_SEEN,
-        emptyTicks,
-        conversationEndEmitted: state.conversationEndEmitted || crossed,
-      },
+      state: { ...NOTHING_SEEN, gapTicks: gap.gapTicks, conversationEndEmitted: gap.conversationEndEmitted },
       settled: null,
-      conversationEnded: crossed && !state.conversationEndEmitted,
+      conversationEnded: gap.conversationEnded,
     }
   }
 
@@ -128,6 +138,12 @@ export function nextSettle(
   const unreadable = reading.kind === 'text' ? 0 : reading.unreadable
 
   if (signature !== state.signature || unreadable > state.unreadable) {
+    // A box still typing itself out extends what was already legible on the tick before — the
+    // signature only ever grows. Unrelated noise essentially never does: each poll bears no
+    // relation to the last one, which is what tells the two apart without needing the alphabet
+    // fully taught — see the module comment.
+    const isProgress = state.signature !== null && signature.startsWith(state.signature)
+    const gap = withGap(state, !isProgress, conversationEndTicks)
     return {
       ...settleAt(
         {
@@ -136,12 +152,12 @@ export function nextSettle(
           repeats: 1,
           emitted: false,
           best: reading,
-          emptyTicks: 0,
-          conversationEndEmitted: false,
+          gapTicks: gap.gapTicks,
+          conversationEndEmitted: gap.conversationEndEmitted,
         },
         settleTicks,
       ),
-      conversationEnded: false,
+      conversationEnded: gap.conversationEnded,
     }
   }
   if (state.emitted) return { state, settled: null, conversationEnded: false }
@@ -151,12 +167,33 @@ export function nextSettle(
         ...state,
         repeats: state.repeats + 1,
         best: moreLegible(state.best, reading),
-        emptyTicks: 0,
+        gapTicks: 0,
         conversationEndEmitted: false,
       },
       settleTicks,
     ),
     conversationEnded: false,
+  }
+}
+
+/**
+ * One more tick's contribution to the gap counter. `isGap` false — a box that settled, stayed
+ * stable, or grew the way real typing does — resets it to zero rather than merely holding it,
+ * because stability is exactly what a real, ongoing conversation looks like regardless of how
+ * long the player takes to read it.
+ */
+function withGap(
+  state: SettleState,
+  isGap: boolean,
+  conversationEndTicks: number,
+): { gapTicks: number; conversationEndEmitted: boolean; conversationEnded: boolean } {
+  if (!isGap) return { gapTicks: 0, conversationEndEmitted: false, conversationEnded: false }
+  const gapTicks = state.gapTicks + 1
+  const crossed = gapTicks >= Math.max(1, conversationEndTicks)
+  return {
+    gapTicks,
+    conversationEndEmitted: state.conversationEndEmitted || crossed,
+    conversationEnded: crossed && !state.conversationEndEmitted,
   }
 }
 

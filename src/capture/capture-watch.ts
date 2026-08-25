@@ -146,14 +146,17 @@ const SETTLE_TICKS = 3
 const FAILURES_BEFORE_STOP = 3
 
 /**
- * Consecutive empty polls that end a conversation — see `box-settle.ts`'s `conversationEnded`.
+ * Consecutive gap polls that end a conversation — see `box-settle.ts`'s `conversationEnded` and
+ * its module comment for what counts as a gap: not only a literally blank box, but a reading that
+ * keeps changing without ever extending what it already showed, which is what the screen behind a
+ * closed box usually reads as.
  *
- * 13 at `POLL_MS` is roughly 2.5 s of closed box: the value exists to outlast a blank between two
- * boxes, a menu opening mid-conversation, and a battle interrupting one, all of which blank the
- * window for a few frames without the conversation actually being over. Long enough for those,
- * short enough that two NPCs standing next to each other still read as two conversations rather
- * than one run-on line — this is the one number in the issue that had to be tuned against a real
- * game rather than derived.
+ * 13 at `POLL_MS` is roughly 2.5 s: the value exists to outlast a blank between two boxes, a menu
+ * opening mid-conversation, and a battle interrupting one, all of which unsettle the reading for a
+ * few frames without the conversation actually being over. Long enough for those, short enough
+ * that two NPCs standing next to each other still read as two conversations rather than one
+ * run-on line — this is the one number in the issue that had to be tuned against a real game
+ * rather than derived.
  */
 const CONVERSATION_END_TICKS = 13
 
