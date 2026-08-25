@@ -1,6 +1,13 @@
 import { useSyncExternalStore } from 'react'
-import { currentDialogue, getState } from '../project/store.ts'
-import type { CaptureProfile, CaptureProfileId, DialogueId, Glyph } from '../project/types.ts'
+import { discardMediaFile } from '../media/discard-media.ts'
+import { currentDialogue, dispatch, getState } from '../project/store.ts'
+import type {
+  CaptureProfile,
+  CaptureProfileId,
+  DialogueId,
+  DialogueMedia,
+  Glyph,
+} from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { activeCaptureProfile } from './active-profile.ts'
@@ -10,6 +17,7 @@ import { getCaptureSource, grabFrame } from './capture-session.ts'
 import { appendOutcome, captureBlocker, captureIntoDialogue } from './capture-to-dialogue.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
 import { readTextBox } from './glyph-matcher.ts'
+import { middleAddsNothing } from './middle-frame.ts'
 
 // Logging a line without leaving the game.
 //
@@ -46,6 +54,13 @@ export type WatchState =
        * NPC genuinely repeats, which `appendWithoutOverlap` cannot tell apart from the first one.
        */
       repeated: number
+      /**
+       * Pictures the watcher wrote and then took back: a box in the middle of a scrolling run
+       * whose text turned out to lie wholly under the two boxes around it — see `middle-frame.ts`.
+       * Counted rather than done quietly, because a picture disappearing from the list is exactly
+       * the kind of thing that has to be explained where it happens.
+       */
+      dropped: number
       /** The last line written, so the panel can be checked out of the corner of the eye. */
       lastText: string | null
       /** Why this tick read nothing, in a sentence naming the fix. `null` while it is reading. */
@@ -141,6 +156,19 @@ let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
 
+/** One picture the watcher wrote, kept only long enough to judge the box that follows it. */
+type WrittenFrame = { dialogueId: DialogueId; media: DialogueMedia; text: string }
+
+/**
+ * The last two boxes written, oldest first — the window `middleAddsNothing` judges a middle in.
+ *
+ * Module-level and never in the store, for the reason the file's opening comment gives for `settle`
+ * and `heldFrames`: it is transient, unserialisable, and no part of the document. It holds one
+ * line's frames at a time; a write into another line clears it, because a replay walks several
+ * lines in one pass and two boxes of different conversations have no window in common.
+ */
+let written: WrittenFrame[] = []
+
 /**
  * Pushes the panel's line draft into the document, if a panel is mounted — see `setDraftFlush`.
  * The watcher appends to what the document says, and the field is 300 ms ahead of it.
@@ -208,6 +236,7 @@ export function startWatching(): void {
   if (state.kind === 'watching') return
   session += 1
   settle = NOTHING_SEEN
+  written = []
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
   // because the alphabet is usually answered once the conversation is over.
@@ -215,6 +244,7 @@ export function startWatching(): void {
     kind: 'watching',
     appended: 0,
     repeated: 0,
+    dropped: 0,
     lastText: null,
     paused: null,
     lastReadAt: null,
@@ -379,6 +409,10 @@ async function tick(mine: number): Promise<void> {
  * nothing new is the ordinary case for a loop reading four times a second, and a picture of it
  * would bury the conversation. Only the watcher applies that rule; a deliberate press still keeps
  * its frame.
+ *
+ * A box that *is* written can still be taken back once the box after it arrives — see `keepWindow`.
+ * That too is the watcher's alone, and for the same reason: it fires unattended, so it is the one
+ * caller that can judge a frame against what came after it rather than against a press.
  */
 async function writeBox(
   dialogueId: DialogueId,
@@ -393,7 +427,64 @@ async function writeBox(
   // writes it before it appends, and a manual capture running alongside can land its own append in
   // that window. Its verdict is the one that describes what the document actually took.
   const result = await captureIntoDialogue(target, profile, frame, text)
-  return result.text === 'appended' ? 'appended' : 'unchanged'
+  if (result.text !== 'appended') return 'unchanged'
+  await keepWindow(dialogueId, result.media, text)
+  return 'appended'
+}
+
+/**
+ * Slides the window on by one box, taking back the picture it pushes out of the middle.
+ *
+ * Here rather than in the tick, so a replayed frame is judged exactly as a live one is: both write
+ * through `writeBox`, and a held box replayed in capture order sits in the same run of a scrolling
+ * text box as the rest.
+ *
+ * The box that just landed is the *third* of the three, so the judgement is always about the one
+ * before it — which is why nothing is ever taken back until a box after it exists. `before` is
+ * empty for the first pair, and `middleAddsNothing` reads that as the question a filling box asks
+ * rather than a scrolling one. After a removal `before` stays the anchor, so a whole run of
+ * in-between boxes falls away one at a time as the run goes on.
+ */
+async function keepWindow(
+  dialogueId: DialogueId,
+  media: DialogueMedia,
+  text: string,
+): Promise<void> {
+  // A replay walks several lines in one pass, and two boxes of different conversations have no
+  // window in common.
+  if (written.length > 0 && written[0].dialogueId !== dialogueId) written = []
+
+  const middle = written.at(-1) ?? null
+  const before = written.at(-2)?.text ?? ''
+  const entry: WrittenFrame = { dialogueId, media, text }
+
+  if (middle !== null && middleAddsNothing(before, middle.text, text)) {
+    // Written before the await, so a write landing underneath this one cannot judge the same middle
+    // a second time and try to remove it twice.
+    written = [...written.slice(0, -1), entry]
+    await takeBack(dialogueId, middle.media)
+    return
+  }
+  written = [...written, entry].slice(-2)
+}
+
+/**
+ * Takes one picture back out: the document first, the file after.
+ *
+ * The order and the reason are the panel's own remove — after the dispatch nothing in the document
+ * names the file, so it would sit in `media/` forever, invisible from inside the app. The line's
+ * text is deliberately left as it stands: it was already joined from every box, and this frame's
+ * words are all still in it, carried by the two frames around it.
+ *
+ * A picture the user removed by hand in the meantime is left alone, rather than relying on the
+ * reducer's no-op and deleting a file the document may since have handed to something else.
+ */
+async function takeBack(dialogueId: DialogueId, media: DialogueMedia): Promise<void> {
+  const target = currentDialogue(dialogueId)
+  if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
+  dispatch({ kind: 'dialogue/media-removed', dialogueId, mediaId: media.id })
+  await discardMediaFile(media.file.fileName)
+  countDropped()
 }
 
 /**
@@ -414,6 +505,11 @@ function markRead(): void {
 function countRepeated(): void {
   if (state.kind !== 'watching') return
   setState({ ...state, repeated: state.repeated + 1 })
+}
+
+function countDropped(): void {
+  if (state.kind !== 'watching') return
+  setState({ ...state, dropped: state.dropped + 1 })
 }
 
 function countAppended(text: string): void {

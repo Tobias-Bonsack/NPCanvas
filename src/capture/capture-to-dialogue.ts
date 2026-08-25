@@ -2,7 +2,7 @@ import { assertNever } from '../assert-never.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
-import type { CaptureProfile, Dialogue, Glyph } from '../project/types.ts'
+import type { CaptureProfile, Dialogue, DialogueMedia, Glyph } from '../project/types.ts'
 import { appendWithoutOverlap } from './append-overlap.ts'
 import { profileApplies } from './capture-profile.ts'
 import type { CaptureSource } from './capture-session.ts'
@@ -31,6 +31,12 @@ export type CaptureResult = {
   text: 'appended' | 'unchanged' | 'not-transcribed'
   /** Which picture this became, counted from one — the first is what the pin wears. */
   picture: number
+  /**
+   * The medium the picture became. Named rather than merely counted, because a caller that writes
+   * unattended has to be able to take it back again: the watcher judges a box against the two
+   * around it, and a `MediaId` is what a removal addresses — see CLAUDE.md § Media contract.
+   */
+  media: DialogueMedia
 }
 
 /** One read of the live frame, kept together with the frame it came from. */
@@ -163,7 +169,7 @@ export async function captureIntoDialogue(
   if (outcome.text === 'appended') {
     dispatch({ kind: 'dialogue/text-set', dialogueId: dialogue.id, text: outcome.next })
   }
-  return { text: outcome.text, picture }
+  return { text: outcome.text, picture, media }
 }
 
 /**
@@ -190,8 +196,13 @@ export function appendOutcome(
   return next === existing ? { text: 'unchanged', next: existing } : { text: 'appended', next }
 }
 
-/** What the panel says afterwards. Every outcome names both halves — the picture and the line. */
-export function describeCapture(result: CaptureResult): string {
+/**
+ * What the panel says afterwards. Every outcome names both halves — the picture and the line.
+ *
+ * Takes only the two fields it reads, so a caller with nothing but an outcome to describe — a test,
+ * or a message assembled after the medium has been dealt with — does not have to invent one.
+ */
+export function describeCapture(result: Pick<CaptureResult, 'text' | 'picture'>): string {
   const picture =
     result.picture === 1
       ? 'Captured. The picture is the first one, so it is what the pin shows.'

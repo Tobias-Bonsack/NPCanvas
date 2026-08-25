@@ -144,7 +144,18 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   said and five frames proving it, and a capture appends both. `text` may be empty (a picture not
   yet transcribed) and `media` may be empty (a line typed by hand). What a pin, a row or the kind
   filter shows comes from `dialogueContentKind()` — the first medium's kind, or `'text'` — derived
-  on every read, never stored.
+  on every read, never stored. The **watcher alone** may take a picture back once the box after it
+  has been written: `middleAddsNothing` (`src/capture/middle-frame.ts`) asks whether the middle of
+  three boxes can be cut at one point so its front is a suffix of the box before and its back a
+  prefix of the box after — the scroll, stated exactly — and if it can, `keepWindow` removes it and
+  deletes its file. Compared as *words* with punctuation trimmed off their ends, because a comma at
+  a scrolled line's end is shown by the middle box and by neither neighbour, and a character-exact
+  test would therefore keep nearly every frame. An empty `before` is the same question asked of a
+  box that *filled* rather than scrolled, which is why a second frame can take back the first. The
+  line's text is never touched: it was already joined from every box, and the removed frame's words
+  are all still in it. A deliberate press keeps its frame unconditionally, exactly as it already
+  keeps it against `appendOutcome` — only the caller that fires unattended judges a frame by what
+  came after it.
 - **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
   user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a

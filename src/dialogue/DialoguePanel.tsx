@@ -987,6 +987,11 @@ function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>): string 
   const parts = [
     watch.appended === 1 ? '1 box appended' : `${watch.appended} boxes appended`,
     watch.repeated === 0 ? null : `${watch.repeated} said nothing new`,
+    // A picture vanishing from the list is exactly the kind of thing that has to be said where it
+    // happens, rather than left to be noticed.
+    watch.dropped === 0
+      ? null
+      : `${watch.dropped} in-between ${watch.dropped === 1 ? 'picture' : 'pictures'} dropped`,
     sinceRead(watch.lastReadAt),
   ]
   return `Watching · ${parts.filter((part) => part !== null).join(' · ')}`
