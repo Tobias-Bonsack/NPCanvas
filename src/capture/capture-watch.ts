@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import { discardMediaFile } from '../media/discard-media.ts'
+import { importDialogueMedia } from '../media/import-media.ts'
+import { newPendingCaptureId } from '../project/ids.ts'
 import { currentDialogue, dispatch, getState } from '../project/store.ts'
 import type {
   CaptureProfile,
@@ -7,6 +9,8 @@ import type {
   DialogueId,
   DialogueMedia,
   Glyph,
+  PendingCapture,
+  PendingCaptureId,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
@@ -14,7 +18,12 @@ import { activeCaptureProfile } from './active-profile.ts'
 import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 import { getCaptureSource, grabFrame } from './capture-session.ts'
-import { appendOutcome, captureBlocker, captureIntoDialogue } from './capture-to-dialogue.ts'
+import {
+  appendOutcome,
+  captureBlocker,
+  captureIntoDialogue,
+  screenPng,
+} from './capture-to-dialogue.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
 import { readTextBox } from './glyph-matcher.ts'
 import { middleAddsNothing } from './middle-frame.ts'
@@ -61,6 +70,12 @@ export type WatchState =
        * the kind of thing that has to be explained where it happens.
        */
       dropped: number
+      /**
+       * Conversations recorded into the pending-capture queue since the watcher was switched on —
+       * one per `pending-capture/added`, never per box. Only counts with nothing selected; a
+       * selected dialogue is appended to and has nothing new to count.
+       */
+      conversations: number
       /** The last line written, so the panel can be checked out of the corner of the eye. */
       lastText: string | null
       /** Why this tick read nothing, in a sentence naming the fix. `null` while it is reading. */
@@ -130,6 +145,18 @@ const SETTLE_TICKS = 3
  */
 const FAILURES_BEFORE_STOP = 3
 
+/**
+ * Consecutive empty polls that end a conversation — see `box-settle.ts`'s `conversationEnded`.
+ *
+ * 13 at `POLL_MS` is roughly 2.5 s of closed box: the value exists to outlast a blank between two
+ * boxes, a menu opening mid-conversation, and a battle interrupting one, all of which blank the
+ * window for a few frames without the conversation actually being over. Long enough for those,
+ * short enough that two NPCs standing next to each other still read as two conversations rather
+ * than one run-on line — this is the one number in the issue that had to be tuned against a real
+ * game rather than derived.
+ */
+const CONVERSATION_END_TICKS = 13
+
 const OFF: WatchState = { kind: 'off', message: null }
 const NOTHING_HELD: HeldState = { waiting: 0, dropped: 0 }
 
@@ -147,11 +174,28 @@ const listeners = new Set<() => void>()
 let session = 0
 let timer: ReturnType<typeof setTimeout> | null = null
 let settle: SettleState = NOTHING_SEEN
-/** What `settle` describes. A box is only "already written" for the line it was written into. */
-let settledFor: { dialogueId: DialogueId | null; profileId: CaptureProfileId | null } = {
-  dialogueId: null,
+
+/**
+ * What the watcher writes into: a selected dialogue is appended to, and nothing selected records
+ * captures into the queue. Decided by the selection alone — see the module comment and CLAUDE.md.
+ */
+type WatchTarget = { kind: 'dialogue'; id: DialogueId } | { kind: 'queue' }
+
+/** What `settle` describes, as a key `===`-comparable across ticks. A box is only "already
+ * written" for the target it was written into — a dialogue, or the queue, under one profile. */
+let settledFor: { targetKey: string | null; profileId: CaptureProfileId | null } = {
+  targetKey: null,
   profileId: null,
 }
+
+/**
+ * The queue's conversation in progress, or `null` between conversations. Reset to `null` whenever
+ * `settledFor` changes — a target switch or a profile change — and whenever `conversationEnded`
+ * fires while writing into the queue, so the next settled box starts a fresh capture rather than
+ * silently resuming one the player may have forgotten about.
+ */
+let currentCaptureId: PendingCaptureId | null = null
+
 let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
@@ -236,6 +280,8 @@ export function startWatching(): void {
   if (state.kind === 'watching') return
   session += 1
   settle = NOTHING_SEEN
+  settledFor = { targetKey: null, profileId: null }
+  currentCaptureId = null
   written = []
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
@@ -245,6 +291,7 @@ export function startWatching(): void {
     appended: 0,
     repeated: 0,
     dropped: 0,
+    conversations: 0,
     lastText: null,
     paused: null,
     lastReadAt: null,
@@ -297,12 +344,14 @@ async function tick(mine: number): Promise<void> {
     pause('Open a project folder — a captured line is written into the project it belongs to.')
     return
   }
-  if (app.selection.kind !== 'dialogue') {
-    pause('Select a pin — every box read is appended to the selected line.')
-    return
-  }
-  const dialogueId = app.selection.id
-  if (currentDialogue(dialogueId) === null) {
+
+  // The two modes, decided by the selection and by nothing else — no separate mode flag and no
+  // override. A selected dialogue is appended to; anything else (nothing selected, or a zone or
+  // map — neither has any bearing on the watcher) records into the pending-capture queue.
+  const target: WatchTarget =
+    app.selection.kind === 'dialogue' ? { kind: 'dialogue', id: app.selection.id } : { kind: 'queue' }
+
+  if (target.kind === 'dialogue' && currentDialogue(target.id) === null) {
     pause('The selected line is gone. Place or select a pin to keep logging.')
     return
   }
@@ -332,13 +381,16 @@ async function tick(mine: number): Promise<void> {
     return
   }
 
-  // What the box last settled *against* is only meaningful for one line read under one profile:
-  // select another pin without advancing the game and the box on screen has not changed, but it
-  // has never been written to this line. Same for a profile switched mid-conversation, which can
-  // read the same pixels differently.
-  if (dialogueId !== settledFor.dialogueId || profile.id !== settledFor.profileId) {
+  // What the box last settled *against* is only meaningful for one target read under one profile:
+  // switching targets without advancing the game leaves the box on screen unchanged, but it has
+  // never been written to the new target. Same for a profile switched mid-conversation, which can
+  // read the same pixels differently. A target switch also abandons any capture in progress in the
+  // queue — resuming a forgotten conversation is worse than starting a fresh one.
+  const targetKey = target.kind === 'dialogue' ? `dialogue:${target.id}` : 'queue'
+  if (targetKey !== settledFor.targetKey || profile.id !== settledFor.profileId) {
     settle = NOTHING_SEEN
-    settledFor = { dialogueId, profileId: profile.id }
+    settledFor = { targetKey, profileId: profile.id }
+    currentCaptureId = null
   }
 
   let frame: ImageData
@@ -357,47 +409,154 @@ async function tick(mine: number): Promise<void> {
   failures = 0
 
   const glyphs = app.project.glyphs
-  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile, glyphs)), SETTLE_TICKS)
+  const step = nextSettle(
+    settle,
+    boxReadingFrom(readTextBox(frame, profile, glyphs)),
+    SETTLE_TICKS,
+    CONVERSATION_END_TICKS,
+  )
   settle = step.state
   markRead()
 
+  // The box has been empty long enough that the conversation is over. Only meaningful in the
+  // queue — a selected dialogue has no notion of "conversation", only a line that keeps growing
+  // for as long as it is selected — so the *next* settled box in the queue starts a fresh capture
+  // rather than silently resuming this one.
+  if (step.conversationEnded && target.kind === 'queue') {
+    currentCaptureId = null
+  }
+
   const settled = step.settled
   if (settled === null) return
-  // A readable box goes into the queue too, once a box before it is waiting there: a held frame can
-  // only ever be appended at the *end* of the line, so writing the boxes that came after it would
-  // put the conversation down out of order — and `appendWithoutOverlap` would then join the held
-  // one to the wrong suffix, or swallow it whole. Deferred work is the point of the queue; a
-  // scrambled line is not.
-  if (settled.kind === 'held' || holdsFrameFor(dialogueId)) {
-    hold(dialogueId, frame)
+
+  if (target.kind === 'dialogue') {
+    const dialogueId = target.id
+    // A readable box goes into the queue too, once a box before it is waiting there: a held frame
+    // can only ever be appended at the *end* of the line, so writing the boxes that came after it
+    // would put the conversation down out of order — and `appendWithoutOverlap` would then join
+    // the held one to the wrong suffix, or swallow it whole. Deferred work is the point of the
+    // queue; a scrambled line is not.
+    if (settled.kind === 'held' || holdsFrameFor(dialogueId)) {
+      hold(dialogueId, frame)
+      return
+    }
+
+    // The line as the field has it, before reading what the document says: `useFieldDraft` only
+    // commits 300 ms after the last keystroke, and typing a word and clicking straight back into
+    // the emulator would otherwise let this append land first — after which the draft yields to
+    // the document and the typed characters are gone. The manual button flushes for the same
+    // reason.
+    flushDraft?.()
+
+    try {
+      switch (await writeBox(dialogueId, profile, frame, settled.text)) {
+        case 'appended':
+          countAppended(settled.text)
+          break
+        case 'unchanged':
+          // The box said what the line already says. `box-settle.ts` treats a sentence repeated
+          // after a gap as a second box deliberately, and `appendWithoutOverlap` cannot: counted
+          // rather than passed over, so a line that logged one "OK." out of two says so.
+          countRepeated()
+          break
+        case 'gone':
+          break
+      }
+    } catch (error) {
+      // The box has already been marked emitted, so this is not retried against the same frame —
+      // the next box the player advances to is read normally.
+      pause(describeError(error))
+    }
     return
   }
 
-  // The line as the field has it, before reading what the document says: `useFieldDraft` only
-  // commits 300 ms after the last keystroke, and typing a word and clicking straight back into the
-  // emulator would otherwise let this append land first — after which the draft yields to the
-  // document and the typed characters are gone. The manual button flushes for the same reason.
-  flushDraft?.()
+  // Queue mode. An unreadable box has nowhere to wait: `held`'s frame queue is keyed by
+  // `DialogueId` and exists because a placed line can be revisited once the alphabet grows — a
+  // conversation with no place yet, possibly no capture yet either, has neither. The box is
+  // simply not captured; if it is still on screen once the alphabet can read it whole, it reads
+  // as a change from this held signature and settles again.
+  if (settled.kind === 'held') return
 
   try {
-    switch (await writeBox(dialogueId, profile, frame, settled.text)) {
+    switch (await writeIntoQueue(profile, frame, settled.text)) {
       case 'appended':
         countAppended(settled.text)
         break
       case 'unchanged':
-        // The box said what the line already says. `box-settle.ts` treats a sentence repeated
-        // after a gap as a second box deliberately, and `appendWithoutOverlap` cannot: counted
-        // rather than passed over, so a line that logged one "OK." out of two says so.
         countRepeated()
         break
       case 'gone':
         break
     }
   } catch (error) {
-    // The box has already been marked emitted, so this is not retried against the same frame —
-    // the next box the player advances to is read normally.
     pause(describeError(error))
   }
+}
+
+/**
+ * One settled box into the pending-capture queue: the first box of a conversation creates the
+ * capture, every later one appends to it — mirroring `writeBox`, but against a `PendingCapture`
+ * rather than a `Dialogue`, since neither `store.ts` nor `capture-to-dialogue.ts` know about one.
+ *
+ * `currentCaptureId` names which capture that is; `null` means this settled box is the first of a
+ * new conversation.
+ */
+async function writeIntoQueue(
+  profile: CaptureProfile,
+  frame: ImageData,
+  transcript: string,
+): Promise<'appended' | 'unchanged' | 'gone'> {
+  if (currentCaptureId === null) {
+    const app = getState()
+    const pendingCaptures = app.kind === 'ready' ? app.project.pendingCaptures : []
+    const capture: PendingCapture = {
+      id: newPendingCaptureId(),
+      // Only a handle — #70 identifies a capture by its first line and its picture, not its name.
+      npcName: nextCaptureName(pendingCaptures),
+      text: '',
+      media: [],
+      spokenAt: new Date().toISOString(),
+      relevance: [],
+    }
+    dispatch({ kind: 'pending-capture/added', capture })
+    currentCaptureId = capture.id
+    countConversation()
+  }
+  const captureId = currentCaptureId
+
+  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile))
+  dispatch({ kind: 'pending-capture/media-added', captureId, media })
+
+  // The document as it stands now, mirroring `captureIntoDialogue`'s own note: encoding and
+  // writing the picture takes long enough for the capture to have been placed or deleted
+  // underneath this write.
+  const into = currentPendingCapture(captureId)
+  if (into === null) {
+    await discardMediaFile(media.file.fileName)
+    return 'gone'
+  }
+
+  const outcome = appendOutcome(into.text, transcript)
+  if (outcome.text === 'appended') {
+    dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
+  }
+  return outcome.text === 'appended' ? 'appended' : 'unchanged'
+}
+
+/** The pending capture as the document holds it now, or null once it is gone — mirrors
+ * `currentDialogue`; not added to `store.ts` itself, since nothing outside this file needs it. */
+function currentPendingCapture(id: PendingCaptureId): PendingCapture | null {
+  const app = getState()
+  if (app.kind !== 'ready') return null
+  return app.project.pendingCaptures.find((capture) => capture.id === id) ?? null
+}
+
+/** `NPC 1`, `NPC 2`, … — the smallest number not already a pending capture's name. */
+function nextCaptureName(existing: readonly PendingCapture[]): string {
+  const used = new Set(existing.map((capture) => capture.npcName))
+  let n = 1
+  while (used.has(`NPC ${n}`)) n += 1
+  return `NPC ${n}`
 }
 
 /**
@@ -515,6 +674,11 @@ function countDropped(): void {
 function countAppended(text: string): void {
   if (state.kind !== 'watching') return
   setState({ ...state, appended: state.appended + 1, lastText: text })
+}
+
+function countConversation(): void {
+  if (state.kind !== 'watching') return
+  setState({ ...state, conversations: state.conversations + 1 })
 }
 
 /**

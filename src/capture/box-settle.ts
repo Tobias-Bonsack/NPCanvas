@@ -61,6 +61,16 @@ export type SettleState = {
    * that reading is worth more than whichever frame happened to complete the count.
    */
   best: SettledBox | null
+  /**
+   * Consecutive `empty` readings since the box last held something — what `conversationEnded` is
+   * measured against. Kept in state rather than a module variable so `nextSettle` stays pure.
+   */
+  emptyTicks: number
+  /**
+   * Whether `conversationEnded` has already fired for the *current* run of empty readings — the
+   * flag that makes it fire once per gap rather than on every subsequent empty poll.
+   */
+  conversationEndEmitted: boolean
 }
 
 /** Before the first tick, and after every empty box. Shared, so an unchanged state stays identical. */
@@ -70,39 +80,84 @@ export const NOTHING_SEEN: SettleState = {
   repeats: 0,
   emitted: false,
   best: null,
+  emptyTicks: 0,
+  conversationEndEmitted: false,
 }
 
 /**
- * The state after one more reading, and the box to act on once it has come to rest.
+ * The state after one more reading, the box to act on once it has come to rest, and whether this
+ * reading is the one that ends a conversation.
  *
  * `settled` is non-null on exactly the tick that completes `settleTicks` readings showing nothing
  * new — a box that stays on screen for another minute yields nothing more, and a box that changes
  * starts over. The returned state is the argument **itself** when nothing moved, so a caller
- * holding it can compare by identity.
+ * holding it can compare by identity — true for the `settled`/`conversationEnded` fields together,
+ * never one without the other.
+ *
+ * `conversationEnded` is `true` on exactly the tick `emptyTicks` reaches `conversationEndTicks`,
+ * counting consecutive `empty` readings — see the module comment for why a threshold rather than
+ * the first empty tick. It does not require a box to have been read first: an idle watcher with
+ * nothing selected crossing the threshold is harmless, since there is nothing for a caller to
+ * close out.
  */
 export function nextSettle(
   state: SettleState,
   reading: BoxReading,
   settleTicks: number,
-): { state: SettleState; settled: SettledBox | null } {
+  conversationEndTicks: number,
+): { state: SettleState; settled: SettledBox | null; conversationEnded: boolean } {
   // An empty box is the gap between two boxes, and that gap is what makes the same sentence said
   // twice in a row two boxes rather than one: the signature has to be forgotten, not superseded.
-  if (reading.kind === 'empty') return { state: NOTHING_SEEN, settled: null }
+  // `emptyTicks` is the one thing carried across that forgetting, which is what lets a gap be
+  // measured across several empty polls instead of resetting with everything else.
+  if (reading.kind === 'empty') {
+    const emptyTicks = state.emptyTicks + 1
+    const crossed = emptyTicks >= Math.max(1, conversationEndTicks)
+    return {
+      state: {
+        ...NOTHING_SEEN,
+        emptyTicks,
+        conversationEndEmitted: state.conversationEndEmitted || crossed,
+      },
+      settled: null,
+      conversationEnded: crossed && !state.conversationEndEmitted,
+    }
+  }
 
   const signature = reading.kind === 'text' ? reading.text : reading.signature
   const unreadable = reading.kind === 'text' ? 0 : reading.unreadable
 
   if (signature !== state.signature || unreadable > state.unreadable) {
-    return settleAt(
-      { signature, unreadable, repeats: 1, emitted: false, best: reading },
-      settleTicks,
-    )
+    return {
+      ...settleAt(
+        {
+          signature,
+          unreadable,
+          repeats: 1,
+          emitted: false,
+          best: reading,
+          emptyTicks: 0,
+          conversationEndEmitted: false,
+        },
+        settleTicks,
+      ),
+      conversationEnded: false,
+    }
   }
-  if (state.emitted) return { state, settled: null }
-  return settleAt(
-    { ...state, repeats: state.repeats + 1, best: moreLegible(state.best, reading) },
-    settleTicks,
-  )
+  if (state.emitted) return { state, settled: null, conversationEnded: false }
+  return {
+    ...settleAt(
+      {
+        ...state,
+        repeats: state.repeats + 1,
+        best: moreLegible(state.best, reading),
+        emptyTicks: 0,
+        conversationEndEmitted: false,
+      },
+      settleTicks,
+    ),
+    conversationEnded: false,
+  }
 }
 
 function settleAt(

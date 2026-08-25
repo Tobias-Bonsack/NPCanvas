@@ -15,18 +15,13 @@ import {
   readLiveBox,
 } from '../capture/capture-to-dialogue.ts'
 import { useCaptureSource } from '../capture/capture-session.ts'
-import type { WatchState } from '../capture/capture-watch.ts'
 import {
   describeReplay,
   discardHeldFrames,
   heldUnknownTiles,
   replayHeldFrames,
   setDraftFlush,
-  startWatching,
-  stopWatching,
   useHeldFrames,
-  useWatchState,
-  useWatching,
 } from '../capture/capture-watch.ts'
 import { GlyphLearner } from '../capture/GlyphLearner.tsx'
 import type { UnknownTile } from '../capture/glyph-matcher.ts'
@@ -115,20 +110,6 @@ const PANEL_WIDTH_STEP = 32
 /** The in-page shortcut, and the words for it — the emulator has the keyboard the rest of the time. */
 const CAPTURE_KEY = 'Enter'
 const CAPTURE_SHORTCUT = 'Ctrl+Enter'
-
-/**
- * Switching the watcher on and off, as one unmodified key.
- *
- * Bare rather than a chord, and one letter rather than two, because of when it is pressed: a
- * conversation starts and ends while the hand is on the emulator's controls, so the gesture has to
- * be cheaper than reaching for the panel. `w` is free — the canvas tools own `i`, `p`, `z` and `m`,
- * and the viewport `f`, `0`, `+` and `-`.
- *
- * Unmodified letters are also exactly what an NPC name is made of, so the listener stands down for
- * a focused text field the same way `MapScreen`'s tool shortcuts do.
- */
-const WATCH_KEY = 'w'
-const WATCH_SHORTCUT = 'W'
 
 /**
  * The detail view for the selected dialogue. Rendering it at all *is* "open" — the parent
@@ -296,9 +277,6 @@ export function DialoguePanel({
   const source = useCaptureSource()
   const profile = useActiveCaptureProfile(project.captureProfiles)
   const blocker = captureBlocker(source, profile)
-  // Only whether the loop runs, not what it has counted: see `useWatching`. The status line below
-  // is what subscribes to the rest, so a box appended does not re-render the panel around it.
-  const watching = useWatching()
 
   // The watcher writes without anyone touching the browser, so it has to be able to push the line
   // field's draft down first — exactly as the capture button does before it appends. Registered
@@ -544,19 +522,6 @@ export function DialoguePanel({
     void write(target, frame, reading.text)
   }
 
-  /**
-   * The watcher's toggle, for both the button and the key.
-   *
-   * Stopping is unconditional: the connection can end while the loop runs, and a toggle that
-   * refused to stop would leave it switched on with no way back. Starting is not — a blocker means
-   * there is nothing to read, and switching on into a paused loop says the opposite of what
-   * happened. Same rule as the button's `disabled`, in one place so the two cannot drift.
-   */
-  function toggleWatch(): void {
-    if (watching) stopWatching()
-    else if (blocker === null) startWatching()
-  }
-
   // The handler closes over the dialogue, so it is a new function on every keystroke in the line
   // field. A ref keeps the window binding stable while the shortcut still runs the current one.
   const captureRef = useRef(capture)
@@ -571,25 +536,6 @@ export function DialoguePanel({
       // text this is about to append to.
       event.preventDefault()
       void captureRef.current()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
-
-  // Both halves change on every render — `watching` on each toggle, `blocker` whenever the
-  // connection or the profile does — so the same ref pattern as `captureRef` keeps one binding.
-  const toggleWatchRef = useRef(toggleWatch)
-  useEffect(() => {
-    toggleWatchRef.current = toggleWatch
-  })
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
-      if (event.key.toLowerCase() !== WATCH_KEY) return
-      if (isTextFieldFocused()) return
-      event.preventDefault()
-      toggleWatchRef.current()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -793,29 +739,7 @@ export function DialoguePanel({
                 ? 'Capturing…'
                 : `Capture the screen · ${CAPTURE_SHORTCUT}`}
             </button>
-            {/* The same capture, unattended. Beside the button rather than in `CaptureBar`,
-                because this is switched on and off per conversation while the bar is a
-                session-long setup step. */}
-            <button
-              type="button"
-              className="dialogue-media__watch"
-              data-watching={watching ? 'true' : undefined}
-              aria-pressed={watching}
-              // Stopping must always be possible: the connection can end while the loop runs,
-              // and a toggle that disabled itself would leave it stuck on.
-              disabled={blocker !== null && !watching}
-              title={
-                watching
-                  ? `Stop reading the text box — ${WATCH_SHORTCUT}`
-                  : (blocker ??
-                    `Read the text box while you play — every box that comes to rest is appended to this line, with its picture. ${WATCH_SHORTCUT}`)
-              }
-              onClick={toggleWatch}
-            >
-              {watching ? 'Stop watching' : 'Watch the text box'} · {WATCH_SHORTCUT}
-            </button>
           </div>
-          <WatchNote />
           <HeldNote
             onAnswer={answerHeld}
             onDiscard={discardHeld}
@@ -924,52 +848,6 @@ export function DialoguePanel({
   )
 }
 
-/**
- * What the watcher is doing, in the one place that stays in view while the game runs beside it.
- *
- * Its own component with its own subscription, so a box appended re-renders this paragraph and not
- * the panel around it — and its own one-second tick, because "read 40 s ago" has to keep counting
- * while the watcher is paused and publishing nothing at all.
- */
-function WatchNote(): ReactElement | null {
-  const watch = useWatchState()
-  const ticking = watch.kind === 'watching'
-  const [, retick] = useState(0)
-
-  useEffect(() => {
-    if (!ticking) return
-    const timer = setInterval(() => retick((count) => count + 1), 1000)
-    return () => clearInterval(timer)
-  }, [ticking])
-
-  if (watch.kind === 'off') {
-    // A watcher switched off by hand says nothing; one that stopped itself has to.
-    return watch.message === null ? null : (
-      <p className="dialogue-media__error" role="alert">
-        Watching stopped. {watch.message}
-      </p>
-    )
-  }
-
-  return (
-    <>
-      {/* No live region: this line changes every second, and a screen reader announcing the
-          clock would bury the messages below it, which do carry one. */}
-      <p className="dialogue-media__watch-note">{watchSummary(watch)}</p>
-      {watch.paused !== null && (
-        <p className="dialogue-media__hint" role="status">
-          {watch.paused}
-        </p>
-      )}
-      {watch.lastText !== null && (
-        <p className="dialogue-media__watch-line" title={watch.lastText}>
-          {watch.lastText}
-        </p>
-      )}
-    </>
-  )
-}
-
 /** Both learners stand in front of the panel and both block a second capture. */
 function isLearning(state: CaptureState): boolean {
   return state.kind === 'learning' || state.kind === 'learning-held'
@@ -1065,29 +943,6 @@ function HeldNote({
   )
 }
 
-/** The counters as one line: what has been written, what is waiting, and how long since a read. */
-function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>): string {
-  const parts = [
-    watch.appended === 1 ? '1 box appended' : `${watch.appended} boxes appended`,
-    watch.repeated === 0 ? null : `${watch.repeated} said nothing new`,
-    // A picture vanishing from the list is exactly the kind of thing that has to be said where it
-    // happens, rather than left to be noticed.
-    watch.dropped === 0
-      ? null
-      : `${watch.dropped} in-between ${watch.dropped === 1 ? 'picture' : 'pictures'} dropped`,
-    sinceRead(watch.lastReadAt),
-  ]
-  return `Watching · ${parts.filter((part) => part !== null).join(' · ')}`
-}
-
-/** How long ago the last frame was read, at the resolution the watcher publishes it in. */
-function sinceRead(lastReadAt: number | null): string {
-  if (lastReadAt === null) return 'nothing read yet'
-  const seconds = Math.max(0, Math.round((Date.now() - lastReadAt) / 1000))
-  if (seconds < 2) return 'reading'
-  if (seconds < 60) return `read ${seconds} s ago`
-  return `read ${Math.floor(seconds / 60)} min ago`
-}
 
 /**
  * The dragged width as the inherited custom property `.dialogue-panel` reads. The intersection

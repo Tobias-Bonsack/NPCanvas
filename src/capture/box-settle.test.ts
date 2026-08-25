@@ -3,6 +3,8 @@ import type { BoxReading, SettledBox, SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 
 const SETTLE_TICKS = 3
+/** Large enough that no ordinary settle test below crosses it by accident. */
+const CONVERSATION_END_TICKS = 1000
 
 const HELLO: BoxReading = { kind: 'text', text: 'HELLO' }
 const HELLO_THERE: BoxReading = { kind: 'text', text: 'HELLO THERE' }
@@ -15,18 +17,20 @@ function feed(
   state: SettleState,
   reading: BoxReading,
   times: number,
+  conversationEndTicks = CONVERSATION_END_TICKS,
 ): { state: SettleState; settled: SettledBox[] } {
-  return feedAll(state, Array.from({ length: times }, () => reading))
+  return feedAll(state, Array.from({ length: times }, () => reading), conversationEndTicks)
 }
 
 function feedAll(
   state: SettleState,
   readings: readonly BoxReading[],
+  conversationEndTicks = CONVERSATION_END_TICKS,
 ): { state: SettleState; settled: SettledBox[] } {
   const settled: SettledBox[] = []
   let current = state
   for (const reading of readings) {
-    const step = nextSettle(current, reading, SETTLE_TICKS)
+    const step = nextSettle(current, reading, SETTLE_TICKS, conversationEndTicks)
     current = step.state
     if (step.settled !== null) settled.push(step.settled)
   }
@@ -38,7 +42,7 @@ describe('nextSettle', () => {
     // What a console does: one more character per frame, so every tick reads a longer transcript.
     let state = NOTHING_SEEN
     for (const text of ['H', 'HE', 'HEL', 'HELL', 'HELLO']) {
-      const step = nextSettle(state, { kind: 'text', text }, SETTLE_TICKS)
+      const step = nextSettle(state, { kind: 'text', text }, SETTLE_TICKS, CONVERSATION_END_TICKS)
       expect(step.settled).toBeNull()
       state = step.state
     }
@@ -59,7 +63,7 @@ describe('nextSettle', () => {
     const settledOnce = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS).state
     expect(settledOnce.emitted).toBe(true)
 
-    const changed = nextSettle(settledOnce, HELLO_THERE, SETTLE_TICKS)
+    const changed = nextSettle(settledOnce, HELLO_THERE, SETTLE_TICKS, CONVERSATION_END_TICKS)
     expect(changed.settled).toBeNull()
     expect(changed.state.repeats).toBe(1)
     expect(changed.state.emitted).toBe(false)
@@ -72,21 +76,23 @@ describe('nextSettle', () => {
     expect(second.settled).toEqual([HELLO_THERE])
   })
 
-  it('never settles an empty box, and forgets what came before it', () => {
+  it('never settles an empty box, and forgets the transcript that came before it', () => {
     const held = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS - 1).state
-    const cleared = nextSettle(held, EMPTY, SETTLE_TICKS)
+    const cleared = nextSettle(held, EMPTY, SETTLE_TICKS, CONVERSATION_END_TICKS)
     expect(cleared.settled).toBeNull()
-    expect(cleared.state).toBe(NOTHING_SEEN)
+    expect(cleared.state.signature).toBeNull()
+    expect(cleared.state.best).toBeNull()
+    expect(cleared.state.emitted).toBe(false)
 
     const blanked = feed(NOTHING_SEEN, EMPTY, 10)
     expect(blanked.settled).toEqual([])
-    expect(blanked.state).toBe(NOTHING_SEEN)
+    expect(blanked.state.signature).toBeNull()
   })
 
   it('reads the same line again once the box has closed in between', () => {
     // Two NPCs saying the same sentence is two lines, and the gap is the only thing that says so.
     const first = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS)
-    const gap = nextSettle(first.state, EMPTY, SETTLE_TICKS)
+    const gap = nextSettle(first.state, EMPTY, SETTLE_TICKS, CONVERSATION_END_TICKS)
     const again = feed(gap.state, HELLO, SETTLE_TICKS)
     expect(again.settled).toEqual([HELLO])
   })
@@ -134,11 +140,66 @@ describe('nextSettle', () => {
 
   it('hands back the same state object while a settled box stays on screen', () => {
     const settled = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS).state
-    expect(nextSettle(settled, HELLO, SETTLE_TICKS).state).toBe(settled)
+    expect(nextSettle(settled, HELLO, SETTLE_TICKS, CONVERSATION_END_TICKS).state).toBe(settled)
   })
 
   it('settles immediately when the threshold is below one', () => {
-    expect(nextSettle(NOTHING_SEEN, HELLO, 0).settled).toEqual(HELLO)
+    expect(nextSettle(NOTHING_SEEN, HELLO, 0, CONVERSATION_END_TICKS).settled).toEqual(HELLO)
+  })
+})
+
+describe('nextSettle: conversationEnded', () => {
+  const END_TICKS = 3
+
+  it('does not end a conversation on a gap shorter than the threshold', () => {
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    for (let i = 0; i < END_TICKS - 1; i++) {
+      const step = nextSettle(state, EMPTY, SETTLE_TICKS, END_TICKS)
+      expect(step.conversationEnded).toBe(false)
+      state = step.state
+    }
+  })
+
+  it('ends a conversation once the gap reaches the threshold', () => {
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    let ended = false
+    for (let i = 0; i < END_TICKS; i++) {
+      const step = nextSettle(state, EMPTY, SETTLE_TICKS, END_TICKS)
+      state = step.state
+      if (step.conversationEnded) ended = true
+    }
+    expect(ended).toBe(true)
+  })
+
+  it('fires conversationEnded exactly once per gap, not on every later empty poll', () => {
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    let firings = 0
+    for (let i = 0; i < END_TICKS + 10; i++) {
+      const step = nextSettle(state, EMPTY, SETTLE_TICKS, END_TICKS)
+      state = step.state
+      if (step.conversationEnded) firings += 1
+    }
+    expect(firings).toBe(1)
+  })
+
+  it('gets a fresh chance to end once a new box arrives and closes again', () => {
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    for (let i = 0; i < END_TICKS; i++) {
+      state = nextSettle(state, EMPTY, SETTLE_TICKS, END_TICKS).state
+    }
+    state = feed(state, HELLO_THERE, SETTLE_TICKS, END_TICKS).state
+
+    let firings = 0
+    for (let i = 0; i < END_TICKS; i++) {
+      const step = nextSettle(state, EMPTY, SETTLE_TICKS, END_TICKS)
+      state = step.state
+      if (step.conversationEnded) firings += 1
+    }
+    expect(firings).toBe(1)
+  })
+
+  it('ends immediately when the threshold is one tick', () => {
+    expect(nextSettle(NOTHING_SEEN, EMPTY, SETTLE_TICKS, 1).conversationEnded).toBe(true)
   })
 })
 
