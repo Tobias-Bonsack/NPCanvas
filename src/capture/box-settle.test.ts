@@ -239,6 +239,55 @@ describe('nextSettle: conversationEnded', () => {
     expect(ended).toBe(true)
   })
 
+  it('ends a conversation on noise with nothing legible in it at all', () => {
+    // The real gap, and the one the two earlier attempts at this missed: the overworld behind a
+    // closed box has no nameable tile in it, so every poll reads as `held` with an *empty*
+    // signature. Only the count of tiles it could not name moves, and it moves both ways — which
+    // is why a rule that watched the signature for change never saw a gap here.
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    let ended = false
+    for (const unreadable of [40, 38, 41, 39, 37, 42, 40, 36]) {
+      const step = nextSettle(
+        state,
+        { kind: 'held', signature: '', unreadable },
+        SETTLE_TICKS,
+        END_TICKS,
+      )
+      state = step.state
+      if (step.conversationEnded) ended = true
+    }
+    expect(ended).toBe(true)
+  })
+
+  it('ends a conversation on noise that holds perfectly still', () => {
+    // A gap counter that only ran on readings it called *changed* froze here instead: once the
+    // same illegible reading had settled, the tick was handed straight back untouched.
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    let ended = false
+    for (let i = 0; i < END_TICKS + 5; i++) {
+      const step = nextSettle(
+        state,
+        { kind: 'held', signature: '', unreadable: 40 },
+        SETTLE_TICKS,
+        END_TICKS,
+      )
+      state = step.state
+      if (step.conversationEnded) ended = true
+    }
+    expect(ended).toBe(true)
+  })
+
+  it('does not end a conversation while a box is left on screen to be read', () => {
+    // The other half of the same rule: a legible box repeating itself is a conversation someone is
+    // still reading, however long they take over it.
+    let state = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS, END_TICKS).state
+    for (let i = 0; i < END_TICKS + 10; i++) {
+      const step = nextSettle(state, HELLO, SETTLE_TICKS, END_TICKS)
+      expect(step.conversationEnded).toBe(false)
+      state = step.state
+    }
+  })
+
   it('does not end a conversation while a held box merely gains unreadable tiles at a stable signature', () => {
     // The legible prefix stays put — `unreadable` growing alone (a character the alphabet does
     // not know yet, further into the box) is progress too, not noise.

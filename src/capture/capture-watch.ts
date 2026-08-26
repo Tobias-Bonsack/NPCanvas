@@ -147,9 +147,8 @@ const FAILURES_BEFORE_STOP = 3
 
 /**
  * Consecutive gap polls that end a conversation — see `box-settle.ts`'s `conversationEnded` and
- * its module comment for what counts as a gap: not only a literally blank box, but a reading that
- * keeps changing without ever extending what it already showed, which is what the screen behind a
- * closed box usually reads as.
+ * its module comment for what counts as a gap: not only a literally blank box, but any reading with
+ * no legible dialogue continuing in it, which is what the screen behind a closed box reads as.
  *
  * 13 at `POLL_MS` is roughly 2.5 s: the value exists to outlast a blank between two boxes, a menu
  * opening mid-conversation, and a battle interrupting one, all of which unsettle the reading for a

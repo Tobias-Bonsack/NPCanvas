@@ -27,15 +27,21 @@ import type { TextBoxReading } from './glyph-matcher.ts'
 // alone to answer it.** The fixed screen rect a profile reads keeps being read after the last box
 // closes — nothing tells this module a dialogue is no longer on screen — and what shows there
 // instead (the overworld, a menu, a battle) essentially never binarises to the all-background
-// tiles `boxReadingFrom` calls `empty`: real scenery has ink in it. So a gap between two
-// conversations reads as `held`, with a signature that changes on every poll — pixels drawn by
-// something that has nothing to do with dialogue never repeat frame to frame the way a paused
-// box does. That is the tell: a box genuinely still typing extends what it already showed —
-// each poll's signature is the last one plus more, never less, never different — while unrelated
-// noise's "signature" bears no relation to the poll before it. `nextSettle` credits a growing
-// signature as progress and starts the gap counter on everything else, `empty` included, which is
-// what lets it tell a conversation that is still going from a screen that no longer has one on it,
-// without needing the alphabet fully taught to do it.
+// tiles `boxReadingFrom` calls `empty`: real scenery has ink in it. It reads as `held`, and its
+// signature is **empty**: scenery has no nameable tile in it, so the only thing that moves poll to
+// poll is the count of tiles that could not be named — and that moves both up and down. Change is
+// therefore not the tell, and a rule that watched for it counted no gap at all here.
+//
+// Legibility is the tell. A box genuinely still typing extends what it already showed — each
+// poll's signature is the last one plus more — and a box left on screen to be read repeats it,
+// which is the same test, since a string is its own prefix. `nextSettle` credits a legible reading
+// that continues the one before it and counts a gap tick on everything else, `empty` included.
+// That an illegible reading is a gap is the same rule the queue already applies: a box it cannot
+// transcribe is one it throws away (`capture-watch.ts`), so what cannot be written must not hold a
+// conversation open either. The cost is stated rather than hidden: a real box in an alphabet that
+// cannot yet name a single one of its tiles, left standing longer than the threshold, ends a
+// conversation — a box that would not have been recorded regardless, and one the learner makes
+// legible the moment it is taught.
 
 /**
  * One tick's reading of the text box, reduced to what settling cares about.
@@ -137,13 +143,16 @@ export function nextSettle(
   const signature = reading.kind === 'text' ? reading.text : reading.signature
   const unreadable = reading.kind === 'text' ? 0 : reading.unreadable
 
+  // What holds a conversation open is a reading with dialogue legibly *in* it: a box still typing
+  // itself out extends what was already legible on the tick before, and a box left on screen to be
+  // read repeats it unchanged — one test covers both, since a repeat is its own prefix. Everything
+  // else is a gap tick, `empty` above included. See the module comment for why legibility rather
+  // than change is the tell, and why an illegible reading is one this module is entitled to call a
+  // gap: it is also a reading the queue throws away.
+  const isGap = signature === '' || state.signature === null || !signature.startsWith(state.signature)
+  const gap = withGap(state, isGap, conversationEndTicks)
+
   if (signature !== state.signature || unreadable > state.unreadable) {
-    // A box still typing itself out extends what was already legible on the tick before — the
-    // signature only ever grows. Unrelated noise essentially never does: each poll bears no
-    // relation to the last one, which is what tells the two apart without needing the alphabet
-    // fully taught — see the module comment.
-    const isProgress = state.signature !== null && signature.startsWith(state.signature)
-    const gap = withGap(state, !isProgress, conversationEndTicks)
     return {
       ...settleAt(
         {
@@ -160,19 +169,32 @@ export function nextSettle(
       conversationEnded: gap.conversationEnded,
     }
   }
-  if (state.emitted) return { state, settled: null, conversationEnded: false }
+  if (state.emitted) {
+    // The gap still has to be counted here — a settled reading that keeps being handed back is
+    // exactly what a motionless screen behind a closed box looks like. The state is returned by
+    // identity when the counter did not move, which is the ordinary case: a legible box someone is
+    // reading resets it to the zero it already held.
+    if (gap.gapTicks === state.gapTicks && gap.conversationEndEmitted === state.conversationEndEmitted) {
+      return { state, settled: null, conversationEnded: gap.conversationEnded }
+    }
+    return {
+      state: { ...state, gapTicks: gap.gapTicks, conversationEndEmitted: gap.conversationEndEmitted },
+      settled: null,
+      conversationEnded: gap.conversationEnded,
+    }
+  }
   return {
     ...settleAt(
       {
         ...state,
         repeats: state.repeats + 1,
         best: moreLegible(state.best, reading),
-        gapTicks: 0,
-        conversationEndEmitted: false,
+        gapTicks: gap.gapTicks,
+        conversationEndEmitted: gap.conversationEndEmitted,
       },
       settleTicks,
     ),
-    conversationEnded: false,
+    conversationEnded: gap.conversationEnded,
   }
 }
 
