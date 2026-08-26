@@ -672,3 +672,23 @@
 .npc-line__link:hover {
   text-decoration: underline;
 }
+
+/* --breakpoint-wide (index.css). Placed after every base rule above so it wins the cascade
+   regardless of selector order — an equal-specificity override earlier in the file loses to a
+   later unconditional one no matter what its `@media` says. The timeline and the two breakdown
+   charts already fill whatever width `.insights` gives them — `.insights__charts`'s own
+   `auto-fit` grid and `useChartWidth`'s `ResizeObserver` need no change here, only more room to
+   measure. */
+@media (min-width: 92rem) {
+  .insights {
+    max-width: 100rem;
+  }
+
+  /* The nested scroll only earns its keep when the page has no room to spare — above the
+     breakpoint the list can grow to its natural height and let the page scroll once, instead
+     of scrolling twice for one list. */
+  .npc-dossier__list {
+    max-height: none;
+    overflow-y: visible;
+  }
+}

@@ -183,3 +183,16 @@
   outline: var(--focus-ring);
   outline-offset: 1px;
 }
+
+/* --breakpoint-wide (index.css). Nothing here is prose: a shortcut row is two short columns,
+   so two of them side by side read the same as one, just without the leftover width. */
+@media (min-width: 92rem) {
+  .settings {
+    max-width: 100rem;
+  }
+
+  .settings__shortcut-groups {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

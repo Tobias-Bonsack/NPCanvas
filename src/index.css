@@ -97,6 +97,13 @@
      for more room instead of being clipped. */
   --control-height: 2rem;
 
+  /* The one upward breakpoint every screen that gains a wide layout shares (#93) — chosen from
+     where a two-column reading layout (insights' charts, the NPC dossier) actually starts
+     paying rather than merely fitting. CSS has no way to reference a custom property from a
+     media feature, so this token documents the number for a reader; every `@media (min-width:
+     92rem)` below repeats it literally rather than inventing a second one. */
+  --breakpoint-wide: 92rem;
+
   color-scheme: light dark;
   font-family: var(--font-sans);
   line-height: 1.5;
