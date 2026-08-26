@@ -1,12 +1,15 @@
-/* A section of the dialogue panel, separated the way the media section is: a rule above rather
-   than a card, because the panel is one column and a box around every group would fragment it. */
+/* Its own section on the settings screen (#91) — the same card recipe `insights__panel` uses for
+   the relevance tag list above it, now that this is a standalone section rather than a
+   rule-separated subsection of the dialogue panel column it used to sit in. */
 .capture-bar {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-1);
 }
 
 .capture-bar__row {

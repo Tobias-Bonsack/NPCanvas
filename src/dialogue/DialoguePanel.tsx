@@ -6,8 +6,8 @@ import type {
   ReactElement,
 } from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { formatRoute } from '../app/route.ts'
 import { useActiveCaptureProfile } from '../capture/active-profile.ts'
-import { CaptureBar } from '../capture/CaptureBar.tsx'
 import {
   captureBlocker,
   captureIntoDialogue,
@@ -766,11 +766,12 @@ export function DialoguePanel({
             …or drop files anywhere on this panel. They are added in the order they are dropped.
           </p>
 
-          {/* Never disabled and silent: the button's `title` is the same sentence, and a tooltip on
-              a disabled control is not something anyone goes looking for. */}
+          {/* Never disabled and silent: the button's `title` carries the full sentence naming what
+              is missing. This is the short, actionable half — where to go fix it — now that the
+              rig itself lives on the settings screen rather than right below this button. */}
           {blocker !== null && (
             <p className="dialogue-media__hint" role="status">
-              {blocker}
+              <a href={formatRoute({ kind: 'settings' })}>Finish capture setup in Settings</a>
             </p>
           )}
           {captureState.kind === 'done' && (
@@ -795,10 +796,6 @@ export function DialoguePanel({
             </p>
           )}
         </section>
-
-        {/* Below the media it will eventually feed: the connection is a session-long setup step,
-            not something touched per dialogue, so it must not push the line's own fields down. */}
-        <CaptureBar profiles={project.captureProfiles} glyphs={project.glyphs} />
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
       </div>

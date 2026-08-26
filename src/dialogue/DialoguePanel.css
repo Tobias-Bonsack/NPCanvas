@@ -239,6 +239,15 @@
   color: var(--text-muted);
 }
 
+.dialogue-media__hint a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.dialogue-media__hint a:hover {
+  text-decoration: underline;
+}
+
 .dialogue-media__warning {
   color: var(--warning);
 }
