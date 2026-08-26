@@ -1,0 +1,33 @@
+/* See Disclosure.tsx. */
+.disclosure {
+  font-size: var(--text-2xs);
+}
+
+.disclosure__summary {
+  display: inline-block;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+
+/* The default marker differs (a triangle in Chromium, "▶ "/"▼ " text in some others) — hidden in
+   favour of nothing at all, since "More" already reads as a toggle without one. */
+.disclosure__summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure__summary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
+
+.disclosure__summary:hover {
+  text-decoration: underline;
+}
+
+.disclosure__body {
+  margin-top: var(--space-1);
+  max-width: 34rem;
+  color: var(--text-muted);
+}

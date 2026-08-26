@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
+import { Disclosure } from '../app/Disclosure.tsx'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { CaptureProfile, Glyph } from '../project/types.ts'
@@ -306,10 +307,12 @@ export function CaptureBar({
     <section className="capture-bar" aria-label="Screen capture">
       <h3 className="micro-label">Capture source</h3>
       <div className="capture-bar__row">{connectionRow()}</div>
-      <p className="capture-bar__hint">
-        A capture connection cannot be stored the way the project folder can, so it ends with the
-        page — after a reload, connect once more.
-      </p>
+      <Disclosure>
+        <p className="capture-bar__hint">
+          A capture connection cannot be stored the way the project folder can, so it ends with
+          the page — after a reload, connect once more.
+        </p>
+      </Disclosure>
       {cancelled && (
         <p className="capture-bar__note" role="status">
           Cancelled. Nothing is being captured.
@@ -324,10 +327,12 @@ export function CaptureBar({
       <h3 className="micro-label">Capture profile</h3>
       <div className="capture-bar__row capture-bar__row--actions">{profileRow()}</div>
       {profiles.length === 0 && (
-        <p className="capture-bar__hint">
-          A profile outlines the console screen inside the captured frame and the text box inside
-          that. Drawn once, every capture afterwards is a single click.
-        </p>
+        <Disclosure>
+          <p className="capture-bar__hint">
+            A profile outlines the console screen inside the captured frame and the text box
+            inside that. Drawn once, every capture afterwards is a single click.
+          </p>
+        </Disclosure>
       )}
       <MismatchWarning source={source} profile={active} />
 
@@ -347,10 +352,13 @@ export function CaptureBar({
           </div>
           {/* Says what this is *not*, because there are now two buttons that read the same box:
               this one is the calibration check, and Capture the screen is the one that writes. */}
-          <p className="capture-bar__hint">
-            A trial read. It shows what the box says and learns whatever tiles are new, but writes
-            nothing to this dialogue — Capture the screen, above, is what attaches and appends.
-          </p>
+          <Disclosure>
+            <p className="capture-bar__hint">
+              A trial read. It shows what the box says and learns whatever tiles are new, but
+              writes nothing to this dialogue — Capture the screen, above, is what attaches and
+              appends.
+            </p>
+          </Disclosure>
           {read.kind === 'failed' && (
             <p className="capture-bar__error" role="alert">
               {read.message}
@@ -376,10 +384,12 @@ export function CaptureBar({
           {glyphs.length} {glyphs.length === 1 ? 'glyph' : 'glyphs'} learned
         </span>
       </div>
-      <p className="capture-bar__hint">
-        One alphabet for the whole project — every profile reads with it, so a second profile aimed
-        at another box on the same console starts out already able to read.
-      </p>
+      <Disclosure>
+        <p className="capture-bar__hint">
+          One alphabet for the whole project — every profile reads with it, so a second profile
+          aimed at another box on the same console starts out already able to read.
+        </p>
+      </Disclosure>
 
       {calibration.kind === 'failed' && (
         <p className="capture-bar__error" role="alert">

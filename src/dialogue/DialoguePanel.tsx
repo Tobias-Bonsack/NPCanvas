@@ -6,6 +6,7 @@ import type {
   ReactElement,
 } from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Disclosure } from '../app/Disclosure.tsx'
 import { formatRoute } from '../app/route.ts'
 import { useActiveCaptureProfile } from '../capture/active-profile.ts'
 import {
@@ -762,9 +763,11 @@ export function DialoguePanel({
               void importFiles(files)
             }}
           />
-          <p className="dialogue-media__hint">
-            …or drop files anywhere on this panel. They are added in the order they are dropped.
-          </p>
+          <Disclosure>
+            <p className="dialogue-media__hint">
+              …or drop files anywhere on this panel. They are added in the order they are dropped.
+            </p>
+          </Disclosure>
 
           {/* Never disabled and silent: the button's `title` carries the full sentence naming what
               is missing. This is the short, actionable half — where to go fix it — now that the
@@ -891,10 +894,12 @@ function HeldNote({
           alphabet cannot name holds up the boxes after it, because a held box can only ever be
           appended at the end of the line. */}
       {held.waiting > 1 && (
-        <p className="dialogue-media__hint">
-          The boxes after the one it could not read are waiting with it, so the line keeps its
-          order.
-        </p>
+        <Disclosure>
+          <p className="dialogue-media__hint">
+            The boxes after the one it could not read are waiting with it, so the line keeps its
+            order.
+          </p>
+        </Disclosure>
       )}
       {held.waiting > 0 &&
         (confirming ? (

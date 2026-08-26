@@ -1,5 +1,6 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Disclosure } from '../app/Disclosure.tsx'
 import { useChartWidth } from './chart-width.ts'
 import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
@@ -345,13 +346,16 @@ function TimelinePanel({
     <section className="insights__panel" aria-label="Timeline">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Timeline</h2>
-        <p className="insights__panel-note">
-          {UNIT_NOTE[unit]} A stretch nothing was said in gets no bar at all, so the bars sit
-          side by side however far apart in time they are. A bar's height is tag occurrences, so a
-          doubly tagged line counts twice — exactly as in the Relevance panel below. Click a bar to
-          inspect it; drag across several, or focus one and press Shift+arrow then Enter, to filter
-          to that stretch of time.
-        </p>
+        <p className="insights__panel-note">{UNIT_NOTE[unit]}</p>
+        <Disclosure>
+          <p>
+            A stretch nothing was said in gets no bar at all, so the bars sit side by side
+            however far apart in time they are. A bar's height is tag occurrences, so a doubly
+            tagged line counts twice — exactly as in the Relevance panel below. Click a bar to
+            inspect it; drag across several, or focus one and press Shift+arrow then Enter, to
+            filter to that stretch of time.
+          </p>
+        </Disclosure>
         <GrainPicker selected={selected} derived={derived} onChange={onUnitChange} />
         <button type="button" className="button" disabled={!hasRange} onClick={onClearRange}>
           Clear range

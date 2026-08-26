@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Disclosure } from '../app/Disclosure.tsx'
 import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
 import { useChartWidth } from './chart-width.ts'
 import type { DialogueFilter, ZoneScope } from './filters.ts'
@@ -66,10 +67,12 @@ export function RelevanceBreakdown({
     <section className="insights__panel" aria-label="Relevance breakdown">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Relevance</h2>
-        <p className="insights__panel-note">
-          A line counts once per tag it carries, so a doubly tagged line appears in both segments.
-          Click a segment to filter.
-        </p>
+        <Disclosure>
+          <p>
+            A line counts once per tag it carries, so a doubly tagged line appears in both
+            segments. Click a segment to filter.
+          </p>
+        </Disclosure>
       </header>
 
       <SegmentLegend tags={relevanceTags} />

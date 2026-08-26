@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
+import { Disclosure } from '../app/Disclosure.tsx'
 import { formatRoute } from '../app/route.ts'
 import { formatSpokenAt, resolveZones, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { MediaGallery } from '../media/MediaGallery.tsx'
@@ -78,10 +79,13 @@ export function NpcDossier({
     <section className="insights__panel" aria-label="NPC dossier">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Who said it</h2>
-        <p className="insights__panel-note">
-          NPCs by line count. Renaming one here renames every line they said — and merges them
-          into an NPC of that name if one already exists.
-        </p>
+        <p className="insights__panel-note">NPCs by line count.</p>
+        <Disclosure>
+          <p>
+            Renaming one here renames every line they said — and merges them into an NPC of that
+            name if one already exists.
+          </p>
+        </Disclosure>
       </header>
 
       <SegmentLegend tags={relevanceTags} />
