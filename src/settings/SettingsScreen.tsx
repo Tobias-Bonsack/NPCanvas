@@ -1,4 +1,6 @@
 import type { ReactElement } from 'react'
+import { RelevanceTagList } from '../insights/RelevanceTagList.tsx'
+import type { ProjectFile } from '../project/types.ts'
 import './SettingsScreen.css'
 
 type Shortcut = { keys: readonly string[]; does: string }
@@ -70,12 +72,16 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
  * The fourth screen: project-wide setup rather than a place a dialogue is authored or read. See
  * CLAUDE.md § "What this app is" for why it does not compete with the other three for priority.
  */
-export function SettingsScreen(): ReactElement {
+export function SettingsScreen({ project }: { project: ProjectFile }): ReactElement {
   return (
     <section className="settings">
       <header className="settings__bar">
         <h1 className="settings__title">Settings</h1>
       </header>
+
+      {/* The project's own vocabulary, above the machine setup #91 adds below it — the words the
+          project uses come before the rig that reads them off the screen. */}
+      <RelevanceTagList relevanceTags={project.relevanceTags} dialogues={project.dialogues} />
 
       <section className="settings__section" aria-labelledby="settings-shortcuts-heading">
         <h2 id="settings-shortcuts-heading" className="settings__section-title">

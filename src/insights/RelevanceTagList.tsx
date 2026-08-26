@@ -10,7 +10,6 @@ import { newRelevanceTagId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
-import type { DialogueFilter } from './filters.ts'
 
 /**
  * What a tag's drag carries; `DragGesture` owns the pointer bookkeeping. `toIndex` is advanced
@@ -41,21 +40,16 @@ type RelevanceTagListMode =
   | { kind: 'confirming-delete'; id: RelevanceTagId }
 
 /**
- * The relevance vocabulary, as a list a user edits. Mounted here on insights for now; #92 moves
- * it to the settings screen (#90), since editing the vocabulary is the project telling the app
- * what words it uses, not a reading of the vocabulary the way the filter chips and the
- * breakdown panel are.
+ * The relevance vocabulary, as a list a user edits — mounted on the settings screen (#90), since
+ * editing the vocabulary is the project telling the app what words it uses, not a reading of the
+ * vocabulary the way the filter chips and the breakdown panel on insights are.
  */
 export function RelevanceTagList({
   relevanceTags,
   dialogues,
-  filter,
-  onFilterChange,
 }: {
   relevanceTags: readonly RelevanceTag[]
   dialogues: readonly Dialogue[]
-  filter: DialogueFilter
-  onFilterChange: (filter: DialogueFilter) => void
 }): ReactElement {
   const [mode, setMode] = useState<RelevanceTagListMode>({ kind: 'idle' })
 
@@ -175,8 +169,6 @@ export function RelevanceTagList({
                   // Only the row the mode names is in that mode; every other row stays idle.
                   mode={'id' in mode && mode.id === tag.id ? mode : { kind: 'idle' }}
                   onSetMode={setMode}
-                  filter={filter}
-                  onFilterChange={onFilterChange}
                   onHandlePointerDown={(event) => onHandlePointerDown(event, tag, index)}
                   onHandlePointerMove={onHandlePointerMove}
                   onHandlePointerUp={onHandlePointerUp}
@@ -202,8 +194,6 @@ function RelevanceTagRow({
   dialogues,
   mode,
   onSetMode,
-  filter,
-  onFilterChange,
   onHandlePointerDown,
   onHandlePointerMove,
   onHandlePointerUp,
@@ -218,8 +208,6 @@ function RelevanceTagRow({
   dialogues: readonly Dialogue[]
   mode: RelevanceTagListMode
   onSetMode: (mode: RelevanceTagListMode) => void
-  filter: DialogueFilter
-  onFilterChange: (filter: DialogueFilter) => void
   onHandlePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onHandlePointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onHandlePointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -269,14 +257,6 @@ function RelevanceTagRow({
             className="button button--danger"
             onClick={() => {
               dispatch({ kind: 'relevance-tag/deleted', tagId: tag.id })
-              // A filter naming this tag would otherwise match nothing and offer no chip to
-              // switch off — an insights screen stuck empty with no visible cause.
-              if (filter.relevance.includes(tag.id)) {
-                onFilterChange({
-                  ...filter,
-                  relevance: filter.relevance.filter((id) => id !== tag.id),
-                })
-              }
               onSetMode({ kind: 'idle' })
             }}
           >

@@ -146,6 +146,6 @@ function ReadyView({
       )
 
     case 'settings':
-      return <SettingsScreen />
+      return <SettingsScreen project={state.project} />
   }
 }
