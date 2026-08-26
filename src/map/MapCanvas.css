@@ -464,7 +464,9 @@
    band rather than shrinking every band below where a colour reads as one — so 8rem / 6 is the
    floor: ~21 px per band, never under the 20 px a hue needs to stay distinguishable. Only
    tagged pins get it — an untagged pin has nothing to show off and should not be padded out to
-   match. */
+   match. Below the pin-label threshold this floor is dropped instead (see the rule further
+   down): a band nobody can read at a glance is not worth a tagged pin staying several times
+   wider than every untagged one beside it. */
 .pin__marker[data-tagged='true'] {
   min-width: 8rem;
   /* Relevance hues sit at a fixed 60% lightness in both themes, so the ink on top of them has
@@ -539,6 +541,19 @@
   clip-path: inset(50%);
   white-space: nowrap;
   opacity: 0;
+}
+
+/* A tagged pin shrinks the same way an untagged one does once its label is gone — see the
+   comment on the base rule above. Restored for the same three cases the label itself returns
+   for, right below, so a widened pin and its own visible label always appear together. */
+.map-canvas__world[data-pin-labels='hidden'] .pin__marker[data-tagged='true'] {
+  min-width: 0;
+}
+
+.map-canvas__world[data-pin-labels='hidden'] .pin:hover .pin__marker[data-tagged='true'],
+.map-canvas__world[data-pin-labels='hidden'] .pin:focus-within .pin__marker[data-tagged='true'],
+.map-canvas__world[data-pin-labels='hidden'] .pin__marker[data-tagged='true'][data-selected='true'] {
+  min-width: 8rem;
 }
 
 /* The label returns for a pin the pointer or the keyboard is on, and for the selection — never
