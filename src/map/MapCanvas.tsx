@@ -74,6 +74,14 @@ const EMPTY_VIEWPORT: Viewport = { x: 0, y: 0, scale: 1 }
  *  at every size. */
 const SCALE_STEP = 1.25
 
+/**
+ * Below this zoom, a pin's label is more likely than not to overlap its neighbour's — see #95.
+ * Chosen against the two `Professor Oak2` and `Areana Heller`/`Schwimmerin` labels observed
+ * overlapping at the 13% `Fit` zoom in the test project; 50% leaves enough screen distance
+ * between typically-spaced pins for a 12rem label to clear its neighbour.
+ */
+const PIN_LABEL_ZOOM_THRESHOLD = 0.5
+
 /** How long a rejected gesture explains itself before the canvas is quiet again. */
 const NOTICE_MS = 4000
 
@@ -1010,7 +1018,7 @@ export function MapCanvas({
       // press hanging: the menu takes the pointer and no pointerup ever reaches the canvas.
       onContextMenu={(event) => event.preventDefault()}
     >
-      <div className="map-canvas__world" style={worldStyle(viewport)}>
+      <div className="map-canvas__world" {...worldStyle(viewport)}>
         {maps.map((map) => (
           <MapImage
             key={map.id}
@@ -1194,13 +1202,26 @@ function arrowDelta(key: string): Point {
  *
  * The intersection type is how the custom property reaches `style` without an `as` cast:
  * `CSSProperties` alone has no index signature for `--*`.
+ *
+ * `data-pin-labels` rides beside it for the same reason: `PinLayer`'s three `memo` boundaries
+ * take no prop derived from the viewport (see CLAUDE.md § "World-space layers must stay
+ * viewport-independent"), so the threshold has to reach the pins some other way than a prop —
+ * a sibling attribute a descendant selector reads costs one attribute write on a threshold
+ * crossing and nothing per pin, same as `--map-zoom` itself. This is the *only* place either is
+ * decided; a layer that wants to know about zoom reads this attribute, it does not add a prop.
  */
-function worldStyle(viewport: Viewport): CSSProperties & Record<'--map-zoom', string> {
+function worldStyle(viewport: Viewport): {
+  style: CSSProperties & Record<'--map-zoom', string>
+  'data-pin-labels'?: 'hidden'
+} {
   return {
-    // Right-to-left, so the world point at `viewport.x/y` lands on the screen origin and
-    // everything else scales around it. Matches `worldToScreen` exactly.
-    transform: `scale(${viewport.scale}) translate(${-viewport.x}px, ${-viewport.y}px)`,
-    '--map-zoom': String(viewport.scale),
+    style: {
+      // Right-to-left, so the world point at `viewport.x/y` lands on the screen origin and
+      // everything else scales around it. Matches `worldToScreen` exactly.
+      transform: `scale(${viewport.scale}) translate(${-viewport.x}px, ${-viewport.y}px)`,
+      '--map-zoom': String(viewport.scale),
+    },
+    'data-pin-labels': viewport.scale < PIN_LABEL_ZOOM_THRESHOLD ? 'hidden' : undefined,
   }
 }
 

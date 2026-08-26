@@ -39,23 +39,30 @@ export function CanvasLegend({
         ))}
       </ul>
 
-      <ul className="canvas-legend__group" aria-label="Pin relevance colours">
-        {relevanceTags.map((tag) => (
-          <li key={tag.id} className="canvas-legend__item">
-            <span
-              className="canvas-legend__swatch"
-              style={{ background: relevanceColor(tag.hue) }}
-            />
-            {tag.name}
+      {/* Collapsed by default: the content-kind glyphs above are four, fixed, and permanently
+          worth the space; relevance is user-defined and can run to a dozen entries competing
+          with the tool picker for the same band — see #95. `<ul>` inside `<details>` keeps its
+          list semantics either way, open or closed. */}
+      <details className="canvas-legend__details">
+        <summary className="canvas-legend__summary">Relevance colours</summary>
+        <ul className="canvas-legend__group" aria-label="Pin relevance colours">
+          {relevanceTags.map((tag) => (
+            <li key={tag.id} className="canvas-legend__item">
+              <span
+                className="canvas-legend__swatch"
+                style={{ background: relevanceColor(tag.hue) }}
+              />
+              {tag.name}
+            </li>
+          ))}
+          {/* Named, because a neutral ring is a statement — "not classified yet" — and a reader
+              who cannot find it in the legend will assume the colour simply failed to load. */}
+          <li className="canvas-legend__item">
+            <span className="canvas-legend__swatch canvas-legend__swatch--neutral" />
+            Untagged
           </li>
-        ))}
-        {/* Named, because a neutral ring is a statement — "not classified yet" — and a reader
-            who cannot find it in the legend will assume the colour simply failed to load. */}
-        <li className="canvas-legend__item">
-          <span className="canvas-legend__swatch canvas-legend__swatch--neutral" />
-          Untagged
-        </li>
-      </ul>
+        </ul>
+      </details>
     </div>
   )
 }

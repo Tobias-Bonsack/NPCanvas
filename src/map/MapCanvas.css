@@ -509,6 +509,35 @@
   text-overflow: ellipsis;
 }
 
+/* Below the threshold `worldStyle` publishes on the world element (see MapCanvas.tsx and
+   CLAUDE.md § "World-space layers must stay viewport-independent"), a label is visually hidden
+   rather than removed — `display: none` would take the pin's accessible name with it, since
+   that name is this text's own content (see the comment on `.pin__marker`'s `title` prop). The
+   same recipe `.visually-hidden` uses in index.css, inlined here because `.pin__name` already
+   carries `max-width`/`overflow`/`text-overflow` of its own to restore on the way back. */
+.map-canvas__world[data-pin-labels='hidden'] .pin__name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The label returns for a pin the pointer or the keyboard is on, and for the selection — never
+   for every pin at once, which is the collision this threshold exists to prevent. */
+.map-canvas__world[data-pin-labels='hidden'] .pin:hover .pin__name,
+.map-canvas__world[data-pin-labels='hidden'] .pin:focus-within .pin__name,
+.map-canvas__world[data-pin-labels='hidden'] .pin__marker[data-selected='true'] .pin__name {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  clip-path: none;
+}
+
 .pin__confirm {
   display: flex;
   align-items: center;

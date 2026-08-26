@@ -300,7 +300,12 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   it. `PinLayer` deliberately keeps receiving `project.dialogues`: it already renders the dragged pin
   from its own state, and a preview-patched array would be a fresh one every frame, rebuilding
   `groupByMap` and reconciling every pin. `TrailLayer` substitutes the vertex *after* `trailVertices`
-  has sorted, so a `pointermove` never re-sorts the document.
+  has sorted, so a `pointermove` never re-sorts the document. A layer that needs to react to zoom
+  crossing a threshold — rather than merely read its current value at an event — does the same
+  thing `--map-zoom` does, one step further: `worldStyle` (`src/map/MapCanvas.tsx`) publishes
+  `data-pin-labels` on the world element beside it, and a descendant CSS selector answers "hidden
+  below the threshold" with no per-pin update and no new prop. This is the sanctioned way; the
+  next layer that needs a threshold publishes its own attribute the same way, it does not add one.
 - **Hash routing**, hand-rolled in `src/app/route.ts`, because Pages is static. The URL carries view
   state only, never data. The canvas is `#/canvas`, optionally `?dialogue=<id>` and
   `?focus=<mapId>`; the pre-M3.5 `#/map/<id>` still parses, dropping the id, so an old link lands
