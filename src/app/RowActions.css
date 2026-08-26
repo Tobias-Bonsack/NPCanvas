@@ -3,7 +3,9 @@
    it for free by adding both classes rather than copying a rule. Collapsed to `max-width: 0`
    rather than `display: none`, so a Tab-only pass still reaches every verb — the button is
    merely clipped to nothing until focus lands inside it, at which point `:focus-within` below
-   uncollapses it again. #96 is what animates this transition; here it is instant. */
+   uncollapses it again. `max-width`/`gap` stay instant (#96 scopes transitions to colour,
+   opacity and transform, never layout); `opacity` is the one property of this reveal that
+   animates. */
 .row-actions {
   display: flex;
   align-items: center;
@@ -12,6 +14,7 @@
   max-width: 0;
   overflow: hidden;
   opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .row-actions-host:hover .row-actions,

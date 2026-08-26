@@ -92,6 +92,16 @@
      should reach for this rather than inventing its own blur and spread. */
   --shadow-popover: 0 20px 60px rgb(0 0 0 / 0.4);
 
+  /* Motion — two rates rather than a scale of many, because a control either responds to the
+     pointer right under it (fast) or a state elsewhere on screen settles (base), and nothing
+     here needs a third. Scope is deliberately colour, opacity and transform: animating a
+     layout property would put per-frame work on surfaces M9 spent a whole milestone keeping
+     cheap. The `prefers-reduced-motion` block below is what makes every transition anywhere in
+     the app optional rather than assumed — see CLAUDE.md. */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-standard: ease-out;
+
   /* A floor every button, input and select can agree on when several of them sit in one row —
      `min-height`, not `height`: content taller than this (a wrapped label) still gets to ask
      for more room instead of being clipped. */
@@ -135,6 +145,16 @@
        as ink on white, which is the one thing the theme mechanism exists to prevent. */
     --danger: #b3261e;
     --warning: #8a5a00;
+  }
+}
+
+/* Every transition in the app reads one of the two duration tokens above, which is what makes
+   this single rule cover all of them — the ones added here and every one a future issue adds,
+   with nothing further to update at either end. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0s;
+    --duration-base: 0s;
   }
 }
 
@@ -194,6 +214,10 @@ body {
   border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
   cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .button:hover:not(:disabled) {
@@ -221,6 +245,9 @@ body {
   border-radius: var(--radius-2);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
+  transition:
+    filter var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .button--primary:hover:not(:disabled) {

@@ -20,6 +20,11 @@
   min-height: 0;
   border-left: 1px solid var(--border);
   background: var(--surface-1);
+  /* Always present, transparent until drop-target below — see the rule there for why an
+     outline rather than a border, and #96 for why transparent-to-colour rather than absent. */
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  transition: outline-color var(--duration-fast) var(--ease-standard);
 }
 
 /* The panel's actual content, and the part that scrolls. Separate from the `<aside>` so the
@@ -78,10 +83,11 @@
   flex: none;
 }
 
-/* The whole panel is the drop zone, so the feedback is on the whole panel. An inset shadow
-   rather than a border: a border would resize the box and reflow the form under the cursor. */
+/* The whole panel is the drop zone, so the feedback is on the whole panel. An outline rather
+   than a border: a border would resize the box and reflow the form under the cursor, and an
+   outline — like the base rule's transparent one above — never does. */
 .dialogue-panel[data-drop-target='true'] {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  outline-color: var(--accent);
 }
 
 .dialogue-panel__header {

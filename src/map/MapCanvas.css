@@ -52,6 +52,8 @@
   will-change: transform;
 }
 
+/* No `transition` here, ever (#96): `transform` is written once per frame by the pan and zoom
+   gestures, and animating it would lag every drag behind the pointer. */
 .map-canvas__world {
   position: absolute;
   top: 0;
@@ -425,6 +427,13 @@
   cursor: pointer;
   /* The positioning context for the quest flags, which fly above the pin's top edge. */
   position: relative;
+  /* Always 2px solid, transparent until selected — so selecting one only ever transitions
+     `outline-color`, never the outline from nothing, which does not interpolate. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    filter var(--duration-fast) var(--ease-standard),
+    outline-color var(--duration-fast) var(--ease-standard);
 }
 
 /* Anchored to the pin's right edge and growing leftward, so a pin in one quest and a pin in
@@ -471,10 +480,10 @@
 }
 
 /* Selection is an outline for the same reason: the fill is spoken for. Counter-scaled along
-   with the pin, so it stays 2 screen pixels at any zoom. */
+   with the pin, so it stays 2 screen pixels at any zoom. Only the colour changes here — width,
+   style and offset are the base rule's, which is what makes this transition. */
 .pin__marker[data-selected='true'] {
-  outline: var(--focus-ring);
-  outline-offset: 2px;
+  outline-color: var(--accent);
 }
 
 /* Transparent, so the bands run the full width of the pin behind the glyph. Only the
@@ -507,6 +516,11 @@
   max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Inert everywhere except below the threshold below, where it is the one property this
+     reveal transitions (#96) — the clip-path/position swap that does the actual hiding is a
+     layout-adjacent property and stays instant. */
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 /* Below the threshold `worldStyle` publishes on the world element (see MapCanvas.tsx and
@@ -524,6 +538,7 @@
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+  opacity: 0;
 }
 
 /* The label returns for a pin the pointer or the keyboard is on, and for the selection — never
@@ -536,6 +551,7 @@
   height: auto;
   margin: 0;
   clip-path: none;
+  opacity: 1;
 }
 
 .pin__confirm {
