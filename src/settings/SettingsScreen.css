@@ -1,0 +1,90 @@
+/* Same scroll contract as `.insights` and `.quest-board`: the screen scrolls inside itself, the
+   shell around it never does. See src/app/App.css:1-24. */
+.settings {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.settings__bar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.settings__title {
+  margin: 0;
+  font-size: var(--text-2xl);
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+}
+
+.settings__section-title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.settings__shortcut-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings__shortcut-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.settings__shortcut-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.settings__shortcut-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.settings__shortcut-keys {
+  margin: 0;
+  flex: 0 0 auto;
+  min-width: 12rem;
+}
+
+.settings__key {
+  display: inline-block;
+  padding: 0.05rem var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+.settings__shortcut-does {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

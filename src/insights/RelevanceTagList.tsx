@@ -41,9 +41,10 @@ type RelevanceTagListMode =
   | { kind: 'confirming-delete'; id: RelevanceTagId }
 
 /**
- * The relevance vocabulary, as a list a user edits — insights is where a tag is already *read*
- * (the filter chips, the breakdown panel), so it is where a tag is edited too, rather than a
- * fourth nav entry for a handful of records.
+ * The relevance vocabulary, as a list a user edits. Mounted here on insights for now; #92 moves
+ * it to the settings screen (#90), since editing the vocabulary is the project telling the app
+ * what words it uses, not a reading of the vocabulary the way the filter chips and the
+ * breakdown panel are.
  */
 export function RelevanceTagList({
   relevanceTags,

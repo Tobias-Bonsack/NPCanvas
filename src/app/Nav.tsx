@@ -36,6 +36,7 @@ const NAV_ITEMS: readonly { label: string; route: Route }[] = [
   { label: 'Canvas', route: { kind: 'canvas', dialogueId: null, focus: null } },
   { label: 'Quests', route: { kind: 'quests', editQuestId: null } },
   { label: 'Insights', route: { kind: 'insights' } },
+  { label: 'Settings', route: { kind: 'settings' } },
 ]
 
 export function Nav({

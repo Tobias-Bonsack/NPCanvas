@@ -46,8 +46,11 @@ The cost that matters is how many files an LLM must read to change something saf
 NPCanvas logs NPC dialogue encountered while playing a game, pinned onto that game's map. A dialogue
 records who said it, where on the map, what was said (text, image, gif, or a very short video), when
 in real time, and one or more relevance tags. Locations are named zones drawn on the map. Quests are
-user-created threads that reference dialogues. Three views, in priority order: map canvas, quest
-board, insights.
+user-created threads that reference dialogues. Four views. Three in priority order: map canvas, quest
+board, insights. The fourth, settings, is not ranked among them — it holds what the *project* owns
+rather than what a dialogue is authored or read through: the relevance vocabulary and the capture
+rig. Nothing there is a record of play, so it does not compete with the other three for primacy; it
+is where the project tells the app what it means before any of the other three read that back.
 
 Work is tracked as GitHub issues (`gh issue list`), grouped into numbered milestones. A `.5`
 milestone is an increment inserted after its base milestone shipped, so the base stays the record of

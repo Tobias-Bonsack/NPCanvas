@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { InsightsScreen } from '../insights/InsightsScreen.tsx'
 import { MapScreen } from '../map/MapScreen.tsx'
 import { QuestBoard } from '../quest/QuestBoard.tsx'
+import { SettingsScreen } from '../settings/SettingsScreen.tsx'
 import { ConnectScreen } from '../storage/ConnectScreen.tsx'
 import type { AppState, ProjectRepairs, SaveState } from '../project/types.ts'
 import { useAppStateExceptSave } from '../project/store.ts'
@@ -143,5 +144,8 @@ function ReadyView({
           onViewStateChange={onInsightsStateChange}
         />
       )
+
+    case 'settings':
+      return <SettingsScreen />
   }
 }

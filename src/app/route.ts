@@ -34,6 +34,7 @@ export type Route =
       editQuestId: QuestId | null
     }
   | { kind: 'insights' }
+  | { kind: 'settings' }
 
 /** Shared reference, so an unparseable hash keeps returning the identical object. */
 const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focus: null }
@@ -50,6 +51,8 @@ export function parseRoute(hash: string): Route {
     }
     case 'insights':
       return { kind: 'insights' }
+    case 'settings':
+      return { kind: 'settings' }
     // `map` is the pre-M3.5 path, when the canvas showed one map at a time and named it in
     // the hash. Every map is on screen now, so the id is dropped rather than honoured — but
     // an old link must still land on the canvas rather than render nothing.
@@ -87,6 +90,8 @@ export function formatRoute(route: Route): string {
       return route.editQuestId === null ? '#/quests' : `#/quests?edit=${route.editQuestId}`
     case 'insights':
       return '#/insights'
+    case 'settings':
+      return '#/settings'
     case 'canvas': {
       const params = new URLSearchParams()
       if (route.dialogueId !== null) params.set('dialogue', route.dialogueId)

@@ -63,6 +63,10 @@ describe('parseRoute', () => {
     expect(parseRoute('#/insights')).toEqual({ kind: 'insights' })
   })
 
+  it('parses the settings route', () => {
+    expect(parseRoute('#/settings')).toEqual({ kind: 'settings' })
+  })
+
   it('lands the pre-M3.5 #/map/<id> path on the canvas with the id dropped', () => {
     expect(parseRoute('#/map/m1')).toEqual({ kind: 'canvas', dialogueId: null, focus: null })
   })
@@ -93,6 +97,7 @@ describe('formatRoute', () => {
     { kind: 'quests', editQuestId: null },
     { kind: 'quests', editQuestId: asQuestId('q1') },
     { kind: 'insights' },
+    { kind: 'settings' },
   ]
 
   it.each(ROUTES)('round-trips through parseRoute: %j', (route) => {
