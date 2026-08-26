@@ -12,13 +12,9 @@
   min-width: 0;
 }
 
-.media-gallery__bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* Between the two arrows rather than under them: the count is what the arrows move. */
+/* The thumbnail strip is the only pointer path to a frame now (#98 removed the Previous/Next
+   pair the strip and the arrow keys had made redundant); this is only ever the status of where
+   paging — by either of those — landed. */
 .media-gallery__count {
   margin: 0;
   font-size: var(--text-2xs);

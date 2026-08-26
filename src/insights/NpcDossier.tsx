@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
 import { formatRoute } from '../app/route.ts'
+import { RowActions } from '../app/RowActions.tsx'
 import { formatSpokenAt, resolveZones, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { MediaGallery } from '../media/MediaGallery.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
@@ -306,10 +307,9 @@ function NpcLine({
 }
 
 /**
- * Renaming, as a draft plus an explicit button — deliberately *not* the per-keystroke dispatch
- * `QuestForm` and `DialogueForm` use. Those edit one field of one record; this rewrites every
- * line the NPC ever said, and typing "T" on the way to "Tomas" would merge them into an
- * existing "T" before the second keystroke landed.
+ * The trigger, collapsed behind the row-action reveal from #94 until invoked — renaming here
+ * rewrites every line the NPC ever said, so it is a deliberate action, not a field that sits
+ * permanently open with a disabled button.
  */
 function RenameForm({
   profile,
@@ -319,6 +319,49 @@ function RenameForm({
   profile: NpcProfile
   knownKeys: readonly string[]
   onRenamed: (key: string) => void
+}): ReactElement {
+  const [renaming, setRenaming] = useState(false)
+
+  if (!renaming) {
+    return (
+      <div className="npc-dossier__rename row-actions-host">
+        <h3 className="npc-dossier__title">{profile.label}</h3>
+        <RowActions>
+          <button type="button" className="button" onClick={() => setRenaming(true)}>
+            Rename
+          </button>
+        </RowActions>
+      </div>
+    )
+  }
+
+  return (
+    <RenameFields
+      profile={profile}
+      knownKeys={knownKeys}
+      onDone={(key) => {
+        setRenaming(false)
+        if (key !== null) onRenamed(key)
+      }}
+    />
+  )
+}
+
+/**
+ * The draft plus an explicit submit button — deliberately *not* the per-keystroke dispatch
+ * `QuestForm` and `DialogueForm` use. Those edit one field of one record; this rewrites every
+ * line the NPC ever said, and typing "T" on the way to "Tomas" would merge them into an
+ * existing "T" before the second keystroke landed.
+ */
+function RenameFields({
+  profile,
+  knownKeys,
+  onDone,
+}: {
+  profile: NpcProfile
+  knownKeys: readonly string[]
+  /** `null` when the rename was cancelled rather than submitted — nothing to select. */
+  onDone: (key: string | null) => void
 }): ReactElement {
   const [draft, setDraft] = useState(profile.key)
   const next = draft.trim()
@@ -331,19 +374,26 @@ function RenameForm({
         event.preventDefault()
         if (next === profile.key) return
         dispatch({ kind: 'npc/renamed', from: profile.key, to: next })
-        onRenamed(next)
+        onDone(next)
       }}
     >
       <h3 className="npc-dossier__title">{profile.label}</h3>
       <input
         className="text-input npc-dossier__input"
         value={draft}
+        autoFocus
         aria-label={`Rename ${profile.label}`}
         placeholder={profile.key === '' ? 'Give them a name' : 'New name'}
         onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onDone(null)
+        }}
       />
       <button type="submit" className="button" disabled={next === profile.key}>
         {next === '' ? 'Clear name' : 'Rename'}
+      </button>
+      <button type="button" className="button" onClick={() => onDone(null)}>
+        Cancel
       </button>
       {merges && (
         <p className="npc-dossier__merge" role="status">

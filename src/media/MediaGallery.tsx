@@ -60,29 +60,13 @@ export function MediaGallery({
       </div>
 
       {paged && (
-        <div className="media-gallery__bar">
-          <button
-            type="button"
-            className="button"
-            disabled={index === 0}
-            onClick={() => page(-1)}
-          >
-            Previous
-          </button>
-          {/* A status, not a label: paging is what changes it, and a reader who cannot see the
-              frame change needs to be told the count moved. */}
-          <p className="media-gallery__count" role="status">
-            Picture {index + 1} of {media.length}
-          </p>
-          <button
-            type="button"
-            className="button"
-            disabled={index === media.length - 1}
-            onClick={() => page(1)}
-          >
-            Next
-          </button>
-        </div>
+        // A status, not a label: paging is what changes it, and a reader who cannot see the
+        // frame change needs to be told the count moved. The thumbnail strip below and the
+        // arrow keys are the only ways to page — see MediaGallery.css for why a third
+        // (Previous/Next buttons) was one too many.
+        <p className="media-gallery__count" role="status">
+          Picture {index + 1} of {media.length}
+        </p>
       )}
 
       {paged && (

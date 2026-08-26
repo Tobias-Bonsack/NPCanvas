@@ -1080,9 +1080,6 @@ export function MapCanvas({
             Fit
           </button>
         </div>
-        <button type="button" className="map-canvas__reset" onClick={fitToMaps}>
-          Reset view
-        </button>
       </div>
     </div>
   )
