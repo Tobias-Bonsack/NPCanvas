@@ -1,5 +1,6 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { RowActions } from '../app/RowActions.tsx'
 import { assertNever } from '../assert-never.ts'
 import { RELEVANCE_HUES, nextRelevanceHue, relevanceHueStyle } from '../dialogue/relevance.ts'
 import type { DragGesture } from '../map/drag-gesture.ts'
@@ -158,7 +159,7 @@ export function RelevanceTagList({
             return (
               <li
                 key={tag.id}
-                className="relevance-tag-list__item"
+                className="relevance-tag-list__item row-actions-host"
                 data-dragging={dragPreview?.id === tag.id ? 'true' : undefined}
               >
                 <RelevanceTagRow
@@ -288,51 +289,53 @@ function RelevanceTagRow({
           <span className="hue-chip relevance-tag-list__name" style={relevanceHueStyle(tag.hue)}>
             {tagLabel(tag)}
           </span>
-          <button
-            type="button"
-            className="button"
-            aria-label={`Move ${tagLabel(tag)} up`}
-            disabled={index === 0}
-            onClick={() => onMove(index - 1)}
-          >
-            Move up
-          </button>
-          <button
-            type="button"
-            className="button"
-            aria-label={`Move ${tagLabel(tag)} down`}
-            disabled={index === count - 1}
-            onClick={() => onMove(index + 1)}
-          >
-            Move down
-          </button>
-          <button
-            ref={triggerRef.rename}
-            type="button"
-            className="button"
-            aria-label={`Rename ${tagLabel(tag)}`}
-            onClick={() => onSetMode({ kind: 'renaming', id: tag.id })}
-          >
-            Rename
-          </button>
-          <button
-            ref={triggerRef.colour}
-            type="button"
-            className="button"
-            aria-label={`Change the colour of ${tagLabel(tag)}`}
-            onClick={() => onSetMode({ kind: 'recolouring', id: tag.id })}
-          >
-            Colour
-          </button>
-          <button
-            ref={triggerRef.delete}
-            type="button"
-            className="button"
-            aria-label={`Delete ${tagLabel(tag)}`}
-            onClick={() => onSetMode({ kind: 'confirming-delete', id: tag.id })}
-          >
-            Delete
-          </button>
+          <RowActions>
+            <button
+              type="button"
+              className="button"
+              aria-label={`Move ${tagLabel(tag)} up`}
+              disabled={index === 0}
+              onClick={() => onMove(index - 1)}
+            >
+              Move up
+            </button>
+            <button
+              type="button"
+              className="button"
+              aria-label={`Move ${tagLabel(tag)} down`}
+              disabled={index === count - 1}
+              onClick={() => onMove(index + 1)}
+            >
+              Move down
+            </button>
+            <button
+              ref={triggerRef.rename}
+              type="button"
+              className="button"
+              aria-label={`Rename ${tagLabel(tag)}`}
+              onClick={() => onSetMode({ kind: 'renaming', id: tag.id })}
+            >
+              Rename
+            </button>
+            <button
+              ref={triggerRef.colour}
+              type="button"
+              className="button"
+              aria-label={`Change the colour of ${tagLabel(tag)}`}
+              onClick={() => onSetMode({ kind: 'recolouring', id: tag.id })}
+            >
+              Colour
+            </button>
+            <button
+              ref={triggerRef.delete}
+              type="button"
+              className="button"
+              aria-label={`Delete ${tagLabel(tag)}`}
+              onClick={() => onSetMode({ kind: 'confirming-delete', id: tag.id })}
+            >
+              Delete
+            </button>
+          </RowActions>
         </>
       )
 

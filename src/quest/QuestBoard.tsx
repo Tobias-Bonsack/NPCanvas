@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { formatRoute, navigate } from '../app/route.ts'
+import { RowActions } from '../app/RowActions.tsx'
 import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
@@ -228,45 +229,47 @@ function QuestCard({
       // read as "quest-card" to anything that announces the region a control lives in.
       aria-labelledby={nameId}
     >
-      <header className="quest-card__header">
+      <header className="quest-card__header row-actions-host">
         <h3 id={nameId} className="quest-card__name">
           {name}
         </h3>
         <span className="quest-card__linked-count">
           {quest.dialogueIds.length} {quest.dialogueIds.length === 1 ? 'dialogue' : 'dialogues'}
         </span>
-        <button
-          type="button"
-          className="button"
-          aria-label={`${toggle.label}: ${name}`}
-          onClick={() => dispatch({ kind: 'quest/status-set', questId: quest.id, status: toggle.to })}
-        >
-          {toggle.label}
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-label={`Edit ${name}`}
-          onClick={() => onSetMode({ kind: 'editing', id: quest.id })}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-label={`Change the colour of ${name}`}
-          onClick={() => onSetMode({ kind: 'recolouring', id: quest.id })}
-        >
-          Colour
-        </button>
-        <button
-          type="button"
-          className="button"
-          aria-label={`Delete ${name}`}
-          onClick={() => onSetMode({ kind: 'confirming-delete', id: quest.id })}
-        >
-          Delete
-        </button>
+        <RowActions>
+          <button
+            type="button"
+            className="button"
+            aria-label={`${toggle.label}: ${name}`}
+            onClick={() => dispatch({ kind: 'quest/status-set', questId: quest.id, status: toggle.to })}
+          >
+            {toggle.label}
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-label={`Edit ${name}`}
+            onClick={() => onSetMode({ kind: 'editing', id: quest.id })}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-label={`Change the colour of ${name}`}
+            onClick={() => onSetMode({ kind: 'recolouring', id: quest.id })}
+          >
+            Colour
+          </button>
+          <button
+            type="button"
+            className="button"
+            aria-label={`Delete ${name}`}
+            onClick={() => onSetMode({ kind: 'confirming-delete', id: quest.id })}
+          >
+            Delete
+          </button>
+        </RowActions>
       </header>
 
       <QuestCardMode

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { RowActions } from '../app/RowActions.tsx'
 import { selectMap } from '../app/select.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
@@ -57,7 +58,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
       <h2 className="map-list__heading">Maps</h2>
       <ul className="map-list__items">
         {project.maps.map((map) => (
-          <li key={map.id} className="map-list__item">
+          <li key={map.id} className="map-list__item row-actions-host">
             <MapRow
               project={project}
               map={map}
@@ -169,22 +170,24 @@ function MapRow({
           >
             {map.name}
           </button>
-          <button
-            ref={triggerRef.rename}
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'renaming', id: map.id, draft: map.name })}
-          >
-            Rename
-          </button>
-          <button
-            ref={triggerRef.delete}
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'confirming-delete', id: map.id })}
-          >
-            Delete
-          </button>
+          <RowActions>
+            <button
+              ref={triggerRef.rename}
+              type="button"
+              className="button"
+              onClick={() => onSetMode({ kind: 'renaming', id: map.id, draft: map.name })}
+            >
+              Rename
+            </button>
+            <button
+              ref={triggerRef.delete}
+              type="button"
+              className="button"
+              onClick={() => onSetMode({ kind: 'confirming-delete', id: map.id })}
+            >
+              Delete
+            </button>
+          </RowActions>
         </>
       )
 

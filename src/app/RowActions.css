@@ -1,0 +1,22 @@
+/* See RowActions.tsx. The host — the row's own `<li>` or header — opts in with
+   `row-actions-host`; this is the one reveal rule every list shares, so a fifth call site gets
+   it for free by adding both classes rather than copying a rule. Collapsed to `max-width: 0`
+   rather than `display: none`, so a Tab-only pass still reaches every verb — the button is
+   merely clipped to nothing until focus lands inside it, at which point `:focus-within` below
+   uncollapses it again. #96 is what animates this transition; here it is instant. */
+.row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
+.row-actions-host:hover .row-actions,
+.row-actions-host:focus-within .row-actions {
+  gap: var(--space-1);
+  max-width: 30rem;
+  opacity: 1;
+}

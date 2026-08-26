@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { navigate } from '../app/route.ts'
+import { RowActions } from '../app/RowActions.tsx'
 import { selectZone } from '../app/select.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
@@ -126,7 +127,7 @@ function ZoneGroup({
       <h3 className="zone-list__map">{map.name}</h3>
       <ul className="map-list__items">
         {zones.map((zone) => (
-          <li key={zone.id} className="map-list__item">
+          <li key={zone.id} className="map-list__item row-actions-host">
             <ZoneRow
               zone={zone}
               selected={zone.id === selectedId}
@@ -271,30 +272,32 @@ function ZoneRow({
               {count}
             </span>
           </button>
-          <button
-            ref={triggerRef.rename}
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'renaming', id: zone.id, draft: zone.name })}
-          >
-            Rename
-          </button>
-          <button
-            ref={triggerRef.colour}
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'recolouring', id: zone.id })}
-          >
-            Colour
-          </button>
-          <button
-            ref={triggerRef.delete}
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'confirming-delete', id: zone.id })}
-          >
-            Delete
-          </button>
+          <RowActions>
+            <button
+              ref={triggerRef.rename}
+              type="button"
+              className="button"
+              onClick={() => onSetMode({ kind: 'renaming', id: zone.id, draft: zone.name })}
+            >
+              Rename
+            </button>
+            <button
+              ref={triggerRef.colour}
+              type="button"
+              className="button"
+              onClick={() => onSetMode({ kind: 'recolouring', id: zone.id })}
+            >
+              Colour
+            </button>
+            <button
+              ref={triggerRef.delete}
+              type="button"
+              className="button"
+              onClick={() => onSetMode({ kind: 'confirming-delete', id: zone.id })}
+            >
+              Delete
+            </button>
+          </RowActions>
         </>
       )
 
