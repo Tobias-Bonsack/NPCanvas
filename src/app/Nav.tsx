@@ -328,6 +328,11 @@ function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>, target: 
     watch.dropped === 0
       ? null
       : `${watch.dropped} in-between ${watch.dropped === 1 ? 'picture' : 'pictures'} dropped`,
+    // Said for the same reason, and said louder: a fight takes back everything written of it, so
+    // several pictures can disappear at once.
+    watch.battles === 0
+      ? null
+      : `${watch.battles} ${watch.battles === 1 ? 'fight' : 'fights'} left out`,
     sinceRead(watch.lastReadAt),
   ]
   return `${target} · ${parts.filter((part) => part !== null).join(' · ')}`

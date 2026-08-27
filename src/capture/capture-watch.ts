@@ -9,12 +9,17 @@ import type {
   DialogueId,
   DialogueMedia,
   Glyph,
+  MediaId,
   PendingCapture,
   PendingCaptureId,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { activeCaptureProfile } from './active-profile.ts'
+import { appendWithoutOverlap } from './append-overlap.ts'
+import { battleGaugeVisible } from './battle-gauge.ts'
+import type { BattlePhase } from './battle-run.ts'
+import { nextBattlePhase } from './battle-run.ts'
 import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 import { getCaptureSource, grabFrame } from './capture-session.ts'
@@ -25,7 +30,7 @@ import {
   screenPng,
 } from './capture-to-dialogue.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
-import { readTextBox } from './glyph-matcher.ts'
+import { readTextBox, sampleNative } from './glyph-matcher.ts'
 import { middleAddsNothing } from './middle-frame.ts'
 
 // Logging a line without leaving the game.
@@ -44,6 +49,29 @@ import { middleAddsNothing } from './middle-frame.ts'
 // The watcher writes **only** into the selected dialogue. `mapId`, `position` and `npcName` are
 // knowledge only the player has, and inventing them badly is worse than asking — so this turns one
 // focus change per *line* into one pin and one name per *conversation*, and no more.
+//
+// **A fight is a stretch of one conversation, and only its tail survives.** A battle box reads as
+// well as anything an NPC says, so what separates them is not in the text box at all — it is the
+// opponent's status gauge above it (`battle-gauge.ts`), bounded into a stretch by `battle-run.ts`.
+// Three rules follow, and they are stated together because no one of them makes sense alone:
+//
+// 1. A fight does not end a conversation. The wipe into a battle is a legitimate gap of more than
+//    `CONVERSATION_END_TICKS`, and the encounter that motivated all this split into three captures
+//    on exactly that gap.
+// 2. Nothing read while the gauge stands is kept, and everything written in the current *segment*
+//    is taken back when it appears — so of a fight only the boxes after its last gauge frame
+//    survive, which is where the beaten trainer speaks. The segment is what bounds the reach: it
+//    begins where a conversation last ended and where a fight last lapsed, so a fight can never
+//    retract the talk that led into it, nor a previous fight's tail.
+// 3. The conversation after a fight is the same conversation, with no time limit — a beaten
+//    trainer's line is what the player goes back for.
+//
+// A fight with **nothing to attach itself to** records nothing at all. Wild grass follows no
+// conversation, and without that rule every encounter in it would reopen the last NPC talk and
+// append EXP messages to it.
+//
+// All of it is off unless the active profile carries a `battleRect`: an unmeasured profile leaves
+// every behaviour in this file exactly as it was before any of this existed.
 
 /**
  * The watcher as the panel shows it.
@@ -73,9 +101,16 @@ export type WatchState =
       /**
        * Conversations recorded into the pending-capture queue since the watcher was switched on —
        * one per `pending-capture/added`, never per box. Only counts with nothing selected; a
-       * selected dialogue is appended to and has nothing new to count.
+       * selected dialogue is appended to and has nothing new to count. A capture that turned out
+       * to be a fight's intro is counted back off again when it is dropped.
        */
       conversations: number
+      /**
+       * Fights taken out since the watcher was switched on, one per fight rather than per box.
+       * Counted for the reason `dropped` is: a fight silently deletes pictures that were on screen
+       * a moment ago, and that has to be explained where it happens.
+       */
+      battles: number
       /** The last line written, so the panel can be checked out of the corner of the eye. */
       lastText: string | null
       /** Why this tick read nothing, in a sentence naming the fix. `null` while it is reading. */
@@ -159,6 +194,33 @@ const FAILURES_BEFORE_STOP = 3
  */
 const CONVERSATION_END_TICKS = 13
 
+/**
+ * How long the opponent's gauge may be gone before the fight counts as over.
+ *
+ * It exists to cover the boxes spoken **after** the last gauge frame, which is where a beaten
+ * trainer speaks: in the recorded encounter those are `TeeResa besiegt KÄFERSAMMLER!`,
+ * `KÄFERSAMMLER: Ah!` and `RAUPY hat es nicht geschafft!`, arriving as fast as the player presses
+ * A. 25 at `POLL_MS` is 5 s — comfortably longer than that, and short enough that the fight has
+ * stopped holding the conversation open before the player has walked anywhere.
+ */
+const BATTLE_LAPSE_TICKS = 25
+
+/**
+ * How long after a conversation ends a starting fight still belongs to it.
+ *
+ * **This is the number to re-check against a real game.** Measured once: in the recording, the
+ * captures either side of the transition were created at `:23.259` and `:32.701`, and the first
+ * gauge frame followed the second by two boxes — roughly 7.5 s from the conversation ending to the
+ * fight being recognisable. 15 s is the generous side of that one measurement.
+ *
+ * A window is needed at all because a wild encounter follows no conversation. Without one, every
+ * step through grass would reopen the last NPC talk and append EXP messages to it; with one, such
+ * a fight has nothing to attach itself to and is therefore not recorded. The cost is stated rather
+ * than hidden: a wild encounter *within* the window of an NPC conversation does attach to it, and
+ * has to be separated by hand.
+ */
+const BATTLE_JOIN_MS = 15_000
+
 const OFF: WatchState = { kind: 'off', message: null }
 const NOTHING_HELD: HeldState = { waiting: 0, dropped: 0 }
 
@@ -201,6 +263,66 @@ let currentCaptureId: PendingCaptureId | null = null
 let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
+
+/** Whether a fight is on, and how long its gauge has been away — see `battle-run.ts`. */
+let battlePhase: BattlePhase = { kind: 'none' }
+
+/**
+ * One box the watcher wrote into the record it is writing into, in order.
+ *
+ * Module-level and never in the store, for the reason the file's opening comment gives for `settle`
+ * and `heldFrames`: it is transient, unserialisable, and no part of the document. It exists because
+ * a fight needs the one thing the watcher has never done — **un-write text**. `takeBack` may drop a
+ * picture and leave the line alone, since the frames around a scrolled-through middle still carry
+ * its words; a battle box carries words nothing else carries.
+ *
+ * `media` is `null` for a box whose picture `keepWindow` has already taken back. Its **text stays**
+ * in the ledger, because it is still in the line, carried by the two frames around it.
+ */
+type LedgerBox = { media: DialogueMedia | null; text: string }
+
+let ledger: LedgerBox[] = []
+/** Which record `ledger` describes. A write into another one starts the ledger over. */
+let ledgerOwner: WrittenOwner | null = null
+/**
+ * What the record said before the ledger's first box.
+ *
+ * Empty for a capture, which is created empty. **Not** empty for a selected dialogue, which may
+ * already hold a line the user typed — and without this the fold could never match what the
+ * document says, so the guard in `retractSegment` would refuse every retraction there.
+ */
+let ledgerBase = ''
+/**
+ * Where the current segment begins in `ledger` — the furthest back a fight may reach.
+ *
+ * Moved to the end of the ledger by **every** conversation end and **every** battle lapse, which is
+ * what keeps a fight from retracting the talk that led into it or a previous fight's tail.
+ */
+let segmentStart = 0
+
+/**
+ * The conversation that just closed, kept so a fight beginning right after it can reopen it.
+ *
+ * Its ledger comes with it: a new capture clears the live ledger, and without a copy here the
+ * reopened conversation could no longer re-fold its own text. `afterBattle` is what makes rule 3
+ * unbounded — a conversation that ended out of a fight waits for the next one however long it takes.
+ */
+let previous: {
+  captureId: PendingCaptureId
+  closedAt: number
+  afterBattle: boolean
+  ledger: LedgerBox[]
+  base: string
+} | null = null
+
+/** Whether the capture in progress has seen a gauge. Decides `previous.afterBattle` when it ends. */
+let battleInCapture = false
+
+/**
+ * A fight that found nothing to attach itself to. Nothing is written until it lapses — not even the
+ * boxes with no gauge on them, which in a wild encounter are the EXP and level-up messages.
+ */
+let suppressing = false
 
 /** Which line or capture a written frame belongs to — the two things `keepWindow` can write into. */
 type WrittenOwner = { kind: 'dialogue'; id: DialogueId } | { kind: 'queue'; id: PendingCaptureId }
@@ -292,6 +414,14 @@ export function startWatching(): void {
   settledFor = { targetKey: null, profileId: null }
   currentCaptureId = null
   written = []
+  battlePhase = { kind: 'none' }
+  ledger = []
+  ledgerBase = ''
+  ledgerOwner = null
+  segmentStart = 0
+  previous = null
+  battleInCapture = false
+  suppressing = false
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
   // because the alphabet is usually answered once the conversation is over.
@@ -301,6 +431,7 @@ export function startWatching(): void {
     repeated: 0,
     dropped: 0,
     conversations: 0,
+    battles: 0,
     lastText: null,
     paused: null,
     lastReadAt: null,
@@ -400,6 +531,15 @@ async function tick(mine: number): Promise<void> {
     settle = NOTHING_SEEN
     settledFor = { targetKey, profileId: profile.id }
     currentCaptureId = null
+    // The abandoned capture is not reopenable either: a target switch is the user saying where the
+    // next box goes, and a fight must not overrule that. The ledger goes with it, so a fight in the
+    // new target can never reach back into the record the old one was writing.
+    previous = null
+    battleInCapture = false
+    ledger = []
+    ledgerBase = ''
+    ledgerOwner = null
+    segmentStart = 0
   }
 
   let frame: ImageData
@@ -427,16 +567,41 @@ async function tick(mine: number): Promise<void> {
   settle = step.state
   markRead()
 
-  // The box has been empty long enough that the conversation is over. Only meaningful in the
-  // queue — a selected dialogue has no notion of "conversation", only a line that keeps growing
-  // for as long as it is selected — so the *next* settled box in the queue starts a fresh capture
-  // rather than silently resuming this one.
-  if (step.conversationEnded && target.kind === 'queue') {
-    currentCaptureId = null
+  // One sample of the console's own pixels per tick, and only when the profile carries the
+  // measurement — an unmeasured profile reads no gauge and every rule below stands down.
+  const gauge =
+    profile.battleRect !== null &&
+    battleGaugeVisible(
+      sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight),
+      profile.battleRect,
+    )
+  const fight = nextBattlePhase(battlePhase, gauge, BATTLE_LAPSE_TICKS)
+  battlePhase = fight.phase
+  // Every gauge tick takes the segment back, not only the first: the gauge goes dark for the box
+  // saying the opponent fainted, and that box is written before the next gauge frame proves the
+  // fight was not over. Retracting on each one is what leaves only the boxes after the *last*
+  // gauge standing. It costs nothing once the segment is already empty.
+  if (fight.started) await beginFight(target)
+  else if (gauge) await retractSegment()
+  if (fight.lapsed) endFight()
+  // Both of those await file deletions, and a Stop or a target switch may have landed meanwhile.
+  if (mine !== session) return
+
+  // The box has been empty long enough that the conversation is over — unless a fight is on, in
+  // which case the gap is the transition animation, a menu, or the fight itself, and the
+  // conversation carries on across it. Only meaningful in the queue: a selected dialogue has no
+  // notion of "conversation", only a line that keeps growing for as long as it is selected.
+  if (step.conversationEnded && battlePhase.kind === 'none') {
+    endSegment()
+    if (target.kind === 'queue') closeConversation()
   }
 
   const settled = step.settled
   if (settled === null) return
+
+  // A box read while the gauge stands is a box of the fight, and the fight has already taken back
+  // everything written in this segment. A suppressed fight writes nothing at all until it lapses.
+  if (gauge || suppressing) return
 
   if (target.kind === 'dialogue') {
     const dialogueId = target.id
@@ -530,23 +695,10 @@ async function writeIntoQueue(
     }
   }
 
-  if (currentCaptureId === null) {
-    const app = getState()
-    const pendingCaptures = app.kind === 'ready' ? app.project.pendingCaptures : []
-    const capture: PendingCapture = {
-      id: newPendingCaptureId(),
-      // Only a handle — #70 identifies a capture by its first line and its picture, not its name.
-      npcName: nextCaptureName(pendingCaptures),
-      text: '',
-      media: [],
-      spokenAt: new Date().toISOString(),
-      relevance: [],
-    }
-    dispatch({ kind: 'pending-capture/added', capture })
-    currentCaptureId = capture.id
-    countConversation()
-  }
+  if (currentCaptureId === null) openCapture()
   const captureId = currentCaptureId
+  // `openCapture` only ever leaves this null with no project open, which the tick already refused.
+  if (captureId === null) return 'gone'
 
   const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile))
   dispatch({ kind: 'pending-capture/media-added', captureId, media })
@@ -563,8 +715,204 @@ async function writeIntoQueue(
   const outcome = appendOutcome(into.text, transcript)
   if (outcome.text !== 'appended') return 'unchanged'
   dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
-  await keepWindow({ kind: 'queue', id: captureId }, media, transcript)
+  const owner: WrittenOwner = { kind: 'queue', id: captureId }
+  record(owner, media, transcript, into.text)
+  await keepWindow(owner, media, transcript)
   return 'appended'
+}
+
+/**
+ * The capture the next settled box goes into: the one a fight left waiting, or a new one.
+ *
+ * Rule 3 lives here. A conversation that ended out of a fight is not closed for good — a beaten
+ * trainer's line is what the player goes back for, and it is the same encounter however long they
+ * take, so the *next* conversation reopens it rather than starting its own.
+ */
+function openCapture(): void {
+  if (previous !== null && previous.afterBattle) {
+    reopen(previous)
+    return
+  }
+  const app = getState()
+  const pendingCaptures = app.kind === 'ready' ? app.project.pendingCaptures : []
+  const capture: PendingCapture = {
+    id: newPendingCaptureId(),
+    // Only a handle — #70 identifies a capture by its first line and its picture, not its name.
+    npcName: nextCaptureName(pendingCaptures),
+    text: '',
+    media: [],
+    spokenAt: new Date().toISOString(),
+    relevance: [],
+  }
+  dispatch({ kind: 'pending-capture/added', capture })
+  currentCaptureId = capture.id
+  // A fresh capture starts a fresh ledger. `previous` is deliberately *not* cleared: its window is
+  // still open, and a fight starting a box or two into this capture belongs to that conversation
+  // rather than to this one — see `beginFight`.
+  ledger = []
+  ledgerBase = ''
+  ledgerOwner = { kind: 'queue', id: capture.id }
+  segmentStart = 0
+  battleInCapture = false
+  countConversation()
+}
+
+/** Picks a closed conversation back up, ledger and all, so it can still re-fold its own text. */
+function reopen(entry: NonNullable<typeof previous>): void {
+  currentCaptureId = entry.captureId
+  ledger = entry.ledger
+  ledgerBase = entry.base
+  ledgerOwner = { kind: 'queue', id: entry.captureId }
+  segmentStart = ledger.length
+  battleInCapture = false
+  previous = null
+}
+
+/**
+ * The conversation is over. The capture is not dispatched away — it is simply no longer written
+ * into, and is remembered in case a fight, or the conversation after a fight, claims it back.
+ */
+function closeConversation(): void {
+  if (currentCaptureId !== null) {
+    previous = {
+      captureId: currentCaptureId,
+      closedAt: Date.now(),
+      afterBattle: battleInCapture,
+      ledger,
+      base: ledgerBase,
+    }
+  }
+  currentCaptureId = null
+  battleInCapture = false
+}
+
+/** Where a fight may no longer reach back to. Moved by every gap and every fight that lapses. */
+function endSegment(): void {
+  segmentStart = ledger.length
+}
+
+/**
+ * A fight has just been recognised: take back what has been written of it, and decide whose fight
+ * it is.
+ *
+ * The order matters. Retracting first is what empties the capture the fight's own intro created —
+ * `KÄFERSAMMLER möchte kämpfen!` and `KÄFERSAMMLER setzt RAUPY ein!` are boxes of the fight, and
+ * they arrive before any gauge does. Only once that capture says nothing is it clear that this
+ * fight has no conversation of its own, and the one before it is asked for.
+ */
+async function beginFight(target: WatchTarget): Promise<void> {
+  countBattle()
+  battleInCapture = true
+  await retractSegment()
+  // A selected line has no notion of a conversation, so there is nothing to join or reopen; the
+  // retraction above and the skipping in `tick` are the whole of the rule there.
+  if (target.kind === 'dialogue') return
+
+  dropEmptyCapture()
+  if (currentCaptureId !== null) return
+
+  const joinable =
+    previous !== null && (previous.afterBattle || Date.now() - previous.closedAt <= BATTLE_JOIN_MS)
+  if (joinable && previous !== null) reopen(previous)
+  // Nothing to attach to: wild grass, or a fight long after anyone last spoke. Recording it would
+  // put EXP messages under an NPC's name, so nothing is recorded until it lapses.
+  else suppressing = true
+}
+
+/** A fight that lapsed leaves its tail standing, and out of reach of the next one. */
+function endFight(): void {
+  suppressing = false
+  endSegment()
+}
+
+/** Drops a capture the retraction left empty — it is no longer a record of anything. */
+function dropEmptyCapture(): void {
+  if (currentCaptureId === null) return
+  const capture = currentPendingCapture(currentCaptureId)
+  if (capture !== null) {
+    if (capture.text !== '' || capture.media.length > 0) return
+    dispatch({ kind: 'pending-capture/deleted', captureId: currentCaptureId })
+    uncountConversation()
+  }
+  currentCaptureId = null
+  ledger = []
+  ledgerBase = ''
+  ledgerOwner = null
+  segmentStart = 0
+}
+
+/**
+ * Notes a box the watcher wrote, so a fight can take it back again.
+ *
+ * `before` is what the record said with this box not yet in it, and is kept only when the ledger
+ * starts — see `ledgerBase`.
+ */
+function record(owner: WrittenOwner, media: DialogueMedia, text: string, before: string): void {
+  if (ledgerOwner === null || !sameOwner(ledgerOwner, owner)) {
+    ledger = []
+    ledgerOwner = owner
+    ledgerBase = before
+    segmentStart = 0
+  }
+  ledger = [...ledger, { media, text }]
+}
+
+/** The line the ledger says the record holds. The only way the text is ever un-written. */
+function foldLedger(boxes: readonly LedgerBox[]): string {
+  return boxes.reduce((line, box) => appendWithoutOverlap(line, box.text), ledgerBase)
+}
+
+/**
+ * Takes the current segment back out: the pictures, and — uniquely — the words.
+ *
+ * The text is **re-folded, not reversed**. Folding `appendWithoutOverlap` over the surviving ledger
+ * is by construction the line that would have existed had the removed boxes never been written:
+ * the same function, in the same order, over a shorter list. Nothing here inverts anything.
+ *
+ * It runs only while the record still says exactly what was folded into it. A line the user has
+ * edited in the meantime is left alone entirely, pictures included — the same caution `takeBack`
+ * applies to a picture the user removed by hand, and for the same reason.
+ */
+async function retractSegment(): Promise<void> {
+  const owner = ledgerOwner
+  if (owner === null || ledger.length <= segmentStart) return
+  const held = recordText(owner)
+  if (held === null || held !== foldLedger(ledger)) return
+
+  const dropped = ledger.slice(segmentStart)
+  ledger = ledger.slice(0, segmentStart)
+  setRecordText(owner, foldLedger(ledger))
+  for (const box of dropped) {
+    if (box.media !== null) removeRecordMedia(owner, box.media.id)
+  }
+  // Document first, file after, for the reason `takeBack` gives: after the dispatch nothing in the
+  // document names the file, and it would sit in media/ forever.
+  for (const box of dropped) {
+    if (box.media !== null) await discardMediaFile(box.media.file.fileName)
+  }
+  // A retracted frame must not go on being judged as the middle of a scrolling run.
+  written = written.filter(
+    (entry) => !dropped.some((box) => box.media !== null && box.media.id === entry.media.id),
+  )
+}
+
+/** What the record says now, or `null` once it is gone. */
+function recordText(owner: WrittenOwner): string | null {
+  if (owner.kind === 'dialogue') return currentDialogue(owner.id)?.text ?? null
+  return currentPendingCapture(owner.id)?.text ?? null
+}
+
+function setRecordText(owner: WrittenOwner, text: string): void {
+  if (owner.kind === 'dialogue') dispatch({ kind: 'dialogue/text-set', dialogueId: owner.id, text })
+  else dispatch({ kind: 'pending-capture/text-set', captureId: owner.id, text })
+}
+
+function removeRecordMedia(owner: WrittenOwner, mediaId: MediaId): void {
+  if (owner.kind === 'dialogue') {
+    dispatch({ kind: 'dialogue/media-removed', dialogueId: owner.id, mediaId })
+  } else {
+    dispatch({ kind: 'pending-capture/media-removed', captureId: owner.id, mediaId })
+  }
 }
 
 /** The pending capture as the document holds it now, or null once it is gone — mirrors
@@ -611,7 +959,9 @@ async function writeBox(
   // that window. Its verdict is the one that describes what the document actually took.
   const result = await captureIntoDialogue(target, profile, frame, text)
   if (result.text !== 'appended') return 'unchanged'
-  await keepWindow({ kind: 'dialogue', id: dialogueId }, result.media, text)
+  const owner: WrittenOwner = { kind: 'dialogue', id: dialogueId }
+  record(owner, result.media, text, target.text)
+  await keepWindow(owner, result.media, text)
   return 'appended'
 }
 
@@ -671,6 +1021,11 @@ async function takeBack(owner: WrittenOwner, media: DialogueMedia): Promise<void
     dispatch({ kind: 'pending-capture/media-removed', captureId: owner.id, mediaId: media.id })
   }
   await discardMediaFile(media.file.fileName)
+  // The ledger keeps the box and loses its picture. Its words stay, because they are still in the
+  // line — carried by the two frames around it, which is the whole reason this frame could go.
+  ledger = ledger.map((box) =>
+    box.media !== null && box.media.id === media.id ? { media: null, text: box.text } : box,
+  )
   countDropped()
 }
 
@@ -707,6 +1062,17 @@ function countAppended(text: string): void {
 function countConversation(): void {
   if (state.kind !== 'watching') return
   setState({ ...state, conversations: state.conversations + 1 })
+}
+
+/** A conversation that turned out to be a fight's intro was never one. Counted back off. */
+function uncountConversation(): void {
+  if (state.kind !== 'watching' || state.conversations === 0) return
+  setState({ ...state, conversations: state.conversations - 1 })
+}
+
+function countBattle(): void {
+  if (state.kind !== 'watching') return
+  setState({ ...state, battles: state.battles + 1 })
 }
 
 /**
