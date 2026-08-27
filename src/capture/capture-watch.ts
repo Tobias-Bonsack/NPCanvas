@@ -22,6 +22,7 @@ import type { BattlePhase } from './battle-run.ts'
 import { nextBattlePhase } from './battle-run.ts'
 import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
+import type { JoinWindow } from './join-window.ts'
 import { getCaptureSource, grabFrame } from './capture-session.ts'
 import {
   appendOutcome,
@@ -111,6 +112,16 @@ export type WatchState =
        * a moment ago, and that has to be explained where it happens.
        */
       battles: number
+      /**
+       * The conversation a fight could still claim, and until when — `null` when there is none.
+       *
+       * Published for the reason `battles` and `dropped` are: `BATTLE_JOIN_MS` decides whether a
+       * fight extends the conversation that just ended or starts its own, and a player walking
+       * into one had no way to tell which. It is also the number in M15 measured against a single
+       * recording, so the one thing that has to be judged against real play is now the one thing
+       * that reports itself.
+       */
+      joining: JoinWindow | null
       /** The last line written, so the panel can be checked out of the corner of the eye. */
       lastText: string | null
       /** Why this tick read nothing, in a sentence naming the fix. `null` while it is reading. */
@@ -319,10 +330,61 @@ let previous: {
 let battleInCapture = false
 
 /**
+ * The only writer of `previous`, so what the panel shows can never disagree with what a fight will
+ * actually find. Every assignment goes through here — a second one would be a second truth.
+ */
+function setPrevious(next: typeof previous): void {
+  previous = next
+  const joining: JoinWindow | null =
+    next === null
+      ? null
+      : next.afterBattle
+        ? { kind: 'open' }
+        : { kind: 'timed', until: next.closedAt + BATTLE_JOIN_MS }
+  if (state.kind !== 'watching') return
+  if (sameWindow(state.joining, joining)) return
+  setState({ ...state, joining })
+}
+
+function sameWindow(a: JoinWindow | null, b: JoinWindow | null): boolean {
+  if (a === null || b === null) return a === b
+  if (a.kind === 'open' || b.kind === 'open') return a.kind === b.kind
+  return a.until === b.until
+}
+
+/**
+ * Closes a window that has run out.
+ *
+ * Here rather than inside `beginFight`, so the deadline is compared in **one** place: a fight now
+ * asks only whether there is a `previous` at all, and the panel's countdown is a straight read of
+ * the same state rather than a second copy of the arithmetic.
+ */
+function expireJoinWindow(): void {
+  if (previous === null || previous.afterBattle) return
+  if (Date.now() - previous.closedAt <= BATTLE_JOIN_MS) return
+  setPrevious(null)
+}
+
+/**
  * A fight that found nothing to attach itself to. Nothing is written until it lapses — not even the
  * boxes with no gauge on them, which in a wild encounter are the EXP and level-up messages.
  */
 let suppressing = false
+
+/**
+ * Whether the gap that ends a conversation went past while a fight was still on.
+ *
+ * `conversationEnded` fires **once** per run of gap ticks (`box-settle.ts`), and a fight is
+ * deliberately allowed to outlast that threshold: `CONVERSATION_END_TICKS` is 13 and
+ * `BATTLE_LAPSE_TICKS` is 25, so the quiet after a beaten trainer's last box crosses the first
+ * while the second is still counting. Without this, that one firing is simply dropped and the
+ * conversation is never closed at all — it stays open until some later box happens to be followed
+ * by another gap, so rule 3 would attach the *next* conversation for the wrong reason and the join
+ * window would never be published.
+ *
+ * Cleared by any box the watcher is allowed to write: that is a conversation still going.
+ */
+let endedDuringFight = false
 
 /** Which line or capture a written frame belongs to — the two things `keepWindow` can write into. */
 type WrittenOwner = { kind: 'dialogue'; id: DialogueId } | { kind: 'queue'; id: PendingCaptureId }
@@ -419,9 +481,12 @@ export function startWatching(): void {
   ledgerBase = ''
   ledgerOwner = null
   segmentStart = 0
+  // A direct assignment, not `setPrevious`: `setState` below publishes the whole fresh state, and
+  // going through the writer here would publish against the state being replaced.
   previous = null
   battleInCapture = false
   suppressing = false
+  endedDuringFight = false
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
   // because the alphabet is usually answered once the conversation is over.
@@ -432,6 +497,7 @@ export function startWatching(): void {
     dropped: 0,
     conversations: 0,
     battles: 0,
+    joining: null,
     lastText: null,
     paused: null,
     lastReadAt: null,
@@ -534,7 +600,7 @@ async function tick(mine: number): Promise<void> {
     // The abandoned capture is not reopenable either: a target switch is the user saying where the
     // next box goes, and a fight must not overrule that. The ledger goes with it, so a fight in the
     // new target can never reach back into the record the old one was writing.
-    previous = null
+    setPrevious(null)
     battleInCapture = false
     ledger = []
     ledgerBase = ''
@@ -575,6 +641,7 @@ async function tick(mine: number): Promise<void> {
       sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight),
       profile.battleRect,
     )
+  expireJoinWindow()
   const fight = nextBattlePhase(battlePhase, gauge, BATTLE_LAPSE_TICKS)
   battlePhase = fight.phase
   // Every gauge tick takes the segment back, not only the first: the gauge goes dark for the box
@@ -583,7 +650,7 @@ async function tick(mine: number): Promise<void> {
   // gauge standing. It costs nothing once the segment is already empty.
   if (fight.started) await beginFight(target)
   else if (gauge) await retractSegment()
-  if (fight.lapsed) endFight()
+  if (fight.lapsed) endFight(target)
   // Both of those await file deletions, and a Stop or a target switch may have landed meanwhile.
   if (mine !== session) return
 
@@ -591,9 +658,15 @@ async function tick(mine: number): Promise<void> {
   // which case the gap is the transition animation, a menu, or the fight itself, and the
   // conversation carries on across it. Only meaningful in the queue: a selected dialogue has no
   // notion of "conversation", only a line that keeps growing for as long as it is selected.
-  if (step.conversationEnded && battlePhase.kind === 'none') {
-    endSegment()
-    if (target.kind === 'queue') closeConversation()
+  if (step.conversationEnded) {
+    if (battlePhase.kind === 'none') {
+      endSegment()
+      if (target.kind === 'queue') closeConversation()
+    } else {
+      // Held, not dropped — see `endedDuringFight`. `endFight` closes the conversation this gap
+      // already ended, once the fight it was hiding behind is over.
+      endedDuringFight = true
+    }
   }
 
   const settled = step.settled
@@ -602,6 +675,9 @@ async function tick(mine: number): Promise<void> {
   // A box read while the gauge stands is a box of the fight, and the fight has already taken back
   // everything written in this segment. A suppressed fight writes nothing at all until it lapses.
   if (gauge || suppressing) return
+
+  // A box the watcher may write is a conversation still going, whatever a gap said earlier.
+  endedDuringFight = false
 
   if (target.kind === 'dialogue') {
     const dialogueId = target.id
@@ -731,6 +807,8 @@ async function writeIntoQueue(
 function openCapture(): void {
   if (previous !== null && previous.afterBattle) {
     reopen(previous)
+    // This conversation is not itself a fight, so the capture closes normally when it ends.
+    battleInCapture = false
     return
   }
   const app = getState()
@@ -757,15 +835,22 @@ function openCapture(): void {
   countConversation()
 }
 
-/** Picks a closed conversation back up, ledger and all, so it can still re-fold its own text. */
+/**
+ * Picks a closed conversation back up, ledger and all, so it can still re-fold its own text.
+ *
+ * `battleInCapture` is deliberately **not** touched here: the two callers mean opposite things by
+ * a reopen. A fight claiming the conversation it interrupted is still in a fight, and clearing the
+ * flag there would close the capture as if no fight had happened — which is exactly what stopped
+ * rule 3 from ever publishing an unlimited window. The conversation *after* a fight is the other
+ * case, and clears it itself.
+ */
 function reopen(entry: NonNullable<typeof previous>): void {
   currentCaptureId = entry.captureId
   ledger = entry.ledger
   ledgerBase = entry.base
   ledgerOwner = { kind: 'queue', id: entry.captureId }
   segmentStart = ledger.length
-  battleInCapture = false
-  previous = null
+  setPrevious(null)
 }
 
 /**
@@ -774,13 +859,13 @@ function reopen(entry: NonNullable<typeof previous>): void {
  */
 function closeConversation(): void {
   if (currentCaptureId !== null) {
-    previous = {
+    setPrevious({
       captureId: currentCaptureId,
       closedAt: Date.now(),
       afterBattle: battleInCapture,
       ledger,
       base: ledgerBase,
-    }
+    })
   }
   currentCaptureId = null
   battleInCapture = false
@@ -811,18 +896,32 @@ async function beginFight(target: WatchTarget): Promise<void> {
   dropEmptyCapture()
   if (currentCaptureId !== null) return
 
-  const joinable =
-    previous !== null && (previous.afterBattle || Date.now() - previous.closedAt <= BATTLE_JOIN_MS)
-  if (joinable && previous !== null) reopen(previous)
+  // No deadline compared here: `expireJoinWindow` has already closed a window that ran out, so a
+  // `previous` that still exists is by definition one a fight may claim.
+  if (previous !== null) {
+    reopen(previous)
+    // Set again after the reopen: this capture is in a fight, and that is what makes it close as
+    // one when the quiet after the fight finally ends it.
+    battleInCapture = true
+  }
   // Nothing to attach to: wild grass, or a fight long after anyone last spoke. Recording it would
   // put EXP messages under an NPC's name, so nothing is recorded until it lapses.
   else suppressing = true
 }
 
-/** A fight that lapsed leaves its tail standing, and out of reach of the next one. */
-function endFight(): void {
+/**
+ * A fight that lapsed leaves its tail standing, and out of reach of the next one.
+ *
+ * It also closes the conversation the fight was hiding a gap from — see `endedDuringFight`. That
+ * is what makes rule 3 mean what it says: the capture is closed *out of a fight*, so the next
+ * conversation reopens it deliberately rather than by having never been closed.
+ */
+function endFight(target: WatchTarget): void {
   suppressing = false
   endSegment()
+  if (!endedDuringFight) return
+  endedDuringFight = false
+  if (target.kind === 'queue') closeConversation()
 }
 
 /** Drops a capture the retraction left empty — it is no longer a record of anything. */

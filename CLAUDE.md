@@ -192,7 +192,15 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   encounter into three captures. Nothing read while the gauge stands is kept, and **every** gauge
   tick retracts the current *segment* — not only the first, because the gauge goes dark for the box
   saying the opponent fainted, and that box is written before the next gauge frame proves the fight
-  was not over. The conversation after a fight reopens the same capture with no time limit. A
+  was not over. The conversation after a fight reopens the same capture with no time limit,
+  which needs two things that are easy to get wrong and were: `conversationEnded` fires **once**
+  per run of gap ticks, and `BATTLE_LAPSE_TICKS` (25) outlasts `CONVERSATION_END_TICKS` (13), so
+  the quiet after a beaten trainer's last box ends the conversation while the fight is still
+  counting — held in `endedDuringFight` and applied by `endFight`, or that one firing is lost and
+  the capture never closes at all; and `reopen` must **not** clear `battleInCapture`, because a
+  fight claiming the conversation it interrupted is still in a fight, and clearing it there closes
+  the capture as if none had happened. `WatchState.joining` publishes the window either way, which
+  is what makes both of those visible rather than silent — see `join-window.ts`. A
   *segment* begins where a conversation last ended and where a fight last lapsed, which is what
   keeps a fight from retracting the talk that led into it or a previous fight's tail. Un-writing
   text is unique to this rule and is done by **re-folding, not reversing**: `appendWithoutOverlap`
