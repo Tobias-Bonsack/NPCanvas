@@ -346,6 +346,7 @@ function profile(overrides: Partial<CaptureProfile> = {}): CaptureProfile {
     screenRect: screenRect(),
     nativeWidth: NATIVE_WIDTH,
     nativeHeight: NATIVE_HEIGHT,
+    battleRect: null,
     textRect: TEXT_RECT,
     ...overrides,
   }

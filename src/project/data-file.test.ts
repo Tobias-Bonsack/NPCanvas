@@ -196,10 +196,10 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 8
+    data.schemaVersion = 9
     expect(
       rejectionMessage(data),
-    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6 or 7, but found 8')
+    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7 or 8, but found 9')
   })
 
   it('rejects a map with no placement', () => {
@@ -214,7 +214,7 @@ describe('parseProjectFile', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
@@ -358,7 +358,7 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.glyphs).toEqual([
       { char: 'P', bits: 'fc8282fc80808000' },
       { char: 'a', bits: '000038043c443e00' },
@@ -410,7 +410,7 @@ describe('parseProjectFile: V5 migration', () => {
     const reread = parseProjectFile(serializeProject(migrated.file))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(7)
+    expect(reread.file.schemaVersion).toBe(8)
     expect({ ...reread.file, savedAt: '' }).toEqual({ ...migrated.file, savedAt: '' })
   })
 
@@ -491,13 +491,70 @@ function v6Document(): Record<string, unknown> {
   return data
 }
 
+/** A V7 document with one profile, which is therefore a profile that has never seen a gauge. */
+function v7Document(): Record<string, unknown> {
+  const data = validDocument()
+  data.schemaVersion = 7
+  data.glyphs = []
+  data.pendingCaptures = []
+  data.captureProfiles = [
+    {
+      id: 'profile-1',
+      name: 'Yellow',
+      frameWidth: 3840,
+      frameHeight: 2088,
+      screenRect: { x: 814, y: 64, width: 2211, height: 1991 },
+      nativeWidth: 160,
+      nativeHeight: 144,
+      textRect: { x: 8, y: 104, width: 144, height: 32 },
+    },
+  ]
+  return data
+}
+
+describe('parseProjectFile: V7 migration', () => {
+  it('says every existing profile has never been measured for a gauge, rather than guessing one', () => {
+    const result = parseProjectFile(JSON.stringify(v7Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(8)
+    expect(result.file.captureProfiles).toHaveLength(1)
+    expect(result.file.captureProfiles[0].battleRect).toBeNull()
+    // Every other measurement is the one that was on disk.
+    expect(result.file.captureProfiles[0].textRect).toEqual({ x: 8, y: 104, width: 144, height: 32 })
+  })
+
+  it('keeps a gauge a V8 document already carries', () => {
+    const data = v7Document()
+    data.schemaVersion = 8
+    const profiles = data.captureProfiles as Record<string, unknown>[]
+    profiles[0].battleRect = { x: 30, y: 16, width: 56, height: 8 }
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.captureProfiles[0].battleRect).toEqual({ x: 30, y: 16, width: 56, height: 8 })
+  })
+
+  it('rejects a gauge that is not a rectangle, rather than reading it as absent', () => {
+    const data = v7Document()
+    data.schemaVersion = 8
+    const profiles = data.captureProfiles as Record<string, unknown>[]
+    profiles[0].battleRect = { x: 30, y: 16, width: 56 }
+    expect(rejectionMessage(data)).toBe(
+      'captureProfiles[0].battleRect.height: expected a finite number',
+    )
+  })
+})
+
 describe('parseProjectFile: V6 migration', () => {
   it('adds an empty pendingCaptures list, since nothing before V7 could have written one', () => {
     const result = parseProjectFile(JSON.stringify(v6Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.pendingCaptures).toEqual([])
     // Everything else survives untouched.
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
@@ -511,7 +568,7 @@ describe('parseProjectFile: V4 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -551,7 +608,7 @@ describe('parseProjectFile: V3 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -605,7 +662,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -634,7 +691,7 @@ describe('parseProjectFile: V1 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
@@ -674,7 +731,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 7, maps: [], pendingCaptures: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 8, maps: [], pendingCaptures: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -883,7 +940,7 @@ describe('parseProjectFile: pendingCaptures', () => {
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(7)
+    expect(project.schemaVersion).toBe(8)
     expect(project.captureProfiles).toEqual([])
     expect(project.glyphs).toEqual([])
     expect(project.pendingCaptures).toEqual([])
@@ -897,7 +954,7 @@ describe('createEmptyProject', () => {
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(7)
+    expect(reread.file.schemaVersion).toBe(8)
   })
 })
 
@@ -1115,7 +1172,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(7)
+    expect(reread.file.schemaVersion).toBe(8)
   })
 })
 
@@ -1238,7 +1295,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(7)
+    expect(result.file.schemaVersion).toBe(8)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })

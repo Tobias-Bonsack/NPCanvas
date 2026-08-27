@@ -32,6 +32,7 @@ function profile(overrides: Partial<CaptureProfile> = {}): CaptureProfile {
     frameHeight: 1123,
     ...MAPPING,
     textRect: { x: 8, y: 96, width: 144, height: 40 },
+    battleRect: null,
     ...overrides,
   }
 }

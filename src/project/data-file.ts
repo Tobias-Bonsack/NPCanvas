@@ -16,6 +16,7 @@ import type {
   CaptureProfile,
   CaptureProfileId,
   CaptureProfileV5,
+  CaptureProfileV7,
   Dialogue,
   DialogueId,
   DialogueMedia,
@@ -40,6 +41,7 @@ import type {
   ProjectFileV5,
   ProjectFileV6,
   ProjectFileV7,
+  ProjectFileV8,
   ProjectRepairs,
   Quest,
   QuestId,
@@ -56,7 +58,7 @@ import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 7,
+    schemaVersion: 8,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -416,6 +418,23 @@ function readGlyphs(value: unknown, path: string): Glyph[] {
 function readCaptureProfile(value: unknown, path: string): CaptureProfile {
   const raw = readObject(value, path)
   return {
+    ...readCaptureProfileV7(value, path),
+    battleRect:
+      raw.battleRect === null || raw.battleRect === undefined
+        ? null
+        : readPixelRect(raw.battleRect, `${path}.battleRect`),
+  }
+}
+
+/**
+ * A V6-and-V7 profile, before the gauge was measured. Kept beside `readCaptureProfileV5` as the
+ * pre-migration reader, and used by `readCaptureProfile` for the fields the two share — the
+ * measurement `battleRect` adds is appended *after* them, so a migrated document's first save
+ * writes the keys in the order every save after it does.
+ */
+function readCaptureProfileV7(value: unknown, path: string): CaptureProfileV7 {
+  const raw = readObject(value, path)
+  return {
     id: readCaptureProfileId(raw.id, `${path}.id`),
     name: readString(raw.name, `${path}.name`),
     frameWidth: readPositiveNumber(raw.frameWidth, `${path}.frameWidth`),
@@ -435,7 +454,7 @@ function readCaptureProfile(value: unknown, path: string): CaptureProfile {
 function readCaptureProfileV5(value: unknown, path: string): CaptureProfileV5 {
   const raw = readObject(value, path)
   return {
-    ...readCaptureProfile(value, path),
+    ...readCaptureProfileV7(value, path),
     glyphs: readGlyphs(raw.glyphs, `${path}.glyphs`),
   }
 }
@@ -705,23 +724,27 @@ function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw)))))))
+      return migrateV7(
+        migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+      )
     case 2:
-      return migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))
+      return migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw)))))))
     case 3:
-      return migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw)))))
+      return migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))
     case 4:
-      return migrateV6(migrateV5(migrateV4(readProjectFileV4(raw))))
+      return migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw)))))
     case 5:
-      return migrateV6(migrateV5(readProjectFileV5(raw)))
+      return migrateV7(migrateV6(migrateV5(readProjectFileV5(raw))))
     case 6:
-      return migrateV6(readProjectFileV6(raw))
+      return migrateV7(migrateV6(readProjectFileV6(raw)))
     case 7:
-      return readProjectFileV7(raw)
+      return migrateV7(readProjectFileV7(raw))
+    case 8:
+      return readProjectFileV8(raw)
     default:
       throw new SchemaError(
         'schemaVersion',
-        `1, 2, 3, 4, 5, 6 or 7, but found ${String(schemaVersion)}`,
+        `1, 2, 3, 4, 5, 6, 7 or 8, but found ${String(schemaVersion)}`,
       )
   }
 }
@@ -826,7 +849,7 @@ function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,
     quests: readQuestsV3(raw),
-    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV7),
     relevanceTags,
     glyphs: readGlyphs(raw.glyphs, 'glyphs'),
   }
@@ -849,6 +872,33 @@ function readProjectFileV7(raw: Record<string, unknown>): ProjectFileV7 {
   )
   return {
     schemaVersion: 7,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV7),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+  }
+}
+
+/**
+ * V8 reads the profile shape that carries `battleRect`. Otherwise identical to V7 — the gauge is
+ * the only thing this version adds, and it adds it to the profile rather than to the document.
+ */
+function readProjectFileV8(raw: Record<string, unknown>): ProjectFileV8 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 8,
     ...readCommonFields(raw),
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,
@@ -969,7 +1019,7 @@ function migrateV5(file: ProjectFileV5): ProjectFileV6 {
 
 /** A V5 profile as V6 stores it. Written out field by field rather than destructured, because
  * `noUnusedLocals` fails on the binding a rest-spread would leave behind. */
-function stripGlyphs(profile: CaptureProfileV5): CaptureProfile {
+function stripGlyphs(profile: CaptureProfileV5): CaptureProfileV7 {
   return {
     id: profile.id,
     name: profile.name,
@@ -989,4 +1039,19 @@ function stripGlyphs(profile: CaptureProfileV5): CaptureProfile {
  */
 function migrateV6(file: ProjectFileV6): ProjectFileV7 {
   return { ...file, schemaVersion: 7, pendingCaptures: [] }
+}
+
+/**
+ * V7 could not tell a fight from a conversation, because nothing in a profile said where the
+ * opponent's status gauge is drawn. V8 adds that measurement, and there is nothing to derive it
+ * from: a rectangle guessed here would be a confident claim about a console this project may not
+ * even be aimed at. `null` says it has not been measured, and the watcher then behaves exactly as
+ * it did under V7.
+ */
+function migrateV7(file: ProjectFileV7): ProjectFileV8 {
+  return {
+    ...file,
+    schemaVersion: 8,
+    captureProfiles: file.captureProfiles.map((profile) => ({ ...profile, battleRect: null })),
+  }
 }

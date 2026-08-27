@@ -185,11 +185,24 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
   chart segment, a pin band, and a filter chip all draw in, and the order the reducer normalizes
   `Dialogue.relevance` (a deduplicated `RelevanceTagId[]`) against on every edit.
+- **A fight is measured, not guessed.** `CaptureProfile.battleRect` says where the opponent's
+  health gauge is drawn, in the same native pixels `textRect` uses, and
+  `battleGaugeVisible` (`src/capture/battle-gauge.ts`) answers whether one stands there. The test is
+  the gauge's **frame** — two dark rules of at least 24 px, two to four rows apart, with a light
+  track between them — never the coloured bar: measured over 533 real captures, of which exactly
+  five hold a gauge, a saturated-run test returns 56 hits (a town map, a purple interior and plain
+  grass are flat fills there) while the frame test returns exactly the five. It reads no colour at
+  all, so a monochrome console and a repainted palette measure the same. Darkness is the
+  **brightest channel**, not luminance: a nearly-empty bar is `rgb(248, 9, 8)`, whose luminance of
+  79 sits close enough to the ceiling that the bar would start reading as its own frame. This is the
+  one profile rectangle that is **not** tile-snapped — the gauge sits across a tile boundary, so
+  whole native pixels are the finest thing that can describe it. `null` means never measured, and
+  every behaviour that depends on it is then exactly what it was before the field existed.
 - **The alphabet belongs to the project, not to a capture profile.** Every field of a
-  `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect` — and a font is
-  not one: it is the console's, and it is the same whether the box being read is the dialogue box or
-  the Pokédex panel. So `project.glyphs` holds it and `readTextBox(frame, profile, glyphs)` takes it
-  as a separate argument. All of it — the connection, the profile picker, calibration, and the
+  `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect`, `battleRect` —
+  and a font is not one: it is the console's, and it is the same whether the box being read is the
+  dialogue box or the Pokédex panel. So `project.glyphs` holds it and
+  `readTextBox(frame, profile, glyphs)` takes it as a separate argument. All of it — the connection, the profile picker, calibration, and the
   alphabet — lives on the settings screen (`CaptureBar`, mounted once in `SettingsScreen.tsx`; see
   #90/#91), a session-long setup step rather than a field of the dialogue it used to render inside.
   The dialogue panel keeps only what acts on the selected line: the capture button and the two
@@ -222,14 +235,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **7**. To
-  evolve: add `ProjectFileV8`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **8**. To
+  evolve: add `ProjectFileV9`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…))))))` — so a new version adds one
-  function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…)))))))` — so a new
+  version adds one function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -253,7 +266,13 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   the pre-migration shape, and is the only thing `readCaptureProfileV5` still builds. The V6→V7
   migration (`migrateV6`) is the simplest one on record: it sets `pendingCaptures: []` and nothing
   else, because nothing before V7 could have written a `PendingCapture` — there is no earlier shape
-  to fold, rename or reconcile.
+  to fold, rename or reconcile. The V7→V8 migration (`migrateV7`) sets every profile's
+  `battleRect: null`, and `null` is load-bearing rather than a placeholder: a rectangle guessed here
+  would be a confident claim about where a console this project may not even be aimed at draws its
+  health gauge, and a wrong one would silently discard real dialogue. `CaptureProfileV7` is kept
+  beside `CaptureProfileV5` as the pre-migration shape, and — note the ordering trap — `ProjectFileV6`
+  and `ProjectFileV7` both had to be re-pointed at it, because a versioned file type that names the
+  *current* profile type silently re-defines what an old document held.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

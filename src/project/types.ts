@@ -176,6 +176,15 @@ export type CaptureProfile = {
   nativeHeight: number
   /** The text box, in native pixels, snapped to the 8-pixel tile grid. */
   textRect: PixelRect
+  /**
+   * Where the opponent's status gauge sits, in native pixels — what `battleGaugeVisible` reads to
+   * answer whether a fight is on screen. `null` is a profile calibrated before the measurement
+   * existed, and means the watcher behaves exactly as it did before it.
+   *
+   * Deliberately **not** snapped to the tile grid, unlike `textRect`: the gauge is drawn at
+   * `y = 18..21`, inside tile row 2, so a tile-snapped rectangle could not name it.
+   */
+  battleRect: PixelRect | null
 }
 
 /**
@@ -183,7 +192,13 @@ export type CaptureProfile = {
  * beside `GameMapV1`, `QuestV2`, `DialogueV3` and `DialogueV4`, and the only thing
  * `readCaptureProfileV5` still builds.
  */
-export type CaptureProfileV5 = CaptureProfile & { glyphs: Glyph[] }
+export type CaptureProfileV5 = CaptureProfileV7 & { glyphs: Glyph[] }
+
+/**
+ * A profile as V6 and V7 stored it, before the gauge was measured. The pre-migration shape, beside
+ * `CaptureProfileV5`, and the only thing `readCaptureProfileV7` still builds.
+ */
+export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
 
 /**
  * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
@@ -341,7 +356,7 @@ export type ProjectFileV6 = {
   zones: Zone[]
   dialogues: Dialogue[]
   quests: Quest[]
-  captureProfiles: CaptureProfile[]
+  captureProfiles: CaptureProfileV7[]
   relevanceTags: RelevanceTag[]
   glyphs: Glyph[]
 }
@@ -352,6 +367,26 @@ export type ProjectFileV6 = {
  */
 export type ProjectFileV7 = {
   schemaVersion: 7
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
+  captureProfiles: CaptureProfileV7[]
+  relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
+  pendingCaptures: PendingCapture[]
+}
+
+/**
+ * V8 gives a profile the one measurement it was missing: where the opponent's status gauge sits,
+ * which is what tells a fight from a conversation. `battleRect` is nullable rather than required
+ * because a profile calibrated before this version has never been measured for it — see
+ * `CaptureProfile`.
+ */
+export type ProjectFileV8 = {
+  schemaVersion: 8
   projectName: string
   savedAt: string
   maps: GameMap[]
@@ -376,9 +411,10 @@ export type StoredProjectFile =
   | ProjectFileV5
   | ProjectFileV6
   | ProjectFileV7
+  | ProjectFileV8
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV7
+export type ProjectFile = ProjectFileV8
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
