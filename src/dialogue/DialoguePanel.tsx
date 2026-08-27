@@ -35,10 +35,12 @@ import type { DragGesture } from '../map/drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
+import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
 import type {
   CaptureProfile,
   Dialogue,
+  DialogueId,
   DialogueMedia,
   Glyph,
   MediaId,
@@ -800,6 +802,8 @@ export function DialoguePanel({
           )}
         </section>
 
+        <MergeIntoThisLine dialogue={dialogue} dialogues={project.dialogues} />
+
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
       </div>
       {/* Three ways out, because a frame the alphabet cannot read is worth all three answers. The
@@ -859,6 +863,87 @@ function isLearning(state: CaptureState): boolean {
  * Shown whether or not the watcher is still running: the queue outlives it, and the alphabet is
  * usually answered once the conversation is over. Its own subscription, like `WatchNote`.
  */
+/**
+ * Two records that were always one, joined back together.
+ *
+ * Offered only against **other lines of the same NPC**: a merge across two names is far more
+ * likely a mis-click than an intention, and the case this exists for — the watcher having cut one
+ * encounter into three — always leaves the pieces under one name. Ordered by when they were heard,
+ * which is the order they would have been written in.
+ *
+ * No confirmation. A merge is one undo step, which is the same reason `forgetGlyph` has none.
+ */
+function MergeIntoThisLine({
+  dialogue,
+  dialogues,
+}: {
+  dialogue: Dialogue
+  dialogues: readonly Dialogue[]
+}): ReactElement | null {
+  const [chosen, setChosen] = useState<DialogueId | ''>('')
+  const selectId = useId()
+  const name = dialogue.npcName.trim()
+  const others = dialogues
+    .filter((other) => other.id !== dialogue.id && other.npcName.trim() === name && name !== '')
+    .sort((a, b) => a.spokenAt.localeCompare(b.spokenAt))
+
+  if (others.length === 0) return null
+  const target = others.find((other) => other.id === chosen) ?? null
+
+  return (
+    <section className="dialogue-merge">
+      <h3 className="micro-label">Merge</h3>
+      <label className="visually-hidden" htmlFor={selectId}>
+        Another line by {name}
+      </label>
+      <div className="dialogue-merge__controls">
+        <select
+          id={selectId}
+          className="dialogue-merge__select"
+          value={chosen}
+          onChange={(event) => setChosen(event.target.value as DialogueId | '')}
+        >
+          <option value="">Another line by {name}…</option>
+          {others.map((other) => (
+            <option key={other.id} value={other.id}>
+              {mergeOptionLabel(other)}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="button"
+          disabled={target === null}
+          title="Join that line onto the end of this one. Its pictures come with it, and its pin goes."
+          onClick={() => {
+            if (target === null) return
+            setChosen('')
+            dispatch({ kind: 'dialogue/merged', intoId: dialogue.id, fromId: target.id })
+          }}
+        >
+          Merge into this line
+        </button>
+      </div>
+      <Disclosure>
+        <p className="dialogue-merge__hint">
+          The other line is appended to this one, its pictures after this one's, and its pin
+          disappears. This line keeps its own place and name; the earlier of the two times is kept.
+          Any quest that named the other line names this one afterwards. One undo puts it back.
+        </p>
+      </Disclosure>
+    </section>
+  )
+}
+
+/** Enough of a line to pick it out of a list of one NPC's lines: when, and what it says. */
+function mergeOptionLabel(dialogue: Dialogue): string {
+  const said = dialogue.text.trim()
+  const shown = said.length > 60 ? `${said.slice(0, 60)}…` : said
+  const when = formatSpokenAt(dialogue.spokenAt)
+  if (shown !== '') return `${when} — ${shown}`
+  return `${when} — ${dialogue.media.length === 1 ? '1 picture' : `${dialogue.media.length} pictures`}`
+}
+
 function HeldNote({
   onAnswer,
   onDiscard,

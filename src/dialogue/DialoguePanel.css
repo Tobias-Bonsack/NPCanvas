@@ -291,3 +291,30 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* Joining two records that were always one. Below the media, because it acts on the whole
+   dialogue rather than on the frame the gallery is showing. */
+.dialogue-merge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Wrapping rather than shrinking, for the reason `dialogue-media__actions` gives: the panel
+   narrows to 14rem and a squeezed select shows none of the line it names. */
+.dialogue-merge__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dialogue-merge__select {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.dialogue-merge__hint {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}

@@ -1680,6 +1680,126 @@ describe('reduce: the project alphabet', () => {
   })
 })
 
+describe('reduce: dialogue/merged', () => {
+  /** Two lines of one NPC, in the order they were heard, with a quest naming the second. */
+  function split(): ReadyState {
+    const map = gameMap('map-1')
+    const first: Dialogue = {
+      ...dialogue('one', map.id),
+      npcName: 'Bug Catcher',
+      text: 'Hey! You have POKeMON too!',
+      media: [medium('m1')],
+      spokenAt: '2026-08-26T17:21:23.259Z',
+    }
+    const second: Dialogue = {
+      ...dialogue('two', map.id),
+      npcName: 'Bug Catcher',
+      position: { x: 90, y: 90 },
+      text: 'Shh! You will scare the bugs away...',
+      media: [medium('m2'), medium('m3')],
+      spokenAt: '2026-08-26T17:22:32.152Z',
+    }
+    return ready({
+      ...createEmptyProject('Harbour'),
+      maps: [map],
+      dialogues: [first, second],
+      quests: [quest('q1', ['two'])],
+    })
+  }
+
+  const merge = { kind: 'dialogue/merged', intoId: asDialogueId('one'), fromId: asDialogueId('two') } as const
+
+  it('joins the two lines the way the watcher would have written them', () => {
+    const next = readyOf(reduce(split(), merge))
+    expect(next.project.dialogues).toHaveLength(1)
+    expect(next.project.dialogues[0].text).toBe(
+      'Hey! You have POKeMON too! Shh! You will scare the bugs away...',
+    )
+  })
+
+  it('keeps every picture, under the name it already had in media/', () => {
+    const next = readyOf(reduce(split(), merge))
+    expect(next.project.dialogues[0].media.map((item) => item.file.fileName)).toEqual([
+      'm1.png',
+      'm2.png',
+      'm3.png',
+    ])
+  })
+
+  it('takes the earlier time, and the target’s own placement', () => {
+    const next = readyOf(reduce(split(), merge))
+    expect(next.project.dialogues[0].spokenAt).toBe('2026-08-26T17:21:23.259Z')
+    expect(next.project.dialogues[0].position).toEqual({ x: 1, y: 2 })
+    expect(next.project.dialogues[0].id).toBe(asDialogueId('one'))
+  })
+
+  it('takes the earlier time when it is the source that is earlier', () => {
+    const state = split()
+    const swapped = {
+      kind: 'dialogue/merged',
+      intoId: asDialogueId('two'),
+      fromId: asDialogueId('one'),
+    } as const
+    const next = readyOf(reduce(state, swapped))
+    expect(next.project.dialogues[0].spokenAt).toBe('2026-08-26T17:21:23.259Z')
+  })
+
+  it('unions the relevance, in the project’s own tag order', () => {
+    const state = split()
+    const [out, world, people] = state.project.relevanceTags.map((tag) => tag.id)
+    const tagged = ready({
+      ...state.project,
+      dialogues: [
+        { ...state.project.dialogues[0], relevance: [people] },
+        { ...state.project.dialogues[1], relevance: [out, world] },
+      ],
+      quests: state.project.quests,
+    })
+    const next = readyOf(reduce(tagged, merge))
+    expect(next.project.dialogues[0].relevance).toEqual([out, world, people])
+  })
+
+  it('re-points every quest that named the source, rather than dropping it', () => {
+    const next = readyOf(reduce(split(), merge))
+    expect(next.project.quests[0].dialogueIds).toEqual([asDialogueId('one')])
+  })
+
+  it('leaves a quest naming both with one reference, not two', () => {
+    const state = split()
+    const both = ready({ ...state.project, quests: [quest('q1', ['one', 'two'])] })
+    const next = readyOf(reduce(both, merge))
+    expect(next.project.quests[0].dialogueIds).toEqual([asDialogueId('one')])
+  })
+
+  it('selects what is left', () => {
+    const next = readyOf(reduce(split(), merge))
+    expect(next.selection).toEqual({ kind: 'dialogue', id: asDialogueId('one') })
+  })
+
+  it('does nothing when either side is missing, or the two are the same line', () => {
+    const state = split()
+    expect(
+      reduce(state, { kind: 'dialogue/merged', intoId: asDialogueId('one'), fromId: asDialogueId('gone') }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'dialogue/merged', intoId: asDialogueId('gone'), fromId: asDialogueId('two') }),
+    ).toBe(state)
+    expect(
+      reduce(state, { kind: 'dialogue/merged', intoId: asDialogueId('one'), fromId: asDialogueId('one') }),
+    ).toBe(state)
+  })
+
+  it('is one undo step, and brings both lines back', () => {
+    const merged = reduce(split(), merge)
+    const undone = readyOf(reduce(merged, { kind: 'history/undo' }))
+    expect(undone.project.dialogues.map((item) => item.id)).toEqual([
+      asDialogueId('one'),
+      asDialogueId('two'),
+    ])
+    expect(undone.project.quests[0].dialogueIds).toEqual([asDialogueId('two')])
+  })
+})
+
 describe('reduce: history', () => {
   const HARBOUR = asMapId('harbour')
 

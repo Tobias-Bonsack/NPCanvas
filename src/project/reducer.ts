@@ -1,4 +1,5 @@
 import { assertNever } from '../assert-never.ts'
+import { appendWithoutOverlap } from '../capture/append-overlap.ts'
 import type { ProfileCalibration } from '../capture/capture-profile.ts'
 import { forgetGlyph, mergeGlyphs } from '../capture/glyph-matcher.ts'
 import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
@@ -66,6 +67,7 @@ export type Action =
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
   | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTagId[] }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
+  | { kind: 'dialogue/merged'; intoId: DialogueId; fromId: DialogueId }
   | { kind: 'quest/added'; quest: Quest }
   | { kind: 'quest/renamed'; questId: QuestId; name: string }
   | { kind: 'quest/note-set'; questId: QuestId; note: string }
@@ -469,6 +471,51 @@ function applyAction(state: AppState, action: Action): AppState {
           zones: EMPTY_ZONE_IDS,
           maps: EMPTY_MAP_IDS,
         }),
+      }
+    }
+
+    /**
+     * Two records that were always one. A single action, for the reason `pending-capture/placed`
+     * is one: it must be a single undo step and must not half-happen.
+     *
+     * Nothing here is invented. The text joins with `appendWithoutOverlap` — what the watcher
+     * would have produced had it never split them — and the media concatenate with their files
+     * **untouched**, since `fileName` is stored rather than derived (CLAUDE.md § Media contract).
+     * `spokenAt` is the earlier of the two, because the encounter began when the first box was
+     * heard, while `mapId`, `position` and `npcName` stay the target's: a merge is *into* a pin.
+     *
+     * Quests reference dialogues, so every reference to the source becomes one to the target.
+     * Dropping them instead would silently tear a quest thread.
+     */
+    case 'dialogue/merged': {
+      if (state.kind !== 'ready') return state
+      const { project } = state
+      if (action.intoId === action.fromId) return state
+      const into = findDialogue(project, action.intoId)
+      const from = findDialogue(project, action.fromId)
+      if (into === null || from === null) return state
+
+      const merged: Dialogue = {
+        ...into,
+        text: appendWithoutOverlap(into.text, from.text),
+        media: [...into.media, ...from.media],
+        spokenAt: into.spokenAt <= from.spokenAt ? into.spokenAt : from.spokenAt,
+        relevance: normalizeRelevance(
+          [...into.relevance, ...from.relevance],
+          project.relevanceTags,
+        ),
+      }
+
+      return {
+        ...state,
+        project: {
+          ...project,
+          dialogues: project.dialogues
+            .filter((dialogue) => dialogue.id !== action.fromId)
+            .map((dialogue) => (dialogue.id === action.intoId ? merged : dialogue)),
+          quests: repointQuestDialogues(project.quests, action.fromId, action.intoId),
+        },
+        selection: { kind: 'dialogue', id: action.intoId },
       }
     }
 
@@ -1123,6 +1170,24 @@ function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>):
       ? { ...quest, dialogueIds: quest.dialogueIds.filter((id) => !removed.has(id)) }
       : quest,
   )
+}
+
+/**
+ * Points every quest that named one dialogue at another, deduplicated.
+ *
+ * The counterpart to `pruneQuestDialogues` for a merge: the dialogue is not gone, it *is* the
+ * other one now, so dropping the reference would tear a thread that is still intact.
+ */
+function repointQuestDialogues(quests: Quest[], from: DialogueId, into: DialogueId): Quest[] {
+  return quests.map((quest) => {
+    if (!quest.dialogueIds.includes(from)) return quest
+    const dialogueIds: DialogueId[] = []
+    for (const id of quest.dialogueIds) {
+      const next = id === from ? into : id
+      if (!dialogueIds.includes(next)) dialogueIds.push(next)
+    }
+    return { ...quest, dialogueIds }
+  })
 }
 
 /**
