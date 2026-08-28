@@ -19,7 +19,6 @@ const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     shortcuts: [
       { keys: ['Ctrl', 'Z'], does: 'Undo' },
       { keys: ['Ctrl', 'Shift', 'Z'], does: 'Redo' },
-      { keys: ['W'], does: 'Start or stop watching the text box' },
       { keys: ['Ctrl', 'K'], does: 'Open search' },
       { keys: ['/'], does: 'Open search' },
     ],

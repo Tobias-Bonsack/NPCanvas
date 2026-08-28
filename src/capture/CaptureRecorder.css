@@ -37,23 +37,12 @@
   color: var(--text-muted);
 }
 
-/* Quiet on purpose: it is a shortcut for something Escape and a bare-canvas click already do,
-   not a new capability, so it must not compete with the toggle for attention. */
-.capture-recorder__watch-clear {
-  font: inherit;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-1);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.capture-recorder__watch-clear:hover {
-  background: var(--surface-2);
-  color: var(--text);
+/* Two triggers side by side rather than stacked — they are one decision (which capture to record
+   into), not two independent controls. */
+.capture-recorder__triggers {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-2);
 }
 
 /* Outlined rather than filled while it is off, so a filled toggle only ever means "recording". */

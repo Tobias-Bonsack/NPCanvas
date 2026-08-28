@@ -1,116 +1,88 @@
 import type { ReactElement } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useActiveCaptureProfile } from './active-profile.ts'
 import { useCaptureSource } from './capture-session.ts'
 import { captureBlocker } from './capture-to-dialogue.ts'
 import type { WatchState } from './capture-watch.ts'
-import { startWatching, stopWatching, useWatchState, useWatching } from './capture-watch.ts'
-import { clearSelection } from '../app/select.ts'
-import type { Dialogue, Selection } from '../project/types.ts'
+import { startRecording, stopRecording, useWatchState, useWatching } from './capture-watch.ts'
+import type { PendingCapture } from '../project/types.ts'
 import { useAppStateExceptSave } from '../project/store.ts'
-import { isTextFieldFocused } from '../text-field-focus.ts'
 import './CaptureRecorder.css'
 
 /**
- * Switching the watcher on and off, as one unmodified key.
+ * The watcher's two triggers and status, rendered in the canvas sidebar (moved here from `Nav.tsx`
+ * in #106). What it produces is a pending capture, and pending captures live beside it in
+ * `PendingCaptureList`.
  *
- * Bare rather than a chord, and one letter rather than two, because of when it is pressed: a
- * conversation starts and ends while the hand is on the emulator's controls, so the gesture has to
- * be cheaper than reaching for the panel. `w` is free — the canvas tools own `i`, `p`, `z` and `m`,
- * and the viewport `f`, `0`, `+` and `-`.
- *
- * Unmodified letters are also exactly what an NPC name is made of, so the listener stands down for
- * a focused text field the same way `MapScreen`'s tool shortcuts do.
- */
-const WATCH_KEY = 'w'
-const WATCH_SHORTCUT = 'W'
-
-/**
- * The watcher's toggle and status, reachable from every view via the `w` hotkey but rendered only
- * in the canvas sidebar — moved here from `Nav.tsx` in #106, once the watcher stopped needing the
- * top bar's permanent visibility for anything but the shortcut itself. What it produces is a
- * pending capture, and pending captures live beside it in `PendingCaptureList`.
+ * Two buttons, not a toggle: `New capture` always opens a fresh conversation, `Extend last` reopens
+ * `pendingCaptures.at(-1)` — the same conversation picked back up, because a shopkeeper's second
+ * line or the sentence after a fight belongs with what came before it (#107). Either one read as
+ * `Stop` while a recording runs, and firing either then ends it; neither starts anything until it
+ * has. There is deliberately no keyboard trigger — a bare letter is no use to a hand on a
+ * controller, and the trigger the player will actually reach for is a bound controller button
+ * (#110, #111).
  */
 export function CaptureRecorder(): ReactElement {
   const appState = useAppStateExceptSave()
   const captureProfiles = appState.kind === 'ready' ? appState.project.captureProfiles : []
-  const dialogues = appState.kind === 'ready' ? appState.project.dialogues : []
-  const selection = appState.kind === 'ready' ? appState.selection : { kind: 'none' as const }
+  const pendingCaptures = appState.kind === 'ready' ? appState.project.pendingCaptures : []
   const source = useCaptureSource()
   const profile = useActiveCaptureProfile(captureProfiles)
   const blocker = captureBlocker(source, profile)
   const watching = useWatching()
+  const watch = useWatchState()
 
   /**
-   * Stopping is unconditional: the connection can end while the loop runs, and a toggle that
+   * Stopping is unconditional: the connection can end while the loop runs, and a trigger that
    * refused to stop would leave it switched on with no way back. Starting is not — a blocker
-   * means there is nothing to read, and switching on into a paused loop says the opposite of
-   * what happened. Same rule as the button's `disabled`, in one place so the two cannot drift.
+   * means there is nothing to read, and starting into a paused loop says the opposite of what
+   * happened. Same rule as each button's `disabled`, in one place so they cannot drift.
    */
-  function toggle(): void {
-    if (watching) stopWatching()
-    else if (blocker === null) startWatching()
+  function trigger(mode: 'new' | 'extend'): void {
+    if (watching) stopRecording()
+    else if (blocker === null) startRecording(mode)
   }
 
-  // Both halves change on every render — `watching` on each toggle, `blocker` whenever the
-  // connection or the profile does — so a ref keeps the global key binding stable while the
-  // shortcut still runs the current toggle.
-  const toggleRef = useRef(toggle)
-  useEffect(() => {
-    toggleRef.current = toggle
-  })
-
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent): void {
-      if (event.ctrlKey || event.metaKey || event.altKey) return
-      if (event.key.toLowerCase() !== WATCH_KEY) return
-      if (isTextFieldFocused()) return
-      event.preventDefault()
-      toggleRef.current()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  const last: PendingCapture | undefined = pendingCaptures.at(-1)
+  const extendTitle =
+    last === undefined
+      ? 'Nothing to extend yet — starts a new capture, same as New capture'
+      : `Add to "${last.npcName}", the last capture recorded`
 
   return (
     <div className="capture-recorder">
       <h2 className="map-list__heading">Captures</h2>
       <div className="capture-recorder__watch">
-        <WatcherStatus selection={selection} dialogues={dialogues} />
-        {/* Absent rather than disabled when nothing is selected: there is nothing to clear, and a
-            control that is sometimes there and sometimes not is more honest than one that is always
-            there and sometimes does nothing. The selection *is* the mode (#69) — this is simply the
-            one visible way to switch it to queue mode, beside Escape and the bare-canvas click. */}
-        {selection.kind === 'dialogue' && (
+        <WatcherStatus watch={watch} pendingCaptures={pendingCaptures} />
+        <div className="capture-recorder__triggers">
           <button
             type="button"
-            className="capture-recorder__watch-clear"
-            onClick={clearSelection}
-            title="Stop writing into this pin — the watcher records new conversations instead"
+            className="capture-recorder__watch-toggle"
+            data-watching={watching ? 'true' : undefined}
+            aria-pressed={watching}
+            disabled={blocker !== null && !watching}
+            title={
+              watching
+                ? 'Stop reading the text box'
+                : (blocker ??
+                  'Start a new conversation — every box that comes to rest is recorded into it')
+            }
+            onClick={() => trigger('new')}
           >
-            Stop writing into this pin
+            {watching ? 'Stop' : 'New capture'}
           </button>
-        )}
-        <button
-          type="button"
-          className="capture-recorder__watch-toggle"
-          data-watching={watching ? 'true' : undefined}
-          aria-pressed={watching}
-          // Stopping must always be possible: the connection can end while the loop runs, and a
-          // toggle that disabled itself would leave it stuck on.
-          disabled={blocker !== null && !watching}
-          title={
-            watching
-              ? `Stop reading the text box — ${WATCH_SHORTCUT}`
-              : (blocker ??
-                `Read the text box while you play — every box that comes to rest is appended to ` +
-                  `the selected line, or recorded as a new conversation with nothing selected. ` +
-                  WATCH_SHORTCUT)
-          }
-          onClick={toggle}
-        >
-          {watching ? 'Stop watching' : 'Watch the text box'} · {WATCH_SHORTCUT}
-        </button>
+          <button
+            type="button"
+            className="capture-recorder__watch-toggle"
+            data-watching={watching ? 'true' : undefined}
+            aria-pressed={watching}
+            disabled={blocker !== null && !watching}
+            title={watching ? 'Stop reading the text box' : (blocker ?? extendTitle)}
+            onClick={() => trigger('extend')}
+          >
+            {watching ? 'Stop' : 'Extend last'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -121,18 +93,15 @@ export function CaptureRecorder(): ReactElement {
  *
  * Its own component with its own subscription to `WatchState`, so a box appended re-renders this
  * line and not the rest of `CaptureRecorder` — and its own one-second tick, because "read 40 s ago"
- * has to keep counting while the watcher is paused and publishing nothing at all. `selection` and
- * `dialogues` are still read from the parent's own subscription rather than a second one here,
- * since `CaptureRecorder` already has them for the clear-selection control beside this.
+ * has to keep counting while the watcher is paused and publishing nothing at all.
  */
 function WatcherStatus({
-  selection,
-  dialogues,
+  watch,
+  pendingCaptures,
 }: {
-  selection: Selection
-  dialogues: readonly Dialogue[]
+  watch: WatchState
+  pendingCaptures: readonly PendingCapture[]
 }): ReactElement | null {
-  const watch = useWatchState()
   const ticking = watch.kind === 'watching'
   const [, retick] = useState(0)
 
@@ -156,7 +125,7 @@ function WatcherStatus({
       {/* The last line written is a hover tooltip rather than a quoted line of its own — a glance-at
           confirmation, not the record. */}
       <p className="capture-recorder__watch-note" title={watch.lastText ?? undefined}>
-        {watchSummary(watch, watchTarget(selection, dialogues))}
+        {watchSummary(watch, watchTarget(watch, pendingCaptures))}
       </p>
       {watch.paused !== null && (
         <p className="capture-recorder__watch-paused" role="status">
@@ -169,17 +138,18 @@ function WatcherStatus({
 
 /**
  * What the watcher writes into, in words — never an icon or a colour alone, so it reads correctly
- * from the corner of the eye while the game has the player's attention. Mirrors exactly what
- * `capture-watch.ts`'s own `tick` decides the target is: the selection, and nothing else.
+ * from the corner of the eye while the game has the player's attention. Queue mode is the only
+ * mode (#107): the watcher never writes into a selected dialogue, so this describes `captureId`
+ * alone.
  */
-function watchTarget(selection: Selection, dialogues: readonly Dialogue[]): string {
-  if (selection.kind !== 'dialogue') return 'Recording new captures'
-  const dialogue = dialogues.find((candidate) => candidate.id === selection.id)
-  if (dialogue === undefined) return 'Recording new captures'
-  const name = dialogue.npcName.trim()
-  // An unnamed pin is exactly the state you are in right after placing one — it still has to be
-  // identified as *something*, not silently described as if nothing were selected.
-  return name === '' ? 'Writing into an unnamed pin' : `Writing into ${name}`
+function watchTarget(
+  watch: Extract<WatchState, { kind: 'watching' }>,
+  pendingCaptures: readonly PendingCapture[],
+): string {
+  if (watch.captureId === null) return 'Recording a new conversation'
+  const capture = pendingCaptures.find((candidate) => candidate.id === watch.captureId)
+  const name = capture?.npcName.trim() ?? ''
+  return name === '' ? 'Recording into an unnamed capture' : `Recording into ${name}`
 }
 
 /** The counters as one line: what has been written, what is waiting, and how long since a read. */

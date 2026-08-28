@@ -180,6 +180,23 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   leaving `pendingCaptures` and the dialogue appearing in `dialogues` are one undo step and cannot
   half-happen; every field but the placement — `npcName`, `text`, `media`, `spokenAt`,
   `relevance` — carries over verbatim, media's `fileName` included (see Media contract).
+- **Recording starts and stops on the player's own two triggers, never a guess.**
+  `startRecording(mode: 'new' | 'extend')` and `stopRecording()` (`src/capture/capture-watch.ts`)
+  replaced a single on/off toggle that used to guess both ends of a conversation itself — a run of
+  silent polls to end one, and whatever was selected to decide what it wrote into — and both guesses
+  needed hand-tuning or could be changed by an unrelated click (#107). `'new'` always opens a fresh
+  `PendingCapture`; `'extend'` reopens `pendingCaptures.at(-1)` — the same conversation picked back
+  up, its own `spokenAt`, `npcName`, `relevance` and media order untouched, because a reopen appends
+  rather than re-creating — and with an empty queue it behaves exactly like `'new'`. Either trigger
+  fired while a recording runs stops it, which is what makes a third trigger unnecessary: two
+  presses are a conversation, and the second press is wherever the player already is. `CaptureRecorder`
+  renders both as buttons and nothing more; there is deliberately **no keyboard trigger**, now or
+  ever — a bare letter is no use to a hand on a controller, and the trigger the player actually
+  reaches for is a bound controller button (#110/#111). Queue mode is the only mode: a selected
+  dialogue means nothing to the watcher any more, so the held-frame queue (keyed by `DialogueId`,
+  replayed once the alphabet can read a tile it couldn't before) is unreachable until #109 re-keys
+  its push path to a capture — nothing currently writes into it, and an unreadable box in queue mode
+  is simply not recorded.
 - **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
   user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
