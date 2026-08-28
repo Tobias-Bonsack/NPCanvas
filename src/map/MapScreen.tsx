@@ -4,6 +4,7 @@ import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
+import { CaptureRecorder } from '../capture/CaptureRecorder.tsx'
 import { PendingCaptureList } from '../capture/PendingCaptureList.tsx'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
@@ -357,6 +358,7 @@ export function MapScreen({
         {/* A sidebar rather than a row in the bar: the list grows with the project, and it
             has to scroll on its own instead of pushing the canvas off screen. */}
         <aside className="map-screen__sidebar">
+          <CaptureRecorder />
           <PendingCaptureList
             project={project}
             armedCaptureId={armedCaptureId}

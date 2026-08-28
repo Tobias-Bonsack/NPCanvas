@@ -47,7 +47,6 @@ export function PendingCaptureList({
 
   return (
     <div className="pending-capture-list">
-      <h2 className="map-list__heading">Captures</h2>
       {project.pendingCaptures.length === 0 ? (
         <p className="pending-capture-list__empty">
           Nothing waiting. Switch the watcher on with no pin selected to record a conversation.
