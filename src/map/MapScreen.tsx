@@ -67,6 +67,10 @@ export function MapScreen({
   // `place-dialogue` — a stale arm must not silently place itself on a later click after the
   // tool was switched away and back.
   const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
+  // Which capture `PendingCaptureList`'s carousel shows — see #108. Component state, not the
+  // store, and not resynced when the capture it names is placed or deleted: `resolveGalleryIndex`
+  // already resolves a stale id to a sensible fallback, so nothing here has to track removal.
+  const [currentCaptureId, setCurrentCaptureId] = useState<PendingCaptureId | null>(null)
   const setTool = useCallback(
     (tool: CanvasTool) => {
       onViewStateChange((prev) => ({ ...prev, tool }))
@@ -363,6 +367,8 @@ export function MapScreen({
             project={project}
             armedCaptureId={armedCaptureId}
             onArm={onArmCapture}
+            currentCaptureId={currentCaptureId}
+            onSelect={setCurrentCaptureId}
           />
           <MapList project={project} />
           <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />

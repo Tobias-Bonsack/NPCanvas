@@ -1,22 +1,25 @@
-import type { DialogueMedia, MediaId } from '../project/types.ts'
-
 /**
- * Which frame a gallery is showing, resolved from the id it was told to show rather than from
- * an index it was told to remember. The distinction is the whole point: a `MediaId` is what a
- * remove or a reorder addresses (see CLAUDE.md's media contract), so moving the current frame
- * one step later keeps *that frame* on screen instead of whatever slid into its old position.
+ * Which item a gallery is showing, resolved from the id it was told to show rather than from an
+ * index it was told to remember — for any list of items with an id, not only `DialogueMedia`'s
+ * `MediaId`. The distinction is the whole point: an id is what a remove or a reorder (or, for a
+ * `PendingCaptureId`, a placement) addresses, so moving the current item one step later keeps
+ * *that item* on screen instead of whatever slid into its old position.
  *
- * An id that is no longer in the list falls to the last frame — the list only ever loses the
- * one that was just removed, and the frame after it has by then taken its index, except at the
- * end, where there is nothing after it.
+ * An id that is no longer in the list falls to the last item — the list only ever loses the one
+ * that was just removed, and the item after it has by then taken its index, except at the end,
+ * where there is nothing after it. This is also exactly the case of a capture leaving
+ * `pendingCaptures` because it was placed or deleted (#108).
+ *
+ * Paging itself (`stepGalleryIndex`) needs no id at all — it clamps a plain index — so it stays
+ * ungeneric below.
  */
-export function resolveGalleryIndex(
-  media: readonly DialogueMedia[],
-  selectedId: MediaId | null,
+export function resolveGalleryIndex<Id extends string, T extends { id: Id }>(
+  items: readonly T[],
+  selectedId: Id | null,
 ): number {
-  if (media.length === 0 || selectedId === null) return 0
-  const index = media.findIndex((medium) => medium.id === selectedId)
-  return index === -1 ? media.length - 1 : index
+  if (items.length === 0 || selectedId === null) return 0
+  const index = items.findIndex((item) => item.id === selectedId)
+  return index === -1 ? items.length - 1 : index
 }
 
 /**

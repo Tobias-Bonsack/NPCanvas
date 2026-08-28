@@ -33,6 +33,19 @@ describe('resolveGalleryIndex', () => {
   })
 })
 
+describe('resolveGalleryIndex over a differently-branded id', () => {
+  type CaptureId = string & { readonly brand: 'CaptureId' }
+  function capture(id: string): { id: CaptureId } {
+    return { id: id as CaptureId }
+  }
+
+  it('resolves the same way for a list of `{ id }` items with a different brand', () => {
+    const captures = [capture('a'), capture('b')]
+    expect(resolveGalleryIndex(captures, 'b' as CaptureId)).toBe(1)
+    expect(resolveGalleryIndex(captures, 'gone' as CaptureId)).toBe(1)
+  })
+})
+
 describe('stepGalleryIndex', () => {
   it('pages one frame at a time', () => {
     expect(stepGalleryIndex(0, 1, 3)).toBe(1)
