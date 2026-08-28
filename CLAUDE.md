@@ -20,8 +20,7 @@ reader is an LLM. Optimize the repository for that reader, not for a human onboa
 - **Automate over repeating.** Anything that would otherwise be re-derived or re-run by hand belongs
   in a workflow: a GitHub Actions workflow in `.github/workflows/` for anything CI can own, an npm
   script for anything local. Prefer adding the automation over performing the steps manually a
-  second time. Claude Code workflows, skills, and subagents are likewise pre-authorized — use them
-  whenever a task fits one.
+  second time.
 
 ## Code conventions (optimized for LLM reading)
 
