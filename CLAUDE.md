@@ -185,44 +185,6 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a
   chart segment, a pin band, and a filter chip all draw in, and the order the reducer normalizes
   `Dialogue.relevance` (a deduplicated `RelevanceTagId[]`) against on every edit.
-- **A fight is a stretch of one conversation, and only its tail survives.** `capture-watch.ts`
-  reads the gauge once a tick, bounds it into a stretch with `nextBattlePhase`, and applies three
-  rules that only make sense together. A fight does **not** end a conversation — the wipe into a
-  battle is a legitimate gap of more than `CONVERSATION_END_TICKS`, and it is what split one
-  encounter into three captures. Nothing read while the gauge stands is kept, and **every** gauge
-  tick retracts the current *segment* — not only the first, because the gauge goes dark for the box
-  saying the opponent fainted, and that box is written before the next gauge frame proves the fight
-  was not over. The conversation after a fight reopens the same capture with no time limit,
-  which needs two things that are easy to get wrong and were: `conversationEnded` fires **once**
-  per run of gap ticks, and `BATTLE_LAPSE_TICKS` (25) outlasts `CONVERSATION_END_TICKS` (13), so
-  the quiet after a beaten trainer's last box ends the conversation while the fight is still
-  counting — held in `endedDuringFight` and applied by `endFight`, or that one firing is lost and
-  the capture never closes at all; and `reopen` must **not** clear `battleInCapture`, because a
-  fight claiming the conversation it interrupted is still in a fight, and clearing it there closes
-  the capture as if none had happened. `WatchState.joining` publishes the window either way, which
-  is what makes both of those visible rather than silent — see `join-window.ts`. A
-  *segment* begins where a conversation last ended and where a fight last lapsed, which is what
-  keeps a fight from retracting the talk that led into it or a previous fight's tail. Un-writing
-  text is unique to this rule and is done by **re-folding, not reversing**: `appendWithoutOverlap`
-  folded over the surviving ledger from `ledgerBase` is by construction the line that would have
-  existed without the removed boxes, and it runs only while the record still says exactly that — a
-  line the user edited is never rewritten. A fight with **nothing to attach to** (no conversation
-  open, none closed within `BATTLE_JOIN_MS`) records nothing at all, which is what keeps wild grass
-  from reopening the last NPC talk and appending EXP messages to it. `BATTLE_JOIN_MS` is the one
-  number here measured against a single real recording rather than derived.
-- **A fight is measured, not guessed.** `CaptureProfile.battleRect` says where the opponent's
-  health gauge is drawn, in the same native pixels `textRect` uses, and
-  `battleGaugeVisible` (`src/capture/battle-gauge.ts`) answers whether one stands there. The test is
-  the gauge's **frame** — two dark rules of at least 24 px, two to four rows apart, with a light
-  track between them — never the coloured bar: measured over 533 real captures, of which exactly
-  five hold a gauge, a saturated-run test returns 56 hits (a town map, a purple interior and plain
-  grass are flat fills there) while the frame test returns exactly the five. It reads no colour at
-  all, so a monochrome console and a repainted palette measure the same. Darkness is the
-  **brightest channel**, not luminance: a nearly-empty bar is `rgb(248, 9, 8)`, whose luminance of
-  79 sits close enough to the ceiling that the bar would start reading as its own frame. This is the
-  one profile rectangle that is **not** tile-snapped — the gauge sits across a tile boundary, so
-  whole native pixels are the finest thing that can describe it. `null` means never measured, and
-  every behaviour that depends on it is then exactly what it was before the field existed.
 - **The alphabet belongs to the project, not to a capture profile.** Every field of a
   `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect`, `battleRect` —
   and a font is not one: it is the console's, and it is the same whether the box being read is the

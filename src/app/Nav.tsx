@@ -6,7 +6,6 @@ import { useCaptureSource } from '../capture/capture-session.ts'
 import { captureBlocker } from '../capture/capture-to-dialogue.ts'
 import type { WatchState } from '../capture/capture-watch.ts'
 import { startWatching, stopWatching, useWatchState, useWatching } from '../capture/capture-watch.ts'
-import { describeJoinWindow } from '../capture/join-window.ts'
 import type { Dialogue, History, SaveState, Selection } from '../project/types.ts'
 import { dispatch, useAppStateExceptSave, useHistoryState, useSaveState } from '../project/store.ts'
 import { saveNow } from '../storage/autosave.ts'
@@ -329,16 +328,6 @@ function watchSummary(watch: Extract<WatchState, { kind: 'watching' }>, target: 
     watch.dropped === 0
       ? null
       : `${watch.dropped} in-between ${watch.dropped === 1 ? 'picture' : 'pictures'} dropped`,
-    // Said for the same reason, and said louder: a fight takes back everything written of it, so
-    // several pictures can disappear at once.
-    watch.battles === 0
-      ? null
-      : `${watch.battles} ${watch.battles === 1 ? 'fight' : 'fights'} left out`,
-    // Whether the fight you are walking into extends the conversation you just had. It needs no
-    // timer of its own: `markRead` publishes a fresh state on every whole second the watcher
-    // reads, which is the resolution a seconds countdown renders at — the same mechanism
-    // `sinceRead` below already relies on.
-    watch.joining === null ? null : describeJoinWindow(watch.joining, Date.now()),
     sinceRead(watch.lastReadAt),
   ]
   return `${target} · ${parts.filter((part) => part !== null).join(' · ')}`
