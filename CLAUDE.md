@@ -186,7 +186,7 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   chart segment, a pin band, and a filter chip all draw in, and the order the reducer normalizes
   `Dialogue.relevance` (a deduplicated `RelevanceTagId[]`) against on every edit.
 - **The alphabet belongs to the project, not to a capture profile.** Every field of a
-  `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect`, `battleRect` —
+  `CaptureProfile` is a measurement — `screenRect`, `nativeWidth/Height`, `textRect` —
   and a font is not one: it is the console's, and it is the same whether the box being read is the
   dialogue box or the Pokédex panel. So `project.glyphs` holds it and
   `readTextBox(frame, profile, glyphs)` takes it as a separate argument. All of it — the connection, the profile picker, calibration, and the
@@ -222,14 +222,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **8**. To
-  evolve: add `ProjectFileV9`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **9**. To
+  evolve: add `ProjectFileV10`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…)))))))` — so a new
-  version adds one function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…))))))))` — so a
+  new version adds one function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -259,7 +259,16 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   health gauge, and a wrong one would silently discard real dialogue. `CaptureProfileV7` is kept
   beside `CaptureProfileV5` as the pre-migration shape, and — note the ordering trap — `ProjectFileV6`
   and `ProjectFileV7` both had to be re-pointed at it, because a versioned file type that names the
-  *current* profile type silently re-defines what an old document held.
+  *current* profile type silently re-defines what an old document held. The V8→V9 migration
+  (`migrateV8`) drops that same `battleRect` again: #104 deleted the M15 battle-detection machinery
+  that read it, so the measurement outlived every reader it ever had, and the calibration step that
+  asked for it asked for nothing. There is nothing to derive a replacement from, so the field is
+  simply gone rather than replaced — the same shape of migration as V6→V7. `CaptureProfileV8` is
+  kept beside `CaptureProfileV5` and `CaptureProfileV7` as the pre-migration shape, and the same
+  ordering trap applies one version later: `ProjectFileV8` had to be re-pointed at `CaptureProfileV8`
+  rather than left naming `CaptureProfile`, because by the time V9 existed `CaptureProfile` no longer
+  carried `battleRect` and a V8 document's own shape would have been silently redefined out from
+  under it.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

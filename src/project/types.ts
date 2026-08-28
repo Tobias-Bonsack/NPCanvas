@@ -176,15 +176,6 @@ export type CaptureProfile = {
   nativeHeight: number
   /** The text box, in native pixels, snapped to the 8-pixel tile grid. */
   textRect: PixelRect
-  /**
-   * Where the opponent's status gauge sits, in native pixels — what `battleGaugeVisible` reads to
-   * answer whether a fight is on screen. `null` is a profile calibrated before the measurement
-   * existed, and means the watcher behaves exactly as it did before it.
-   *
-   * Deliberately **not** snapped to the tile grid, unlike `textRect`: the gauge is drawn at
-   * `y = 18..21`, inside tile row 2, so a tile-snapped rectangle could not name it.
-   */
-  battleRect: PixelRect | null
 }
 
 /**
@@ -199,6 +190,15 @@ export type CaptureProfileV5 = CaptureProfileV7 & { glyphs: Glyph[] }
  * `CaptureProfileV5`, and the only thing `readCaptureProfileV7` still builds.
  */
 export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
+
+/**
+ * A profile as V8 stored it: `CaptureProfileV7` plus where the opponent's status gauge sits, in
+ * native pixels — what `battleGaugeVisible` used to read to answer whether a fight is on screen,
+ * until #104 deleted the M15 battle-detection machinery and left the measurement with no reader.
+ * `null` was a profile calibrated before the measurement existed. The pre-migration shape, beside
+ * `CaptureProfileV5` and `CaptureProfileV7`, and the only thing `readCaptureProfileV8` still builds.
+ */
+export type CaptureProfileV8 = CaptureProfile & { battleRect: PixelRect | null }
 
 /**
  * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
@@ -380,13 +380,33 @@ export type ProjectFileV7 = {
 }
 
 /**
- * V8 gives a profile the one measurement it was missing: where the opponent's status gauge sits,
- * which is what tells a fight from a conversation. `battleRect` is nullable rather than required
- * because a profile calibrated before this version has never been measured for it — see
- * `CaptureProfile`.
+ * V8 gave a profile the one measurement it was missing: where the opponent's status gauge sits,
+ * which was meant to tell a fight from a conversation. `battleRect` is nullable rather than
+ * required because a profile calibrated before this version had never been measured for it — see
+ * `CaptureProfileV8`. Names `CaptureProfileV8`, not `CaptureProfile` — the profile shape a V9
+ * document holds no longer carries `battleRect`, and a versioned file type that named the current
+ * shape would silently redefine what a V8 document on disk held.
  */
 export type ProjectFileV8 = {
   schemaVersion: 8
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
+  captureProfiles: CaptureProfileV8[]
+  relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
+  pendingCaptures: PendingCapture[]
+}
+
+/**
+ * V9 drops `battleRect`: #104 deleted the M15 battle-detection machinery that read it, so the
+ * measurement was a calibration step asking the user for something the app no longer used.
+ */
+export type ProjectFileV9 = {
+  schemaVersion: 9
   projectName: string
   savedAt: string
   maps: GameMap[]
@@ -412,9 +432,10 @@ export type StoredProjectFile =
   | ProjectFileV6
   | ProjectFileV7
   | ProjectFileV8
+  | ProjectFileV9
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV8
+export type ProjectFile = ProjectFileV9
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not

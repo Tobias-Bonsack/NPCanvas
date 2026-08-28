@@ -32,13 +32,7 @@ export type ScreenMapping = Pick<CaptureProfile, 'screenRect' | 'nativeWidth' | 
  */
 export type ProfileCalibration = Pick<
   CaptureProfile,
-  | 'frameWidth'
-  | 'frameHeight'
-  | 'screenRect'
-  | 'nativeWidth'
-  | 'nativeHeight'
-  | 'textRect'
-  | 'battleRect'
+  'frameWidth' | 'frameHeight' | 'screenRect' | 'nativeWidth' | 'nativeHeight' | 'textRect'
 >
 
 /** Frame pixels per native pixel, per axis. Non-integer in general — an emulator scales freely. */

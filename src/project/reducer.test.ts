@@ -132,7 +132,6 @@ const CALIBRATION: ProfileCalibration = {
   nativeWidth: 160,
   nativeHeight: 144,
   textRect: { x: 8, y: 96, width: 144, height: 40 },
-  battleRect: null,
 }
 
 function captureProfile(id: string, name = id): CaptureProfile {

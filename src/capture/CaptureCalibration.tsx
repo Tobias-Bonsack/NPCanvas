@@ -23,7 +23,7 @@ import './CaptureCalibration.css'
  * Which rectangle the next drag draws. The screen comes first because the text box is stored in
  * native pixels, and there is no native space to store it in until the screen is outlined.
  */
-type Step = 'screen' | 'text' | 'battle'
+type Step = 'screen' | 'text'
 
 /** A drag in progress, in frame pixels. In state rather than a ref: it is drawn every move. */
 type Drag = { pointerId: number; from: Point; to: Point }
@@ -42,19 +42,13 @@ type Zoom = (typeof ZOOMS)[number]
 const TILE_STEP_TOLERANCE = 0.05
 
 /**
- * Outlining a console screen, its text box, and the gauge that says a fight is on, on one frozen
- * frame.
+ * Outlining a console screen and its text box, on one frozen frame.
  *
- * Three rectangles, and only the first is measured freely: the screen rect plus the console's own
- * resolution fix the 8-pixel tile grid exactly, so the text box can be dragged sloppily and snap
- * to whole tiles. The grid is drawn over the frame throughout, because a screen rect that is a
- * few pixels off is obvious there and invisible everywhere else — it would surface as glyphs
- * that never match, several issues later.
- *
- * The third is optional and is the one rectangle that is *not* tile-snapped: the gauge sits across
- * a tile boundary rather than inside one, so whole native pixels are the finest thing that can
- * describe it. A profile saved without it reads no gauge, and the watcher then behaves exactly as
- * it did before the measurement existed.
+ * Only the first rectangle is measured freely: the screen rect plus the console's own resolution
+ * fix the 8-pixel tile grid exactly, so the text box can be dragged sloppily and snap to whole
+ * tiles. The grid is drawn over the frame throughout, because a screen rect that is a few pixels
+ * off is obvious there and invisible everywhere else — it would surface as glyphs that never
+ * match, several issues later.
  */
 export function CaptureCalibration({
   frame,
@@ -77,7 +71,6 @@ export function CaptureCalibration({
     profile !== null && profileApplies(profile, frame.width, frame.height) ? profile.screenRect : null,
   )
   const [textRect, setTextRect] = useState<PixelRect | null>(profile?.textRect ?? null)
-  const [battleRect, setBattleRect] = useState<PixelRect | null>(profile?.battleRect ?? null)
   const [step, setStep] = useState<Step>(() =>
     profile !== null && profileApplies(profile, frame.width, frame.height) ? 'text' : 'screen',
   )
@@ -106,9 +99,7 @@ export function CaptureCalibration({
     if (step === 'screen') return dragged
     if (mapping === null) return null
     const native = frameToNative(mapping, dragged)
-    // The gauge is drawn across a tile boundary — two rules four rows apart, inside one row of
-    // cells — so this rectangle is rounded to whole native pixels and never snapped to the grid.
-    return step === 'battle' ? roundRect(native) : snapToTileGrid(native, nativeBounds)
+    return snapToTileGrid(native, nativeBounds)
   }
 
   /**
@@ -160,10 +151,6 @@ export function CaptureCalibration({
       setStep('text')
       return
     }
-    if (step === 'battle') {
-      setBattleRect(result)
-      return
-    }
     setTextRect(result)
   }
 
@@ -186,8 +173,6 @@ export function CaptureCalibration({
 
   const previewInFrame = previewRect()
   const textInFrame = mapping === null || textRect === null ? null : nativeToFrame(mapping, textRect)
-  const battleInFrame =
-    mapping === null || battleRect === null ? null : nativeToFrame(mapping, battleRect)
   const saveable = name.trim() !== '' && screenRect !== null && textRect !== null
 
   return (
@@ -230,16 +215,6 @@ export function CaptureCalibration({
                   y={textInFrame.y}
                   width={textInFrame.width}
                   height={textInFrame.height}
-                  vectorEffect="non-scaling-stroke"
-                />
-              )}
-              {battleInFrame !== null && (
-                <rect
-                  className="capture-calibration__battle"
-                  x={battleInFrame.x}
-                  y={battleInFrame.y}
-                  width={battleInFrame.width}
-                  height={battleInFrame.height}
                   vectorEffect="non-scaling-stroke"
                 />
               )}
@@ -287,15 +262,6 @@ export function CaptureCalibration({
               onClick={() => setStep('text')}
             >
               2 · Text box
-            </button>
-            <button
-              type="button"
-              className="button capture-calibration__toggle"
-              aria-pressed={step === 'battle'}
-              disabled={screenRect === null}
-              onClick={() => setStep('battle')}
-            >
-              3 · Battle gauge
             </button>
           </fieldset>
 
@@ -405,11 +371,6 @@ export function CaptureCalibration({
               {screenRect === null ? 'Screen not outlined' : describeRect('Screen', screenRect, 'frame px')}
             </span>
             <span>{textRect === null ? 'Text box not drawn' : describeTextRect(textRect)}</span>
-            <span>
-              {battleRect === null
-                ? 'Battle gauge not drawn'
-                : describeRect('Battle gauge', battleRect, 'native px')}
-            </span>
           </p>
           <div className="capture-calibration__actions">
             <button type="button" className="capture-calibration__button" onClick={onCancel}>
@@ -428,7 +389,6 @@ export function CaptureCalibration({
                   nativeWidth,
                   nativeHeight,
                   textRect,
-                  battleRect,
                 })
               }}
             >
@@ -444,8 +404,6 @@ export function CaptureCalibration({
 const STEP_HINTS: Readonly<Record<Step, string>> = {
   screen: 'Drag a rectangle around the console screen itself — not the window, not the letterbox.',
   text: 'Drag roughly around the text box. It snaps to the tile grid, so sloppy is fine.',
-  battle:
-    'Optional. Drag around the opponent’s health gauge during a fight — the watcher reads it to know a fight is on, and leaves what a fight says out of the conversation. Whole pixels, not tiles.',
 }
 
 /**

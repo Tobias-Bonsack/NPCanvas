@@ -17,6 +17,7 @@ import type {
   CaptureProfileId,
   CaptureProfileV5,
   CaptureProfileV7,
+  CaptureProfileV8,
   Dialogue,
   DialogueId,
   DialogueMedia,
@@ -42,6 +43,7 @@ import type {
   ProjectFileV6,
   ProjectFileV7,
   ProjectFileV8,
+  ProjectFileV9,
   ProjectRepairs,
   Quest,
   QuestId,
@@ -58,7 +60,7 @@ import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 8,
+    schemaVersion: 9,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -415,7 +417,19 @@ function readGlyphs(value: unknown, path: string): Glyph[] {
   return readArray(value, path).map((glyph, index) => readGlyph(glyph, `${path}[${index}]`))
 }
 
+/**
+ * A V9 profile: exactly the fields `readCaptureProfileV7` already reads. V8's gauge measurement
+ * had no reader left after #104, so V9 drops it and this is once again a plain pass-through.
+ */
 function readCaptureProfile(value: unknown, path: string): CaptureProfile {
+  return readCaptureProfileV7(value, path)
+}
+
+/**
+ * A V8 profile, carrying the gauge measurement V9 dropped. Kept beside `readCaptureProfileV5` as
+ * the pre-migration reader, and the only thing that still builds `CaptureProfileV8`.
+ */
+function readCaptureProfileV8(value: unknown, path: string): CaptureProfileV8 {
   const raw = readObject(value, path)
   return {
     ...readCaptureProfileV7(value, path),
@@ -428,9 +442,9 @@ function readCaptureProfile(value: unknown, path: string): CaptureProfile {
 
 /**
  * A V6-and-V7 profile, before the gauge was measured. Kept beside `readCaptureProfileV5` as the
- * pre-migration reader, and used by `readCaptureProfile` for the fields the two share — the
- * measurement `battleRect` adds is appended *after* them, so a migrated document's first save
- * writes the keys in the order every save after it does.
+ * pre-migration reader, and used by both `readCaptureProfile` and `readCaptureProfileV8` for the
+ * fields they share — the measurement V8 added and V9 dropped again is appended *after* them, so a
+ * migrated document's first save writes the keys in the order every save after it does.
  */
 function readCaptureProfileV7(value: unknown, path: string): CaptureProfileV7 {
   const raw = readObject(value, path)
@@ -724,27 +738,33 @@ function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV7(
-        migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+      return migrateV8(
+        migrateV7(
+          migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+        ),
       )
     case 2:
-      return migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw)))))))
+      return migrateV8(
+        migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+      )
     case 3:
-      return migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))
+      return migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw)))))))
     case 4:
-      return migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw)))))
+      return migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw))))))
     case 5:
-      return migrateV7(migrateV6(migrateV5(readProjectFileV5(raw))))
+      return migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw)))))
     case 6:
-      return migrateV7(migrateV6(readProjectFileV6(raw)))
+      return migrateV8(migrateV7(migrateV6(readProjectFileV6(raw))))
     case 7:
-      return migrateV7(readProjectFileV7(raw))
+      return migrateV8(migrateV7(readProjectFileV7(raw)))
     case 8:
-      return readProjectFileV8(raw)
+      return migrateV8(readProjectFileV8(raw))
+    case 9:
+      return readProjectFileV9(raw)
     default:
       throw new SchemaError(
         'schemaVersion',
-        `1, 2, 3, 4, 5, 6, 7 or 8, but found ${String(schemaVersion)}`,
+        `1, 2, 3, 4, 5, 6, 7, 8 or 9, but found ${String(schemaVersion)}`,
       )
   }
 }
@@ -903,6 +923,33 @@ function readProjectFileV8(raw: Record<string, unknown>): ProjectFileV8 {
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,
     quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV8),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+  }
+}
+
+/**
+ * V9 reads the profile shape with `battleRect` gone again — #104 deleted the machinery that read
+ * it, so a V9 document holds a plain `CaptureProfile`. Otherwise identical to V8.
+ */
+function readProjectFileV9(raw: Record<string, unknown>): ProjectFileV9 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 9,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
     relevanceTags,
     glyphs: readGlyphs(raw.glyphs, 'glyphs'),
@@ -1053,5 +1100,34 @@ function migrateV7(file: ProjectFileV7): ProjectFileV8 {
     ...file,
     schemaVersion: 8,
     captureProfiles: file.captureProfiles.map((profile) => ({ ...profile, battleRect: null })),
+  }
+}
+
+/**
+ * V8 measured a gauge nothing reads: #104 deleted the M15 battle-detection machinery, so
+ * `battleRect` is a claim about the screen no code checks anymore, and the calibration step that
+ * asked for it was asking for nothing. V9 drops it — there is nothing to fold it into, the same
+ * way `migrateV6` had nothing to carry over.
+ */
+function migrateV8(file: ProjectFileV8): ProjectFileV9 {
+  return {
+    ...file,
+    schemaVersion: 9,
+    captureProfiles: file.captureProfiles.map(dropBattleRect),
+  }
+}
+
+/** A V8 profile as V9 stores it. Written out field by field rather than destructured, because
+ * `noUnusedLocals` fails on the binding a rest-spread would leave behind. */
+function dropBattleRect(profile: CaptureProfileV8): CaptureProfile {
+  return {
+    id: profile.id,
+    name: profile.name,
+    frameWidth: profile.frameWidth,
+    frameHeight: profile.frameHeight,
+    screenRect: profile.screenRect,
+    nativeWidth: profile.nativeWidth,
+    nativeHeight: profile.nativeHeight,
+    textRect: profile.textRect,
   }
 }

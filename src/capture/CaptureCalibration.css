@@ -98,14 +98,6 @@
   stroke-width: 2;
 }
 
-/* Distinct from the text box on purpose: the two are drawn at once and mean different things. */
-.capture-calibration__battle {
-  fill: var(--trail);
-  fill-opacity: 0.18;
-  stroke: var(--trail);
-  stroke-width: 2;
-}
-
 .capture-calibration__preview {
   fill: none;
   stroke: var(--text);
