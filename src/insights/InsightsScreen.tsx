@@ -64,7 +64,7 @@ export function InsightsScreen({
   return (
     <section className="insights">
       <header className="insights__bar">
-        <h1 className="insights__title">Insights</h1>
+        <h1 className="screen-title">Insights</h1>
         <p className="insights__count hint-text">
           {dialogues.length} of {project.dialogues.length}{' '}
           {project.dialogues.length === 1 ? 'dialogue' : 'dialogues'}

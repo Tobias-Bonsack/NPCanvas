@@ -546,7 +546,7 @@ function BucketDetail({
         {bucket.dialogues.length} {bucket.dialogues.length === 1 ? 'dialogue' : 'dialogues'} in{' '}
         {describeBucket(bucket, unit)}
       </p>
-      <ul className="insights__rows">
+      <ul className="framed-list insights__rows">
         {bucket.dialogues.slice(0, DETAIL_LIMIT).map((dialogue) => (
           <li key={dialogue.id}>
             <DialogueRow

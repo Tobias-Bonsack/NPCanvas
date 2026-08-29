@@ -33,12 +33,8 @@
 
 /* `.hint-text` (index.css) supplies the rest. */
 
-/* What answering or discarding the held queue did, when it went wrong. */
-.capture-recorder__held-error {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--danger);
-}
+/* What answering or discarding the held queue did, when it went wrong — `.error-text`
+   (index.css) replaces the old `.capture-recorder__held-error`. */
 
 /* Two triggers side by side rather than stacked — they are one decision (which capture to record
    into), not two independent controls. */

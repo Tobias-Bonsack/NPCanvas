@@ -39,12 +39,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
     if (this.state.kind === 'ok') return this.props.children
     return (
       <main className="error-boundary">
-        <h1 className="error-boundary__title">Something broke</h1>
-        <p className="error-boundary__lead">
+        <h1 className="fatal-title">Something broke</h1>
+        <p className="lead-text">
           NPCanvas stopped rendering. Your project folder on disk is untouched — the last save is
           still there, and opening a folder again rebuilds the view from it.
         </p>
-        <p className="error-boundary__message" role="status">
+        <p className="message-box" role="status">
           {this.state.message}
         </p>
         <div className="error-boundary__actions">

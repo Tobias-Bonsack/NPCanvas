@@ -107,7 +107,7 @@ export function FilterBar({
       </div>
 
       {invertedRange && (
-        <p className="filter-bar__error" role="alert">
+        <p className="error-text" role="alert">
           "From" is after "To" — no dialogue can be spoken in a range that ends before it starts.
         </p>
       )}

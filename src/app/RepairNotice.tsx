@@ -19,8 +19,8 @@ export function RepairNotice({
   onDismiss: () => void
 }): ReactElement {
   return (
-    <div className="repair-notice" role="status">
-      <div className="repair-notice__text">
+    <div className="repair-notice shell-banner" role="status">
+      <div className="shell-banner__text">
         <strong className="repair-notice__title">This project opened with repairs</strong>
         <span className="repair-notice__message hint-text">
           {describeRepairs(repairs)} They pointed at records the folder no longer holds, so they
@@ -29,7 +29,7 @@ export function RepairNotice({
       </div>
       <button
         type="button"
-        className="repair-notice__dismiss button"
+        className="repair-notice__dismiss shell-banner__dismiss button"
         onClick={onDismiss}
         aria-label="Dismiss this notice"
       >

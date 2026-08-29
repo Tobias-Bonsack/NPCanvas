@@ -97,10 +97,7 @@
   gap: var(--space-2);
 }
 
-.dialogue-panel__title {
-  margin: 0;
-  font-size: var(--text-md);
-}
+/* `.panel-title` (index.css) replaces the old `.dialogue-panel__title`. */
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .dialogue-panel__map {
@@ -192,14 +189,7 @@
   color: var(--text);
 }
 
-.dialogue-media__hint a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.dialogue-media__hint a:hover {
-  text-decoration: underline;
-}
+/* `.hint-text a` (index.css) supplies the link colour and hover underline. */
 
 .dialogue-media__warning {
   color: var(--warning);

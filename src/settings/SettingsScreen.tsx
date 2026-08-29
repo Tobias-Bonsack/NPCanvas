@@ -76,7 +76,7 @@ export function SettingsScreen({ project }: { project: ProjectFile }): ReactElem
   return (
     <section className="settings">
       <header className="settings__bar">
-        <h1 className="settings__title">Settings</h1>
+        <h1 className="screen-title">Settings</h1>
       </header>
 
       {/* The project's own vocabulary, above the machine setup below it — the words the project

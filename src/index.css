@@ -270,6 +270,18 @@ body {
   outline-offset: 1px;
 }
 
+/* A primary fill with no hover state of its own — the calibration modal's confirm button and the
+   glyph learner's "keep and name" button both sit at a smaller size than `.button--primary`
+   assumes, and reassert the same accent colours on `:hover` rather than adopting its brightness
+   filter, so the caller's own `.button` sizing overrides are the only thing that differs between
+   resting and hovered. */
+.button--primary-flat,
+.button--primary-flat:hover:not(:disabled) {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 /* One mutually-exclusive-choice segmented control — the map's `.tool-picker` and the timeline's
    `.grain-picker` are the same shape at two different sizes, so only sizing (font-size, padding)
    stays in the feature file. The focus ring is inset (`-2px`) rather than the usual `1px` outset:
@@ -324,6 +336,139 @@ body {
   margin: 0;
   font-size: var(--text-2xs);
   color: var(--text-muted);
+}
+
+/* A link inside a `.hint-text` paragraph — the empty-state "see the docs" style repeated
+   identically in the dialogue panel, insights and the quest board before this rule existed. */
+.hint-text a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.hint-text a:hover {
+  text-decoration: underline;
+}
+
+/* An alert paragraph the same size as `.hint-text` but in the danger colour — a filter bar's
+   validation error, a calibration warning, a held-queue failure. Kept separate from `.hint-text`
+   itself since a caller that already has one swaps the class rather than fighting a colour
+   override. */
+.error-text {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--danger);
+}
+
+/* The colour recipe every hue swatch shares — a zone's palette, a quest's, a relevance tag's —
+   sized and framed identically; only the `background` each caller sets (via its own `--*-hue`)
+   differs. */
+.hue-swatch {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+}
+
+.hue-swatch[aria-pressed='true'] {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* An `<h1>`-level screen title — insights, the quest board and settings all set one this size
+   with no margin, letting the bar around it own the spacing. */
+.screen-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+}
+
+/* A heading inside a panel or modal, one size down from `.screen-title` — shared by every
+   overlay (calibration, the glyph learner, the glyph set) and the dialogue panel's own header. */
+.panel-title {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+/* The title-plus-hint stack at the top of a modal, and the row of actions at its bottom — the
+   glyph learner and the glyph set share both byte for byte. */
+.panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* A dismissible strip between the nav and the view — the save-failure and repair banners share
+   the frame and the text stack; only the border/title colour say which kind of news it is. */
+.shell-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface-2);
+}
+
+.shell-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is only the
+   larger glyph size and the transparent resting background, shared by both banners' dismiss. */
+.shell-banner__dismiss {
+  font-size: 1.125rem;
+  line-height: 1;
+  background: transparent;
+}
+
+/* A borderless list, framed as one card with hairlines between its own rows — the timeline's
+   hover detail and a quest card's linked-dialogue list share the shape. */
+.framed-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  overflow: hidden;
+}
+
+/* A `<h1>` on a full-screen state — the crash screen and the connect screen both set one at
+   `--text-4xl` with no margin. */
+.fatal-title {
+  margin: 0;
+  font-size: var(--text-4xl);
+}
+
+/* A muted lead paragraph under a screen title — the crash screen, the connect screen and the
+   empty map screen's own onboarding copy all read the same way. */
+.lead-text {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* A monospaced status/error box — the crash screen's stack summary and the connect screen's
+   permission error share the same frame. */
+.message-box {
+  margin: 0;
+  align-self: stretch;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-2);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
 }
 
 /* The count beside a heading — "Open 2", "3 dialogues" — a pill rather than a parenthesis so

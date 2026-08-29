@@ -243,7 +243,7 @@ function RelevanceTagRow({
           <button
             key={hue}
             type="button"
-            className="relevance-tag-list__swatch"
+            className="hue-swatch relevance-tag-list__swatch"
             style={relevanceHueStyle(hue)}
             aria-label={`Hue ${hue}`}
             aria-pressed={hue === tag.hue}

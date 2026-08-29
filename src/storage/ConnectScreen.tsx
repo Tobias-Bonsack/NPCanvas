@@ -16,7 +16,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
     case 'unsupported':
       return (
         <Panel title="Unsupported browser">
-          <p className="connect__lead">
+          <p className="lead-text">
             NPCanvas keeps your project in a folder on disk using the File System Access API,
             which only Chromium-based browsers implement. Open this page in Chrome or Edge.
           </p>
@@ -31,7 +31,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
     case 'disconnected':
       return (
         <Panel title="NPCanvas">
-          <p className="connect__lead">
+          <p className="lead-text">
             Pick a project folder. NPCanvas reads and writes <code>data.json</code> and a{' '}
             <code>media/</code> subfolder inside it, and nothing outside it.
           </p>
@@ -48,7 +48,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
     case 'reconnecting':
       return (
         <Panel title="Reconnect">
-          <p className="connect__lead">
+          <p className="lead-text">
             NPCanvas remembers <strong>{state.directoryName}</strong>, but browsers drop folder
             access when the tab closes. Grant it again to pick up where you left off.
           </p>
@@ -67,7 +67,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
         <Panel title="Loading">
           {/* The whole panel is swapped per state, so the announcement has to ride on the text
               that appears: a folder opening is otherwise silent, and it can take a while. */}
-          <p className="connect__lead" role="status">
+          <p className="lead-text" role="status">
             Reading <strong>{state.directoryName}</strong>…
           </p>
         </Panel>
@@ -76,10 +76,10 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
     case 'load-failed':
       return (
         <Panel title="Could not open project">
-          <p className="connect__lead">
+          <p className="lead-text">
             <strong>{state.directoryName}</strong> could not be opened.
           </p>
-          <p className="connect__error" role="status">
+          <p className="message-box" role="status">
             {state.message}
           </p>
           {/* The picker, and only the picker. A "Try again" here re-asked for a grant the user
@@ -105,7 +105,7 @@ export function ConnectScreen({ state }: { state: ConnectState }): ReactElement 
 function Panel({ title, children }: { title: string; children: ReactNode }): ReactElement {
   return (
     <main className="connect">
-      <h1 className="connect__title">{title}</h1>
+      <h1 className="fatal-title">{title}</h1>
       {children}
     </main>
   )

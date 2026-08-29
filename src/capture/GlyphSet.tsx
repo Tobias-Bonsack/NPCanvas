@@ -40,8 +40,8 @@ export function GlyphSet({
         aria-label="The alphabet this project has learned"
         tabIndex={-1}
       >
-        <header className="glyph-set__header">
-          <h2 className="glyph-set__title">
+        <header className="panel-header">
+          <h2 className="panel-title">
             {glyphs.length === 1 ? 'One glyph learned' : `${glyphs.length} glyphs learned`}
           </h2>
           <p className="glyph-set__hint hint-text">
@@ -88,7 +88,7 @@ export function GlyphSet({
           </ul>
         )}
 
-        <footer className="glyph-set__footer">
+        <footer className="panel-footer">
           <button type="button" className="glyph-set__button button--primary" onClick={onClose}>
             Done
           </button>

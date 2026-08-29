@@ -115,7 +115,7 @@ export function QuestBoard({
   return (
     <section className="quest-board">
       <header className="quest-board__bar">
-        <h1 className="quest-board__title">Quest board</h1>
+        <h1 className="screen-title">Quest board</h1>
         <button type="button" className="button--primary" onClick={createQuest}>
           New quest
         </button>
@@ -307,7 +307,7 @@ function QuestCard({
           .
         </p>
       ) : (
-        <ol className="quest-card__dialogues">
+        <ol className="framed-list quest-card__dialogues">
           {linked.map((dialogue) => (
             <li key={dialogue.id} className="quest-card__dialogue">
               <DialogueRow dialogue={dialogue} zones={resolveZones(dialogue.id, zoneIndex, zonesById)} />
@@ -373,7 +373,7 @@ function QuestCardMode({
             <button
               key={hue}
               type="button"
-              className="quest-card__swatch"
+              className="hue-swatch quest-card__swatch"
               style={questHueStyle(hue)}
               aria-label={`Hue ${hue}`}
               aria-pressed={hue === quest.hue}

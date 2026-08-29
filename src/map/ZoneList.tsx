@@ -171,7 +171,7 @@ function ZoneRow({
           <button
             key={hue}
             type="button"
-            className="zone-list__swatch"
+            className="hue-swatch zone-list__swatch"
             style={zoneHueStyle(hue)}
             aria-label={`Hue ${hue}`}
             aria-pressed={hue === zone.hue}

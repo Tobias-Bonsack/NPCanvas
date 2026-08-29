@@ -21,10 +21,7 @@
   flex-wrap: wrap;
 }
 
-.quest-board__title {
-  margin: 0;
-  font-size: var(--text-2xl);
-}
+/* `.screen-title` (index.css) replaces the old `.quest-board__title`. */
 
 .quest-board__empty {
   margin: 0;
@@ -125,19 +122,9 @@
   flex-wrap: wrap;
 }
 
+/* `.hue-swatch` (index.css) supplies the size/frame/focus ring; only the fill is the quest's own. */
 .quest-card__swatch {
-  width: 1.25rem;
-  height: 1.25rem;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-1);
   background: hsl(var(--quest-hue) 75% 62%);
-  cursor: pointer;
-}
-
-.quest-card__swatch[aria-pressed='true'] {
-  outline: var(--focus-ring);
-  outline-offset: 1px;
 }
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
@@ -145,25 +132,9 @@
   font-size: var(--text-xs);
 }
 
-.quest-card__empty a {
-  color: var(--accent);
-  text-decoration: none;
-}
+/* `.hint-text a` (index.css) supplies the link colour and hover underline. */
 
-.quest-card__empty a:hover {
-  text-decoration: underline;
-}
-
-.quest-card__dialogues {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  overflow: hidden;
-}
+/* `.framed-list` (index.css) replaces the old `.quest-card__dialogues` body. */
 
 .quest-card__dialogue {
   display: flex;

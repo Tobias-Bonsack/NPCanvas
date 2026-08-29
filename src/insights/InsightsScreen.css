@@ -21,10 +21,7 @@
   flex-wrap: wrap;
 }
 
-.insights__title {
-  margin: 0;
-  font-size: var(--text-2xl);
-}
+/* `.screen-title` (index.css) replaces the old `.insights__title`. */
 
 /* `.hint-text` (index.css) supplies margin/colour; the size is a step up. */
 .insights__count {
@@ -38,14 +35,7 @@
   font-size: var(--text-xs);
 }
 
-.insights__empty a {
-  color: var(--accent);
-  text-decoration: none;
-}
-
-.insights__empty a:hover {
-  text-decoration: underline;
-}
+/* `.hint-text a` (index.css) supplies the link colour and hover underline. */
 
 /* ---- filter bar ---- */
 
@@ -106,11 +96,7 @@
   cursor: not-allowed;
 }
 
-.filter-bar__error {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--danger);
-}
+/* `.error-text` (index.css) replaces the old `.filter-bar__error`. */
 
 .filter-bar__chips {
   display: flex;
@@ -363,19 +349,8 @@
 /* ---- one dialogue row ---- */
 
 /* The row itself (`.dialogue-row` and its children) is shared by every feature that lists
-   dialogues — see `src/dialogue-row/DialogueRow.css`. This is only the list wrapper the
-   timeline's hover detail draws around it. */
-.insights__rows {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  overflow: hidden;
-}
-
+   dialogues — see `src/dialogue-row/DialogueRow.css`. `.framed-list` (index.css) is the list
+   wrapper the timeline's hover detail draws around it. */
 .insights__rows > li + li {
   border-top: 1px solid var(--border);
 }

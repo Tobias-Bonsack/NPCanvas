@@ -189,7 +189,7 @@ export function CaptureRecorder(): ReactElement {
         </p>
       )}
       {heldState.kind === 'failed' && (
-        <p className="capture-recorder__held-error" role="alert">
+        <p className="error-text" role="alert">
           {heldState.message}
         </p>
       )}

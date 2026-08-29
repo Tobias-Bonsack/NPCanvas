@@ -211,7 +211,7 @@ export function DialoguePanel({
       {/* Everything the panel is about scrolls; the handle above does not. */}
       <div className="dialogue-panel__content">
         <header className="dialogue-panel__header">
-          <h2 className="dialogue-panel__title">Dialogue</h2>
+          <h2 className="panel-title">Dialogue</h2>
           <button type="button" className="button" onClick={onClose}>
             Close
           </button>

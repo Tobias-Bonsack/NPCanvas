@@ -1,21 +1,7 @@
-/* Shares the save banner's slot and geometry — same place in the shell, same reading order —
-   but not its danger ink: this reports a load that succeeded, not a write that failed. */
+/* `.shell-banner` (index.css) supplies the frame; this is only the accent ink that tells it apart
+   from the save-failure banner sharing the same slot and geometry. */
 .repair-notice {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--surface-2);
   border-left: 3px solid var(--accent);
-}
-
-.repair-notice__text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
 }
 
 .repair-notice__title {
@@ -29,11 +15,7 @@
   font-size: var(--text-xs);
 }
 
-/* The `.button` base (index.css) supplies the box, hover and focus ring; this is only the larger
-   glyph size and the transparent resting background. */
+/* `.shell-banner__dismiss` (index.css) supplies the rest; only the push-right differs. */
 .repair-notice__dismiss {
-  font-size: 1.125rem;
-  line-height: 1;
   margin-left: auto;
-  background: transparent;
 }

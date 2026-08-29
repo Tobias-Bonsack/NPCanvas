@@ -19,10 +19,7 @@
   gap: var(--space-3);
 }
 
-.settings__title {
-  margin: 0;
-  font-size: var(--text-2xl);
-}
+/* `.screen-title` (index.css) replaces the old `.settings__title`. */
 
 /* `.card` (index.css) supplies the border/surface; the radius is flatter than the base here. */
 .settings__section {
@@ -151,19 +148,9 @@
   flex-wrap: wrap;
 }
 
+/* `.hue-swatch` (index.css) supplies the size/frame/focus ring; only the fill is the tag's own. */
 .relevance-tag-list__swatch {
-  width: 1.25rem;
-  height: 1.25rem;
-  padding: 0;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-1);
   background: hsl(var(--relevance-hue) var(--relevance-sl));
-  cursor: pointer;
-}
-
-.relevance-tag-list__swatch[aria-pressed='true'] {
-  outline: var(--focus-ring);
-  outline-offset: 1px;
 }
 
 /* --breakpoint-wide (index.css). Nothing here is prose: a shortcut row is two short columns,

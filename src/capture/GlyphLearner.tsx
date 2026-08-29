@@ -61,8 +61,8 @@ export function GlyphLearner({
   return (
     <div className="glyph-learner overlay-backdrop" role="dialog" aria-modal="true" aria-label="Learn the console's alphabet">
       <div className="glyph-learner__panel card">
-        <header className="glyph-learner__header">
-          <h2 className="glyph-learner__title">
+        <header className="panel-header">
+          <h2 className="panel-title">
             {tiles.length === 1 ? 'One tile is not in the alphabet yet' : `${tiles.length} tiles are not in the alphabet yet`}
           </h2>
           <p className="glyph-learner__hint hint-text">
@@ -108,7 +108,7 @@ export function GlyphLearner({
           ))}
         </ol>
 
-        <footer className="glyph-learner__footer">
+        <footer className="panel-footer">
           <button
             type="button"
             className="glyph-learner__button glyph-learner__button--cancel button"
@@ -123,7 +123,7 @@ export function GlyphLearner({
           )}
           <button
             type="button"
-            className="glyph-learner__button glyph-learner__button--primary button"
+            className="glyph-learner__button button button--primary-flat"
             disabled={!complete}
             onClick={() =>
               onConfirm(

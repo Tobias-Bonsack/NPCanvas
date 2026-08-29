@@ -13,15 +13,7 @@
   gap: var(--space-4);
 }
 
-.connect__title {
-  font-size: var(--text-4xl);
-  margin: 0;
-}
-
-.connect__lead {
-  margin: 0;
-  color: var(--text-muted);
-}
+/* `.fatal-title` and `.lead-text` (index.css) replace the old `.connect__title`/`__lead`. */
 
 .connect__note {
   margin: 0;
@@ -31,14 +23,5 @@
   padding-left: var(--space-3);
 }
 
-.connect__error {
-  margin: 0;
-  align-self: stretch;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2);
-  background: var(--surface-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
+/* `.message-box` (index.css) replaces the old `.connect__error`. */
 

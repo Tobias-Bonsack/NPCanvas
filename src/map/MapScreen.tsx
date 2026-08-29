@@ -302,7 +302,7 @@ export function MapScreen({
       <section className="map-screen map-screen--empty">
         <div className="map-screen__cta">
           <h1 className="map-screen__title">Import a map</h1>
-          <p className="map-screen__lead">
+          <p className="lead-text">
             NPCanvas pins dialogue onto a map image you supply — a screenshot of the in-game
             map is ideal. Its pixel dimensions become the coordinate system for every pin and
             zone, so import it once at the size you want to work at.

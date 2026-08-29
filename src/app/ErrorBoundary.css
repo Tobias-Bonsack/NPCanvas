@@ -8,26 +8,8 @@
   align-items: flex-start;
 }
 
-.error-boundary__title {
-  font-size: var(--text-4xl);
-  margin: 0;
-}
-
-.error-boundary__lead {
-  margin: 0;
-  color: var(--text-muted);
-}
-
-.error-boundary__message {
-  margin: 0;
-  align-self: stretch;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2);
-  background: var(--surface-1);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
+/* `.fatal-title`, `.lead-text` and `.message-box` (index.css) replace the old
+   `.error-boundary__title`/`__lead`/`__message`. */
 
 .error-boundary__actions {
   display: flex;

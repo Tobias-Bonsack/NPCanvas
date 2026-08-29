@@ -41,8 +41,8 @@ function FailedBanner({
   onDismiss: () => void
 }): ReactElement {
   return (
-    <div className="save-banner" role="alert">
-      <div className="save-banner__text">
+    <div className="save-banner shell-banner" role="alert">
+      <div className="shell-banner__text">
         <strong className="save-banner__title">Your changes are not saved</strong>
         <span className="save-banner__message hint-text">{save.message}</span>
       </div>
@@ -57,7 +57,7 @@ function FailedBanner({
       </button>
       <button
         type="button"
-        className="save-banner__dismiss button"
+        className="shell-banner__dismiss button"
         onClick={onDismiss}
         aria-label="Dismiss this warning"
       >

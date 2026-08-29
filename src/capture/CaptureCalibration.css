@@ -19,10 +19,7 @@
   gap: var(--space-3);
 }
 
-.capture-calibration__title {
-  margin: 0;
-  font-size: var(--text-md);
-}
+/* `.panel-title` (index.css) replaces the old `.capture-calibration__title`. */
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .capture-calibration__step {
@@ -129,25 +126,17 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The unpressed look is `.button` (index.css); this only adds what a toggle needs on top. */
-.capture-calibration__toggle[aria-pressed='true'] {
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-/* The action among the toggles, so it does not read as another mode that is currently off. */
+/* The unpressed look is `.button` (index.css); this only adds what a toggle needs on top. Also
+   the look of `--action`, the one non-toggle among them — it must not read as another mode that
+   is currently off, so it wears the pressed fill unconditionally. */
+.capture-calibration__toggle[aria-pressed='true'],
 .capture-calibration__toggle--action {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.capture-calibration__warning {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--danger);
-}
+/* `.error-text` (index.css) replaces the old `.capture-calibration__warning`. */
 
 /* `.micro-label` (index.css) supplies the uppercase treatment. */
 .capture-calibration__field {
@@ -197,15 +186,6 @@
 .capture-calibration__button {
   font-size: var(--text-xs);
   padding: var(--space-1) var(--space-3);
-}
-
-/* `:hover` reasserts the accent fill against the base rule's own hover colours
-   (`.button:hover:not(:disabled)`, index.css), which otherwise outrank this on specificity. */
-.capture-calibration__button--primary,
-.capture-calibration__button--primary:hover:not(:disabled) {
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-color: var(--accent);
 }
 
 .capture-calibration__button:disabled {

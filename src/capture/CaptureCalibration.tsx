@@ -179,7 +179,7 @@ export function CaptureCalibration({
     <div className="capture-calibration overlay-backdrop" role="dialog" aria-modal="true" aria-label="Calibrate a capture profile">
       <div className="capture-calibration__panel card">
         <header className="capture-calibration__header">
-          <h2 className="capture-calibration__title">
+          <h2 className="panel-title">
             {profile === null ? 'New capture profile' : `Re-calibrate ${profile.name}`}
           </h2>
           <p className="capture-calibration__step hint-text">{STEP_HINTS[step]}</p>
@@ -347,14 +347,14 @@ export function CaptureCalibration({
         )}
 
         {measureFailed && (
-          <p className="capture-calibration__warning" role="alert">
+          <p className="error-text" role="alert">
             Nothing in this frame repeats on a pixel grid — the source is most likely smoothing as
             it scales. Nothing was changed; draw the rectangles by hand.
           </p>
         )}
         {screenRect !== null &&
           tileStepMismatch({ screenRect, nativeWidth, nativeHeight }) > TILE_STEP_TOLERANCE && (
-            <p className="capture-calibration__warning" role="alert">
+            <p className="error-text" role="alert">
               The tile is {tileStep({ screenRect, nativeWidth, nativeHeight }).x.toFixed(2)} wide but{' '}
               {tileStep({ screenRect, nativeWidth, nativeHeight }).y.toFixed(2)} tall. A stretched
               window can do that, but so can a screen rect that swallowed a title bar — and then no
@@ -378,7 +378,7 @@ export function CaptureCalibration({
             </button>
             <button
               type="button"
-              className="capture-calibration__button capture-calibration__button--primary button"
+              className="capture-calibration__button button button--primary-flat"
               disabled={!saveable}
               onClick={() => {
                 if (screenRect === null || textRect === null) return
