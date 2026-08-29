@@ -228,6 +228,22 @@ describe('matchGlyph', () => {
   it('reads a bitmap written in upper case hex', () => {
     expect(matchGlyph(tile, [{ char: 'D', bits: D.toUpperCase() }])?.char).toBe('D')
   })
+
+  it('skips a malformed bitmap beside a valid one rather than throwing', () => {
+    const alphabet: Glyph[] = [{ char: 'X', bits: 'nonsense' }, { char: 'D', bits: D }]
+
+    expect(matchGlyph(tile, alphabet)?.char).toBe('D')
+  })
+
+  it('hits after the cached index is replaced by an equal-valued but differently-identified array', () => {
+    // Two calls with equal-but-distinct arrays exercise the module-level cache the way a newly
+    // learned tile would: `mergeGlyphs` always returns a fresh array, never mutates in place.
+    expect(matchGlyph(tile, [...ALPHABET])?.char).toBe('D')
+    expect(matchGlyph(tile, [...ALPHABET])?.char).toBe('D')
+
+    const grown = [...ALPHABET, { char: 'X', bits: 'ffffffffffffffff' }]
+    expect(matchGlyph({ ...tile, rows: mustParse('ffffffffffffffff') }, grown)?.char).toBe('X')
+  })
 })
 
 describe('forgetGlyph', () => {

@@ -250,16 +250,33 @@ export function readTiles(bits: Uint8Array, stride: number, textRect: PixelRect)
  * identical bits, so at most one glyph can ever match — the first hit is the only hit.
  */
 export function matchGlyph(tile: TileMask, glyphs: readonly Glyph[]): Glyph | null {
-  const bits = toGlyphBits(tile.rows)
+  return glyphIndex(glyphs).get(toGlyphBits(tile.rows)) ?? null
+}
+
+/**
+ * `glyphs`, keyed by its own normalised bitmap — built once per array **identity**, the pattern
+ * `src/map/zone-index.ts:277-282` caches its candidates with. A learned tile changes `glyphs`'
+ * identity (`mergeGlyphs`/`forgetGlyph` both return a new array), so the very next read sees it.
+ *
+ * The key is the same `toGlyphBits(parseGlyphBits(bits))` round trip `matchGlyph` compared through
+ * before this cache existed, so an upper-case `bits` entry still matches and one that is not 16 hex
+ * characters is skipped rather than throwing. `mergeGlyphs` guarantees at most one glyph can match
+ * any bitmap, so which occurrence wins on a collision never arises in practice — the first is kept.
+ */
+function glyphIndex(glyphs: readonly Glyph[]): ReadonlyMap<string, Glyph> {
+  if (cachedGlyphIndex !== null && cachedGlyphIndex.glyphs === glyphs) return cachedGlyphIndex.byBits
+  const byBits = new Map<string, Glyph>()
   for (const glyph of glyphs) {
-    // Compared as parsed bytes rather than as strings: a bitmap hand-edited into `data.json` in
-    // upper case names the same tile, and one that is not 16 hex characters names none.
     const rows = parseGlyphBits(glyph.bits)
     if (rows === null) continue
-    if (toGlyphBits(rows) === bits) return glyph
+    const key = toGlyphBits(rows)
+    if (!byBits.has(key)) byBits.set(key, glyph)
   }
-  return null
+  cachedGlyphIndex = { glyphs, byBits }
+  return byBits
 }
+
+let cachedGlyphIndex: { glyphs: readonly Glyph[]; byBits: ReadonlyMap<string, Glyph> } | null = null
 
 /**
  * A whole text box, as a transcript plus whatever it could not name.
