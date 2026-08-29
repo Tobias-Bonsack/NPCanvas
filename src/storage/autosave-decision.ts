@@ -1,6 +1,34 @@
 import { assertNever } from '../assert-never.ts'
 import type { AppState, ProjectFile } from '../project/types.ts'
 
+// Long enough that a burst of typing is one write, short enough that a user who alt-tabs away
+// without triggering `visibilitychange` still loses under a second of work.
+export const DEBOUNCE_MS = 800
+
+/**
+ * The most a debounce may ever delay a write past the **first** unwritten edit.
+ *
+ * `DEBOUNCE_MS` alone assumes edits arrive in a burst that ends — the case it was tuned for. A
+ * watcher recording is not a burst: it settles a box roughly every 600 ms for as long as the
+ * conversation runs, and each box re-arms the 800 ms timer before it can fire, so the one
+ * situation the app is *designed* to leave running unattended is the one situation in which
+ * nothing reaches disk. Six or seven boxes of a scrolling conversation, still far less than a
+ * lost minute — and far less than the whole conversation a crash or a discarded tab would cost
+ * without a ceiling.
+ */
+export const MAX_UNSAVED_MS = 5000
+
+/**
+ * How long a debounce armed now may still wait, given when the oldest unwritten edit landed.
+ *
+ * Never past `MAX_UNSAVED_MS` from that edit: past the deadline this is `0`, which the caller
+ * reads as "write immediately" rather than arming a zero-length timer specially.
+ */
+export function nextDebounceMs(oldestUnwrittenEditAt: number, now: number): number {
+  const deadline = oldestUnwrittenEditAt + MAX_UNSAVED_MS
+  return Math.max(0, Math.min(DEBOUNCE_MS, deadline - now))
+}
+
 /**
  * Autosave's decisions, split out of the module that owns the timers and the IO so they can be
  * tested at all — see CLAUDE.md § Testing scope. Only the decision moves; nothing here reads a

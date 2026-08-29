@@ -2,10 +2,12 @@ import { assertNever } from '../assert-never.ts'
 import { dispatch, getState, subscribe } from '../project/store.ts'
 import type { ProjectFile, SaveFailure } from '../project/types.ts'
 import {
+  DEBOUNCE_MS,
   decideOnStoreChange,
   decideOnWrite,
   hasUnsavedEdits,
   needsFlushOnHide,
+  nextDebounceMs,
 } from './autosave-decision.ts'
 import {
   describeError,
@@ -14,10 +16,6 @@ import {
   writeProjectFile,
 } from './project-directory.ts'
 
-// Long enough that a burst of typing is one write, short enough that a user who alt-tabs
-// away without triggering `visibilitychange` still loses under a second of work.
-const DEBOUNCE_MS = 800
-
 // Module-level rather than closed over by `startAutosave`, because there is exactly one
 // store and therefore exactly one autosave — and `retrySave` has to reach this state from the
 // failure banner's button without threading a handle through the component tree.
@@ -25,6 +23,12 @@ let lastSeenProject: ProjectFile | null = null
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 let writeInFlight = false
 let writeQueued = false
+/**
+ * When the oldest edit not yet on disk landed, or `null` while the document is clean. Set once
+ * per dirty streak — never bumped by a later edit arriving during it — so `nextDebounceMs` can
+ * cap the debounce at `MAX_UNSAVED_MS` past the *first* edit of the streak, not the latest.
+ */
+let oldestUnwrittenEditAt: number | null = null
 
 /** Called once from `main.tsx`. Returns an unsubscribe, so a future teardown has one. */
 export function startAutosave(): () => void {
@@ -94,6 +98,7 @@ function onStoreChange(): void {
     case 'drop':
       cancelDebounce()
       lastSeenProject = null
+      oldestUnwrittenEditAt = null
       return
 
     case 'adopt':
@@ -105,6 +110,7 @@ function onStoreChange(): void {
 
     case 'schedule':
       lastSeenProject = decision.project
+      oldestUnwrittenEditAt ??= Date.now()
       dispatch({ kind: 'save/pending' })
       scheduleWrite()
       return
@@ -116,10 +122,12 @@ function onStoreChange(): void {
 
 function scheduleWrite(): void {
   cancelDebounce()
+  const waitMs =
+    oldestUnwrittenEditAt === null ? DEBOUNCE_MS : nextDebounceMs(oldestUnwrittenEditAt, Date.now())
   debounceTimer = setTimeout(() => {
     debounceTimer = null
     void writeNow()
-  }, DEBOUNCE_MS)
+  }, waitMs)
 }
 
 function cancelDebounce(): void {
@@ -155,7 +163,12 @@ async function writeProject(project: ProjectFile): Promise<void> {
     const at = await writeProjectFile(project)
     // Claiming `saved` while a newer document is already queued would be a lie for as long
     // as it takes the follow-up to start.
-    if (isStillCurrent(project) && !writeQueued) dispatch({ kind: 'save/saved', at })
+    if (isStillCurrent(project) && !writeQueued) {
+      dispatch({ kind: 'save/saved', at })
+      // The document just reached disk, so the streak of unwritten edits this write was for is
+      // over — the next edit starts a fresh 800 ms debounce rather than inheriting its deadline.
+      oldestUnwrittenEditAt = null
+    }
   } catch (error) {
     const permission = isPermissionError(error)
     if (isStillCurrent(project)) {

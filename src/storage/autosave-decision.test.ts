@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { createEmptyProject } from '../project/data-file.ts'
 import type { AppState, ProjectFile, SaveState } from '../project/types.ts'
 import {
+  DEBOUNCE_MS,
+  MAX_UNSAVED_MS,
   decideOnStoreChange,
   decideOnWrite,
   hasUnsavedEdits,
   needsFlushOnHide,
+  nextDebounceMs,
 } from './autosave-decision.ts'
 
 function ready(project: ProjectFile, save: SaveState = { kind: 'saved', at: project.savedAt }): AppState {
@@ -101,6 +104,43 @@ describe('decideOnWrite', () => {
     expect(decideOnWrite({ kind: 'loading', directoryName: 'Caves' }, false)).toEqual({
       kind: 'skip',
     })
+  })
+})
+
+describe('nextDebounceMs', () => {
+  it('lets a single edit wait the full debounce', () => {
+    expect(nextDebounceMs(1_000, 1_000)).toBe(DEBOUNCE_MS)
+  })
+
+  it('shortens the wait as the deadline approaches', () => {
+    expect(nextDebounceMs(0, MAX_UNSAVED_MS - 500)).toBe(500)
+  })
+
+  it('reaches zero once the deadline has passed, rather than a negative wait', () => {
+    expect(nextDebounceMs(0, MAX_UNSAVED_MS + 10_000)).toBe(0)
+  })
+
+  it('caps a debounce re-armed every 600 ms so the write happens no later than MAX_UNSAVED_MS after the first edit', () => {
+    // A watcher settling a box every 600 ms re-arms the debounce on every one of these calls —
+    // `autosave.ts`'s `scheduleWrite` calls this again on every edit, always against the *first*
+    // edit of the streak. The loop below is that same re-arming, one 600 ms tick at a time.
+    const editIntervalMs = 600
+    for (let now = 0; now <= MAX_UNSAVED_MS + DEBOUNCE_MS; now += editIntervalMs) {
+      const wait = nextDebounceMs(0, now)
+      if (wait <= editIntervalMs) {
+        // The timer armed at `now` fires before the next edit would arrive — this is the write.
+        expect(now + wait).toBeLessThanOrEqual(MAX_UNSAVED_MS)
+        return
+      }
+    }
+    throw new Error('the debounce never came due')
+  })
+
+  it('resets to the full debounce once the streak of unwritten edits starts over', () => {
+    // A quiet period ends the streak — `autosave.ts` clears `oldestUnwrittenEditAt` once the
+    // document reaches disk, so the next edit is a fresh "first edit" with its own deadline.
+    const laterEditAt = MAX_UNSAVED_MS * 3
+    expect(nextDebounceMs(laterEditAt, laterEditAt)).toBe(DEBOUNCE_MS)
   })
 })
 
