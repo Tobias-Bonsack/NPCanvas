@@ -1,4 +1,4 @@
-import type { CaptureProfile, Glyph, PixelRect, Point } from '../project/types.ts'
+import type { CaptureProfile, CaptureProfileId, Glyph, PixelRect, Point } from '../project/types.ts'
 import { TILE_SIZE } from './capture-profile.ts'
 
 // Reading a console text box, without an OCR dependency.
@@ -296,6 +296,50 @@ export function readTextBox(
   origin: Point = ORIGIN_ZERO,
 ): TextBoxReading {
   const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
+  const region = regionBytes(native, profile.textRect)
+
+  if (
+    cachedRead !== null &&
+    cachedRead.profileId === profile.id &&
+    cachedRead.glyphs === glyphs &&
+    bytesEqual(cachedRead.region, region)
+  ) {
+    return cachedRead.reading
+  }
+
+  const reading = readTextBoxUncached(native, profile, glyphs)
+  cachedRead = { profileId: profile.id, glyphs, region, reading }
+  return reading
+}
+
+/**
+ * One-slot memo of the last box read: the same pixels, under the same profile and the same
+ * alphabet, are the same reading — every stage downstream of `sampleNative` is pure. Most ticks
+ * of the watcher's loop read a box that has not moved for as long as a player takes to read it,
+ * so this turns tens of ticks of `inkThreshold` + `binarise` + `readTiles` + `matchGlyph` into one.
+ *
+ * `region` is the `textRect`'s own bytes out of the **native** image, compared before any of that
+ * runs — cheaper than `inkThreshold`'s histogram alone, and a miss on it skips every stage after.
+ * `profileId`/`glyphs` are what a changed profile or a newly learned tile invalidate against: a
+ * cache hit is by construction the reading the pipeline would have produced, because the inputs
+ * that could have changed it are exactly the ones compared.
+ *
+ * Many held frames read in one pass (`heldUnknownTiles`, `replayHeldFrames`) naturally miss this
+ * on every one of them: each is a different frame, so its `region` differs from whichever frame
+ * populated the slot last — a single slot never needs to remember more than the one most recent.
+ */
+let cachedRead: {
+  profileId: CaptureProfileId
+  glyphs: readonly Glyph[]
+  region: Uint8ClampedArray
+  reading: TextBoxReading
+} | null = null
+
+function readTextBoxUncached(
+  native: PixelBuffer,
+  profile: CaptureProfile,
+  glyphs: readonly Glyph[],
+): TextBoxReading {
   const bits = binarise(native, inkThreshold(native, profile.textRect), profile.textRect)
   const tiles = readTiles(bits, Math.round(profile.textRect.width), profile.textRect)
 
@@ -419,4 +463,41 @@ export function luminanceAt(data: Uint8ClampedArray, offset: number): number {
 function clamp(value: number, max: number): number {
   if (!Number.isFinite(value)) return 0
   return Math.min(max, Math.max(0, value))
+}
+
+/**
+ * `rect`'s own RGBA bytes out of `image`, rounded and clamped exactly as `binarise` clamps —
+ * outside `image` reads as `0`, never a throw. What `readTextBox`'s cache compares: two equal
+ * results here mean `inkThreshold`, `binarise`, `readTiles` and every `matchGlyph` call downstream
+ * would produce byte-identical output too, since none of them reads anything outside this region.
+ */
+function regionBytes(image: PixelBuffer, rect: PixelRect): Uint8ClampedArray {
+  const originX = Math.round(rect.x)
+  const originY = Math.round(rect.y)
+  const width = Math.round(rect.width)
+  const height = Math.round(rect.height)
+  const bytes = new Uint8ClampedArray(width * height * BYTES_PER_PIXEL)
+  for (let y = 0; y < height; y++) {
+    const imageY = originY + y
+    if (imageY < 0 || imageY >= image.height) continue
+    for (let x = 0; x < width; x++) {
+      const imageX = originX + x
+      if (imageX < 0 || imageX >= image.width) continue
+      const from = (imageY * image.width + imageX) * BYTES_PER_PIXEL
+      const to = (y * width + x) * BYTES_PER_PIXEL
+      bytes[to] = image.data[from]
+      bytes[to + 1] = image.data[from + 1]
+      bytes[to + 2] = image.data[from + 2]
+      bytes[to + 3] = image.data[from + 3]
+    }
+  }
+  return bytes
+}
+
+function bytesEqual(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index++) {
+    if (a[index] !== b[index]) return false
+  }
+  return true
 }

@@ -413,6 +413,88 @@ describe('readTextBox', () => {
   })
 })
 
+describe('readTextBox caching', () => {
+  it('returns the identical reading object for two identical frames', () => {
+    const native = blankNative()
+    write(native, 0, 'DU', { D, U })
+    const frame = toFrame(native)
+    const testProfile = profile({ id: asCaptureProfileId('cache-test-1') })
+
+    const first = readTextBox(frame, testProfile, ALPHABET)
+    const second = readTextBox(frame, testProfile, ALPHABET)
+
+    expect(second).toBe(first)
+  })
+
+  it('returns a fresh reading once a textRect pixel changes', () => {
+    const testProfile = profile({ id: asCaptureProfileId('cache-test-2') })
+    const before = blankNative()
+    write(before, 0, 'DU', { D, U })
+    const first = readTextBox(toFrame(before), testProfile, ALPHABET)
+
+    const after = blankNative()
+    write(after, 0, 'UU', { U })
+    const second = readTextBox(toFrame(after), testProfile, ALPHABET)
+
+    expect(second).not.toBe(first)
+    expect(second.text).toBe('UU')
+  })
+
+  it('returns the cached reading when only pixels outside the textRect change', () => {
+    const native = blankNative()
+    write(native, 0, 'DU', { D, U })
+    const testProfile = profile({ id: asCaptureProfileId('cache-test-3') })
+    const first = readTextBox(toFrame(native), testProfile, ALPHABET)
+
+    // Column 6, row 3 sits well outside TEXT_RECT (tile columns 1..5, row 1).
+    drawTile(native, ARROW, 6, 3)
+    const second = readTextBox(toFrame(native), testProfile, ALPHABET)
+
+    expect(second).toBe(first)
+  })
+
+  it('invalidates on a changed glyphs array even when the frame is identical', () => {
+    const native = blankNative()
+    write(native, 0, 'DU', { D, U })
+    const frame = toFrame(native)
+    const testProfile = profile({ id: asCaptureProfileId('cache-test-4') })
+
+    const first = readTextBox(frame, testProfile, ALPHABET)
+    const second = readTextBox(frame, testProfile, [...ALPHABET])
+
+    expect(second).not.toBe(first)
+    expect(second).toEqual(first)
+  })
+
+  it('invalidates on a changed profile id even when the frame is identical', () => {
+    const native = blankNative()
+    write(native, 0, 'DU', { D, U })
+    const frame = toFrame(native)
+
+    const first = readTextBox(frame, profile({ id: asCaptureProfileId('cache-test-5a') }), ALPHABET)
+    const second = readTextBox(frame, profile({ id: asCaptureProfileId('cache-test-5b') }), ALPHABET)
+
+    expect(second).not.toBe(first)
+    expect(second).toEqual(first)
+  })
+
+  it('misses on every frame of a batch of distinct frames, as heldUnknownTiles reads them', () => {
+    const testProfile = profile({ id: asCaptureProfileId('cache-test-6') })
+    const nativeA = blankNative()
+    write(nativeA, 0, 'D', { D })
+    const nativeB = blankNative()
+    write(nativeB, 0, 'U', { U })
+
+    const first = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
+    const second = readTextBox(toFrame(nativeB), testProfile, ALPHABET)
+    const third = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
+
+    expect(first.text).toBe('D')
+    expect(second.text).toBe('U')
+    expect(third.text).toBe('D')
+  })
+})
+
 // ---- synthetic frames ----
 
 const TEXT_RECT = { x: 8, y: 8, width: 40, height: 16 }
