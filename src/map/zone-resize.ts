@@ -17,8 +17,7 @@ import { polygonBounds } from './geometry.ts'
  * midpoints scale one. The order is the order they are drawn in, clockwise from the top left,
  * which is also the order the hit test walks.
  */
-export const ZONE_HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const
-export type ZoneHandle = (typeof ZONE_HANDLES)[number]
+export type ZoneHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 
 /**
  * A bounding box axis is degenerate below this, in map-local pixels. Scaling it would divide
@@ -28,7 +27,7 @@ export type ZoneHandle = (typeof ZONE_HANDLES)[number]
  */
 const DEGENERATE = 1e-6
 
-export type ZoneHandlePoint = { handle: ZoneHandle; point: Point }
+type ZoneHandlePoint = { handle: ZoneHandle; point: Point }
 
 /** Where each grip sits, for drawing them and for hit-testing them alike. */
 export function zoneHandlePoints(polygon: Polygon): ZoneHandlePoint[] {

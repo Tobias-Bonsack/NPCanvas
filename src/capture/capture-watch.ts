@@ -108,17 +108,17 @@ export type WatchState =
  * (#109), never to whatever the watcher happens to be recording into when it is replayed —
  * `dialogueId` was the pre-#107 shape, back when the watcher wrote into a selected line.
  */
-export type HeldFrame = { captureId: PendingCaptureId; frame: ImageData; origin: Point }
+type HeldFrame = { captureId: PendingCaptureId; frame: ImageData; origin: Point }
 
 /** The queue, as the panel shows it. Its own snapshot, because it outlives the watcher being off. */
-export type HeldState = {
+type HeldState = {
   waiting: number
   /** Frames the cap pushed out. Surfaced rather than silently discarded; cleared by a replay. */
   dropped: number
 }
 
 /** What one round of answering the learner did. */
-export type HeldReplay = {
+type HeldReplay = {
   appended: number
   /** Frames whose capture no longer exists. Dropped with their entry rather than written elsewhere. */
   gone: number
@@ -463,7 +463,7 @@ function getHeld(): HeldState {
  * recording runs, so nothing calls this while `state.kind === 'watching'` in the first place — see
  * `CaptureRecorder`.
  */
-export function startRecording(mode: 'new' | 'extend'): void {
+function startRecording(mode: 'new' | 'extend'): void {
   if (state.kind === 'watching') return
   session += 1
   settle = NOTHING_SEEN
@@ -502,7 +502,7 @@ export function startRecording(mode: 'new' | 'extend'): void {
  * recording stopped mid-write still ends with every picture on disk rather than one the document
  * names and `media/` does not have.
  */
-export function stopRecording(): void {
+function stopRecording(): void {
   stopWith(null)
 }
 

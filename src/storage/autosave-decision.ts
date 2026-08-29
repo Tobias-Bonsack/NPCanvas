@@ -41,7 +41,7 @@ export function nextDebounceMs(oldestUnwrittenEditAt: number, now: number): numb
  */
 
 /** What a store change means. Carries the document, so the caller cannot adopt the wrong one. */
-export type ChangeDecision =
+type ChangeDecision =
   /** Not connected. Drop the pending write — it must not land in a folder the user has left. */
   | { kind: 'drop' }
   /**
@@ -55,7 +55,7 @@ export type ChangeDecision =
   | { kind: 'schedule'; project: ProjectFile }
 
 /** What a write attempt should do. `write` carries exactly the document to put on disk. */
-export type WriteDecision =
+type WriteDecision =
   /**
    * A write is already running. At most one follow-up ever queues: it re-reads the current
    * document when it runs, so any number of edits during this write collapse into that pass.

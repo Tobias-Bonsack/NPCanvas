@@ -455,22 +455,6 @@ export type ProjectFileV10 = {
   recorderBindings: RecorderBinding[]
 }
 
-/**
- * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
- * it migrates anything older forward, so nothing downstream branches on a version.
- */
-export type StoredProjectFile =
-  | ProjectFileV1
-  | ProjectFileV2
-  | ProjectFileV3
-  | ProjectFileV4
-  | ProjectFileV5
-  | ProjectFileV6
-  | ProjectFileV7
-  | ProjectFileV8
-  | ProjectFileV9
-  | ProjectFileV10
-
 /** The current shape, and the only one the store, the components, and writes ever see. */
 export type ProjectFile = ProjectFileV10
 

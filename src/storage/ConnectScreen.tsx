@@ -5,7 +5,7 @@ import { connectToNewDirectory, grantSavedDirectoryAccess } from './project-dire
 import './ConnectScreen.css'
 
 /** Every state before a project exists. `ready` renders the app shell instead. */
-export type ConnectState = Exclude<AppState, { kind: 'ready' }>
+type ConnectState = Exclude<AppState, { kind: 'ready' }>
 
 /**
  * Exhaustive over `ConnectState` with no catch-all: the explicit `ReactElement` return type

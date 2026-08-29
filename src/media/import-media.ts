@@ -31,7 +31,7 @@ const MAP_IMAGE_EXTENSIONS: Readonly<Record<string, string | undefined>> = {
 export const MAP_IMAGE_ACCEPT = Object.keys(MAP_IMAGE_EXTENSIONS).join(',')
 
 /** Everything an imported map is, except where on the canvas it goes. */
-export type ImportedMap = Omit<GameMap, 'origin'>
+type ImportedMap = Omit<GameMap, 'origin'>
 
 /**
  * Copies a picked image into `media/`, probes its natural size, and returns the `GameMap`
@@ -128,7 +128,7 @@ const DIALOGUE_MEDIA_TYPES: Readonly<
 /** The `accept` attribute for any control that takes dialogue media. */
 export const DIALOGUE_MEDIA_ACCEPT = Object.keys(DIALOGUE_MEDIA_TYPES).join(',')
 
-export type DialogueMediaImport = {
+type DialogueMediaImport = {
   media: DialogueMedia
   /** Non-null when the import succeeded but the file is big enough to be worth saying so. */
   warning: string | null

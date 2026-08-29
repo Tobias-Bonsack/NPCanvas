@@ -18,7 +18,7 @@ import { binarise, inkThreshold, luminanceAt } from './glyph-matcher.ts'
 // Pure, like `glyph-matcher.ts`. `CaptureCalibration` decides what to do with a measurement.
 
 /** Which way a lattice runs. Columns are fitted along `x`, rows along `y`. */
-export type Axis = 'x' | 'y'
+type Axis = 'x' | 'y'
 
 /**
  * Which signal a lattice was read out of, and therefore what its phase points at.
@@ -30,12 +30,12 @@ export type Axis = 'x' | 'y'
  * therefore sit half a native pixel apart, which is the whole reason this is recorded rather than
  * inferred later.
  */
-export type LatticeSignal = 'step' | 'ramp'
+type LatticeSignal = 'step' | 'ramp'
 
 /** One axis, measured. */
-export type AxisMeasurement = { lattice: Lattice; signal: LatticeSignal }
+type AxisMeasurement = { lattice: Lattice; signal: LatticeSignal }
 
-export type Lattice = {
+type Lattice = {
   /** Frame pixels per native pixel along this axis. */
   pitch: number
   /** The first boundary, relative to the start of the region that was fitted, in `[0, pitch)`. */
@@ -55,7 +55,7 @@ export type Lattice = {
   prominence: number
 }
 
-export type ScreenDetection = {
+type ScreenDetection = {
   screenRect: PixelRect
   horizontal: AxisMeasurement
   vertical: AxisMeasurement
@@ -198,7 +198,7 @@ export function edgeEnergy(frame: PixelBuffer, region: PixelRect, axis: Axis): F
  * between — so the first difference is flat and says nothing, while the second difference is a
  * comb as clean as the one a hard upscale leaves behind.
  */
-export function curvatureEnergy(frame: PixelBuffer, region: PixelRect, axis: Axis): Float64Array {
+function curvatureEnergy(frame: PixelBuffer, region: PixelRect, axis: Axis): Float64Array {
   return axisEnergy(frame, region, axis, 'ramp')
 }
 

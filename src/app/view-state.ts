@@ -10,7 +10,7 @@ import type { QuestBoardMode } from '../quest/QuestBoard.tsx'
  * away and back — see CLAUDE.md's note on `App` never migrating store scope. `App` owns exactly
  * one `useState` of this shape; nothing here is persisted to `data.json` or the hash.
  */
-export type ViewState = {
+type ViewState = {
   canvas: CanvasViewState
   insights: InsightsViewState
   quests: QuestsViewState

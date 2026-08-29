@@ -11,14 +11,14 @@ export type SearchResult =
   | { kind: 'quest'; quest: Quest }
   | { kind: 'zone'; zone: Zone }
 
-export type SearchOutcome = {
+type SearchOutcome = {
   results: readonly SearchResult[]
   /** How many more matched beyond the cap — `0` when nothing was cut. */
   hiddenCount: number
 }
 
 /** Past this many results the palette stops being scannable at a glance. */
-export const SEARCH_RESULT_LIMIT = 30
+const SEARCH_RESULT_LIMIT = 30
 
 const EMPTY_OUTCOME: SearchOutcome = { results: [], hiddenCount: 0 }
 

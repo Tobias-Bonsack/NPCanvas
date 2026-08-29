@@ -92,7 +92,7 @@ export async function connectToNewDirectory(): Promise<boolean> {
 }
 
 /** Boot path: reuse the folder from the previous session if the grant is still good. */
-export async function restoreSavedDirectory(): Promise<void> {
+async function restoreSavedDirectory(): Promise<void> {
   const generation = beginLoad()
 
   let handle: FileSystemDirectoryHandle | null = null

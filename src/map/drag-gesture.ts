@@ -57,7 +57,7 @@ export function beginDrag<T>(ref: DragGestureRef<T>, event: DragPointerEvent, da
   return true
 }
 
-export type DragMove<T> = {
+type DragMove<T> = {
   data: T
   dx: number
   dy: number
@@ -81,7 +81,7 @@ export function moveDrag<T>(ref: DragGestureRef<T>, event: DragPointerEvent): Dr
   return { data: gesture.data, dx, dy, started }
 }
 
-export type DragEnd<T> = { data: T; moved: boolean }
+type DragEnd<T> = { data: T; moved: boolean }
 
 /**
  * One of the two terminals: the gesture happened, and the caller may act on it. Releases the

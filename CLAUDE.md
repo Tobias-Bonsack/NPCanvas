@@ -384,6 +384,7 @@ npm run dev        # Vite dev server (base '/', http://localhost:5173)
 npm run build      # tsc -b (typecheck, project references) then vite build -> dist/
 npm run preview    # serve dist/ locally; served under /NPCanvas/
 npm run lint       # eslint (flat config)
+npm run deadcode   # scripts/dead-exports.mjs: fails on an export nothing outside its file uses
 npm test           # vitest run (single pass)
 npm run test:watch # vitest in watch mode
 ```

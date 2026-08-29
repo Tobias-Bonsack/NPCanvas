@@ -12,7 +12,7 @@ import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts
  */
 export type SegmentKey = RelevanceTagId | 'untagged'
 
-export const UNTAGGED_SEGMENT: SegmentKey = 'untagged'
+const UNTAGGED_SEGMENT: SegmentKey = 'untagged'
 
 /** Every segment a chart draws, tags first in the project's own order, untagged last. */
 export function segmentKeys(tags: readonly RelevanceTag[]): SegmentKey[] {

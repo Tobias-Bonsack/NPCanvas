@@ -16,7 +16,7 @@ export type CaptureSource =
   | { kind: 'failed'; message: string }
 
 /** What a Connect attempt did, so the caller can say "cancelled" without it being an error. */
-export type ConnectOutcome = 'connected' | 'cancelled' | 'failed'
+type ConnectOutcome = 'connected' | 'cancelled' | 'failed'
 
 /**
  * How long to wait for the stream's first metadata before giving up.
@@ -122,7 +122,7 @@ export function disconnectCaptureSource(): void {
 }
 
 /** A cropped read of the live frame, and where the crop sits in the frame's own coordinates. */
-export type FrameCrop = {
+type FrameCrop = {
   pixels: ImageData
   /** The crop's top-left in frame coordinates — `{ x: 0, y: 0 }` when no rectangle was requested. */
   origin: Point
@@ -149,25 +149,8 @@ export async function grabFrame(rect?: PixelRect): Promise<FrameCrop> {
   }
 }
 
-/** A crop of the live frame, still an `ImageBitmap` — what a worker can own without a copy. */
-export type FrameBitmapCrop = {
-  bitmap: ImageBitmap
-  /** The crop's top-left in frame coordinates — `{ x: 0, y: 0 }` when no rectangle was requested. */
-  origin: Point
-}
 
-/**
- * `grabFrame`'s crop, stopping one step earlier: the bitmap is handed back **undecoded**, so a
- * caller that is about to transfer it into a worker never pays for a `getImageData` this thread
- * will throw away.
- */
-export async function grabFrameBitmap(rect?: PixelRect): Promise<FrameBitmapCrop> {
-  const { element, crop } = await readyCrop(rect)
-  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
-  return { bitmap, origin: { x: crop.x, y: crop.y } }
-}
-
-/** The frame-readiness check and crop math `grabFrame` and `grabFrameBitmap` both start with. */
+/** The frame-readiness check and crop math `grabFrame` starts with. */
 async function readyCrop(rect: PixelRect | undefined): Promise<{ element: HTMLVideoElement; crop: PixelRect }> {
   const element = video
   if (state.kind !== 'live' || element === null) {

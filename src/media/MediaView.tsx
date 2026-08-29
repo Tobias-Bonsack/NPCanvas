@@ -13,7 +13,7 @@ import './MediaView.css'
  * where a tiny capture blown up to the column's width would be worse, and the thumbnail strip
  * would stop being a strip. Two values, both used.
  */
-export type MediaFit = 'intrinsic' | 'fill'
+type MediaFit = 'intrinsic' | 'fill'
 
 /**
  * One picture of a line. Exhaustive over `DialogueMedia` and over every `MediaUrl` state,

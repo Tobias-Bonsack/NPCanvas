@@ -39,7 +39,7 @@ function shapeForSegment(segment: SegmentKey, index: number): TextureShape {
  * apart — and printed in greyscale. The shapes differ in *kind* (diagonal, counter-diagonal,
  * dots, grid, crosshatch, checkerboard, verticals), not merely in density.
  */
-export function SegmentPattern({ id, shape }: { id: string; shape: TextureShape }): ReactElement {
+function SegmentPattern({ id, shape }: { id: string; shape: TextureShape }): ReactElement {
   const ink = 'rgba(0, 0, 0, 0.34)'
   return (
     <pattern id={id} width="6" height="6" patternUnits="userSpaceOnUse">

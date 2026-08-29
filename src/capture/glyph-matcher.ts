@@ -67,7 +67,7 @@ export type TextBoxReading = {
 }
 
 /** Stands in for an unrecognised tile in `UnknownTile.context`. Never enters a transcript. */
-export const UNKNOWN_MARK = '▯'
+const UNKNOWN_MARK = '▯'
 
 const BYTES_PER_PIXEL = 4
 

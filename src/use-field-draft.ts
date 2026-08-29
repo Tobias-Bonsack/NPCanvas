@@ -14,7 +14,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * using this must therefore be keyed on the record they edit, so a switch unmounts rather than
  * re-props: unmount is what flushes to the *old* record before the new one is seeded.
  */
-export type FieldDraft = {
+type FieldDraft = {
   /** What the control shows. Bind it to `value`. */
   value: string
   /** Bind to `onChange`. Arms the idle flush. */

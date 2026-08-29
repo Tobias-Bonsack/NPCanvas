@@ -136,7 +136,7 @@ export function npcKey(dialogue: Dialogue): string {
   return dialogue.npcName.trim()
 }
 
-export const UNNAMED_NPC = 'Unnamed'
+const UNNAMED_NPC = 'Unnamed'
 
 export function npcLabel(key: string): string {
   return key === '' ? UNNAMED_NPC : key

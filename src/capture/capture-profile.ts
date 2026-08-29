@@ -115,11 +115,6 @@ export function profileApplies(
   return profile.frameWidth === frameWidth && profile.frameHeight === frameHeight
 }
 
-/** The text box in frame pixels — what #53 reads its tiles out of, and what the overlay draws. */
-export function textRectInFrame(profile: CaptureProfile): PixelRect {
-  return nativeToFrame(profile, profile.textRect)
-}
-
 /**
  * A rectangle from two dragged corners, in whichever space the corners are in. Dragging up and
  * to the left is ordinary, so the negative extents it produces are normalized away here rather
@@ -148,7 +143,7 @@ export function roundRect(rect: PixelRect): PixelRect {
 }
 
 /** The same rectangle with non-negative extents. */
-export function normalizeRect(rect: PixelRect): PixelRect {
+function normalizeRect(rect: PixelRect): PixelRect {
   return {
     x: rect.width < 0 ? rect.x + rect.width : rect.x,
     y: rect.height < 0 ? rect.y + rect.height : rect.y,

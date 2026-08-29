@@ -22,7 +22,7 @@ import { readTextBox, sampleNative } from './glyph-matcher.ts'
 // came from is the record, which is what makes a mis-learned glyph recoverable by looking.
 
 /** What one capture did, once the picture and the line were written. */
-export type CaptureResult = {
+type CaptureResult = {
   /**
    * What happened to the line. `unchanged` is its own outcome rather than a silent no-op: the
    * likeliest misfire is capturing twice without advancing the game, and a button that appears to
@@ -40,7 +40,7 @@ export type CaptureResult = {
 }
 
 /** One read of the live frame, kept together with the frame it came from. */
-export type BoxRead = {
+type BoxRead = {
   /**
    * Carried beside the reading because learning a tile has to transcribe *that* frame again: the
    * emulator has moved on by the time the characters are typed in, and re-grabbing would read a
