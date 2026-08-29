@@ -2,7 +2,7 @@ import { assertNever } from '../assert-never.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
-import type { CaptureProfile, Dialogue, DialogueMedia, Glyph } from '../project/types.ts'
+import type { CaptureProfile, Dialogue, DialogueMedia, Glyph, Point } from '../project/types.ts'
 import { appendWithoutOverlap } from './append-overlap.ts'
 import { profileApplies } from './capture-profile.ts'
 import type { CaptureSource } from './capture-session.ts'
@@ -86,13 +86,21 @@ export function captureBlocker(
   return null
 }
 
-/** The live frame and what the text box says, which is where every capture starts. */
+/**
+ * The live frame and what the text box says, which is where every capture starts.
+ *
+ * Grabs the **whole** frame rather than cropping to `profile.screenRect`: the frame this returns
+ * is handed back to `DialoguePanel`/`CaptureBar`, which re-read it and pass it to
+ * `captureIntoDialogue` after the alphabet grows — both outside this crop's own accounting, and
+ * both call `readTextBox`/`screenPng` with no origin. Only `capture-watch.ts`'s tick, which owns
+ * every frame it grabs end to end, crops.
+ */
 export async function readLiveBox(
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
 ): Promise<BoxRead> {
-  const frame = await grabFrame()
-  return { frame, reading: readTextBox(frame, profile, glyphs) }
+  const { pixels } = await grabFrame()
+  return { frame: pixels, reading: readTextBox(pixels, profile, glyphs) }
 }
 
 /**
@@ -103,8 +111,13 @@ export async function readLiveBox(
  * JPEG for the reason `freezeFrame` gives — ringing around 8-pixel glyph edges is exactly the
  * artefact that would make a saved frame useless as the record of what was read.
  */
-export async function screenPng(frame: PixelBuffer, profile: CaptureProfile): Promise<File> {
-  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight)
+export async function screenPng(
+  frame: PixelBuffer,
+  profile: CaptureProfile,
+  /** Where `frame` sits in frame coordinates, when it is a crop rather than the whole frame. */
+  origin?: Point,
+): Promise<File> {
+  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
 
   const canvas = document.createElement('canvas')
   canvas.width = native.width

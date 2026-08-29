@@ -1,4 +1,4 @@
-import type { CaptureProfile, Glyph, PixelRect } from '../project/types.ts'
+import type { CaptureProfile, Glyph, PixelRect, Point } from '../project/types.ts'
 import { TILE_SIZE } from './capture-profile.ts'
 
 // Reading a console text box, without an OCR dependency.
@@ -68,6 +68,9 @@ export const UNKNOWN_MARK = '▯'
 
 const BYTES_PER_PIXEL = 4
 
+/** `frame` is the whole frame unless a caller names where a crop of it sits. */
+const ORIGIN_ZERO: Point = { x: 0, y: 0 }
+
 /**
  * The console's own pixels, cut out of the captured frame.
  *
@@ -80,15 +83,20 @@ export function sampleNative(
   screenRect: PixelRect,
   nativeWidth: number,
   nativeHeight: number,
+  /** `screenRect`'s own frame is not always `frame`'s: a caller reading a crop passes the crop's
+   * top-left in frame coordinates, so `screenRect` still names the same pixels it always has. */
+  origin: Point = ORIGIN_ZERO,
 ): PixelBuffer {
   const data = new Uint8ClampedArray(nativeWidth * nativeHeight * BYTES_PER_PIXEL)
+  const rectX = screenRect.x - origin.x
+  const rectY = screenRect.y - origin.y
   const scaleX = screenRect.width / nativeWidth
   const scaleY = screenRect.height / nativeHeight
 
   for (let y = 0; y < nativeHeight; y++) {
-    const sourceY = clamp(Math.floor(screenRect.y + (y + 0.5) * scaleY), frame.height - 1)
+    const sourceY = clamp(Math.floor(rectY + (y + 0.5) * scaleY), frame.height - 1)
     for (let x = 0; x < nativeWidth; x++) {
-      const sourceX = clamp(Math.floor(screenRect.x + (x + 0.5) * scaleX), frame.width - 1)
+      const sourceX = clamp(Math.floor(rectX + (x + 0.5) * scaleX), frame.width - 1)
       const from = (sourceY * frame.width + sourceX) * BYTES_PER_PIXEL
       const to = (y * nativeWidth + x) * BYTES_PER_PIXEL
       data[to] = frame.data[from]
@@ -244,8 +252,10 @@ export function readTextBox(
   frame: PixelBuffer,
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
+  /** Where `frame` sits in frame coordinates, when it is a crop rather than the whole frame. */
+  origin: Point = ORIGIN_ZERO,
 ): TextBoxReading {
-  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight)
+  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
   const bits = binarise(native, inkThreshold(native, profile.textRect))
   const tiles = readTiles(bits, profile.nativeWidth, profile.textRect)
 

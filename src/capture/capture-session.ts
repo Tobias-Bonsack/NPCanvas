@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import type { Point, PixelRect } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 
 /**
@@ -119,16 +120,58 @@ export function disconnectCaptureSource(): void {
   setState(IDLE)
 }
 
+/** A cropped read of the live frame, and where the crop sits in the frame's own coordinates. */
+export type FrameCrop = {
+  pixels: ImageData
+  /** The crop's top-left in frame coordinates — `{ x: 0, y: 0 }` when no rectangle was requested. */
+  origin: Point
+}
+
 /**
- * The current frame of the connected source, as pixels.
+ * The current frame of the connected source, as pixels — cropped to `rect` when given.
  *
- * The `<video>` is already playing, so this is a `drawImage` plus a `getImageData` — cheap
- * enough to press repeatedly, which is what appending line after line of a scrolling text box
- * will do.
+ * `createImageBitmap(video, sx, sy, sw, sh)` cuts the frame where the browser can do it, so the
+ * whole surface is never drawn to a canvas: with no `rect` the crop is the whole frame, which is
+ * what keeps every caller that does not pass one working exactly as before.
  */
-export async function grabFrame(): Promise<ImageData> {
-  const drawn = await drawCurrentFrame()
-  return drawn.context.getImageData(0, 0, drawn.width, drawn.height)
+export async function grabFrame(rect?: PixelRect): Promise<FrameCrop> {
+  const element = video
+  if (state.kind !== 'live' || element === null) {
+    throw new Error('Connect a screen or window before capturing a frame.')
+  }
+
+  if (element.readyState < element.HAVE_CURRENT_DATA) {
+    await waitForVideo(element, 'loadeddata', FRAME_TIMEOUT_MS, 'The capture source stopped sending frames.')
+  }
+
+  const frameWidth = element.videoWidth
+  const frameHeight = element.videoHeight
+  if (frameWidth === 0 || frameHeight === 0) throw new Error('The capture source has no frame yet.')
+
+  const crop = rect === undefined ? { x: 0, y: 0, width: frameWidth, height: frameHeight } : growAndClamp(rect, frameWidth, frameHeight)
+
+  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
+  try {
+    const canvas = new OffscreenCanvas(crop.width, crop.height)
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (context === null) throw new Error('This browser provided no 2D canvas context.')
+    context.drawImage(bitmap, 0, 0)
+    return { pixels: context.getImageData(0, 0, crop.width, crop.height), origin: { x: crop.x, y: crop.y } }
+  } finally {
+    bitmap.close()
+  }
+}
+
+/**
+ * `rect`, integer-clamped to the frame and grown by one pixel per side — so nearest-neighbour
+ * sampling from a native pixel's centre near the rectangle's own edge cannot fall outside the crop.
+ */
+function growAndClamp(rect: PixelRect, frameWidth: number, frameHeight: number): PixelRect {
+  const left = Math.max(0, Math.floor(rect.x) - 1)
+  const top = Math.max(0, Math.floor(rect.y) - 1)
+  const right = Math.min(frameWidth, Math.ceil(rect.x + rect.width) + 1)
+  const bottom = Math.min(frameHeight, Math.ceil(rect.y + rect.height) + 1)
+  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
 }
 
 /**

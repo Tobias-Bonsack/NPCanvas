@@ -10,6 +10,7 @@ import type {
   Glyph,
   PendingCapture,
   PendingCaptureId,
+  Point,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
@@ -107,7 +108,7 @@ export type WatchState =
  * (#109), never to whatever the watcher happens to be recording into when it is replayed —
  * `dialogueId` was the pre-#107 shape, back when the watcher wrote into a selected line.
  */
-export type HeldFrame = { captureId: PendingCaptureId; frame: ImageData }
+export type HeldFrame = { captureId: PendingCaptureId; frame: ImageData; origin: Point }
 
 /** The queue, as the panel shows it. Its own snapshot, because it outlives the watcher being off. */
 export type HeldState = {
@@ -401,8 +402,11 @@ async function tick(mine: number): Promise<void> {
   }
 
   let frame: ImageData
+  let origin: Point
   try {
-    frame = await grabFrame()
+    const grabbed = await grabFrame(profile.screenRect)
+    frame = grabbed.pixels
+    origin = grabbed.origin
   } catch (error) {
     // The stop or start that bumped the session owns the state now: a grab can wait seconds for a
     // frame that never comes, and a deliberate Stop must not be overwritten by its rejection.
@@ -416,7 +420,7 @@ async function tick(mine: number): Promise<void> {
   failures = 0
 
   const glyphs = app.project.glyphs
-  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile, glyphs)), SETTLE_TICKS)
+  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile, glyphs, origin)), SETTLE_TICKS)
   settle = step.state
   markRead()
 
@@ -431,13 +435,13 @@ async function tick(mine: number): Promise<void> {
   // the box is simply not captured; if it is still on screen once the alphabet can read it whole,
   // it reads as a change from this held signature and settles again.
   if (currentCaptureId !== null && (settled.kind === 'held' || holdsFrameFor(currentCaptureId))) {
-    hold(currentCaptureId, frame)
+    hold(currentCaptureId, frame, origin)
     return
   }
   if (settled.kind === 'held') return
 
   try {
-    switch (await writeIntoQueue(profile, frame, settled.text)) {
+    switch (await writeIntoQueue(profile, frame, origin, settled.text)) {
       case 'appended':
         countAppended(settled.text)
         break
@@ -464,6 +468,7 @@ async function tick(mine: number): Promise<void> {
 async function writeIntoQueue(
   profile: CaptureProfile,
   frame: ImageData,
+  origin: Point,
   transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
   // Checked before anything is written, exactly like `writeIntoCapture` checks the capture it is
@@ -486,7 +491,7 @@ async function writeIntoQueue(
   // `openCapture` only ever leaves this null with no project open, which the tick already refused.
   if (captureId === null) return 'gone'
 
-  return writeIntoCapture(captureId, profile, frame, transcript)
+  return writeIntoCapture(captureId, profile, frame, origin, transcript)
 }
 
 /** The next settled box with no capture in progress always starts a fresh conversation. */
@@ -547,13 +552,14 @@ async function writeIntoCapture(
   captureId: PendingCaptureId,
   profile: CaptureProfile,
   frame: ImageData,
+  origin: Point,
   transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
   const target = currentPendingCapture(captureId)
   if (target === null) return 'gone'
   if (appendOutcome(target.text, transcript).text !== 'appended') return 'unchanged'
 
-  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile))
+  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile, origin))
   dispatch({ kind: 'pending-capture/media-added', captureId, media })
 
   // The document as it stands now, mirroring `captureIntoDialogue`'s own note: encoding and
@@ -668,8 +674,8 @@ function countConversation(): void {
  * Keeps a box the alphabet could not name, so the first play session — exactly the session where
  * the alphabet is still open — does not silently lose the most lines.
  */
-function hold(captureId: PendingCaptureId, frame: ImageData): void {
-  heldFrames.push({ captureId, frame })
+function hold(captureId: PendingCaptureId, frame: ImageData, origin: Point): void {
+  heldFrames.push({ captureId, frame, origin })
   let dropped = held.dropped
   // The oldest goes: the queue is replayed in capture order, and the newest frames are the ones
   // whose conversation the player can still remember.
@@ -696,7 +702,7 @@ export function heldUnknownTiles(profile: CaptureProfile, glyphs: readonly Glyph
   const tiles: UnknownTile[] = []
   const seen = new Set<string>()
   for (const entry of heldFrames) {
-    for (const tile of readTextBox(entry.frame, profile, glyphs).unknown) {
+    for (const tile of readTextBox(entry.frame, profile, glyphs, entry.origin).unknown) {
       if (seen.has(tile.bits)) continue
       seen.add(tile.bits)
       tiles.push(tile)
@@ -763,14 +769,14 @@ async function replayInto(
       replay.gone += 1
       continue
     }
-    const reading = readTextBox(entry.frame, profile, glyphs)
+    const reading = readTextBox(entry.frame, profile, glyphs, entry.origin)
     if (reading.unknown.length > 0 || blocked.has(entry.captureId)) {
       blocked.add(entry.captureId)
       replay.stillHeld += 1
       continue
     }
     try {
-      const written = await writeIntoCapture(entry.captureId, profile, entry.frame, reading.text)
+      const written = await writeIntoCapture(entry.captureId, profile, entry.frame, entry.origin, reading.text)
       release(entry)
       if (written === 'appended') {
         replay.appended += 1

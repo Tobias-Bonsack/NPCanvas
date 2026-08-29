@@ -111,6 +111,21 @@ describe('sampleNative', () => {
     expect(bits[5 * NATIVE_WIDTH + 16]).toBe(0)
     expect(bits[5 * NATIVE_WIDTH + 18]).toBe(0)
   })
+
+  it('reads the same pixels from a crop of the frame, given the crop origin', () => {
+    const native = blankNative()
+    drawTile(native, D, 1, 0)
+    drawTile(native, ARROW, 6, 3)
+    const frame = toFrame(native)
+
+    const whole = sampleNative(frame, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+
+    const origin = { x: SCREEN_ORIGIN.x - 5, y: SCREEN_ORIGIN.y - 3 }
+    const crop = cropFrame(frame, origin)
+    const cropped = sampleNative(crop, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT, origin)
+
+    expect(Array.from(cropped.data)).toEqual(Array.from(whole.data))
+  })
 })
 
 describe('inkThreshold', () => {
@@ -430,6 +445,25 @@ function toFrame(image: NativeImage): PixelBuffer {
     }
   }
   return { width: FRAME_WIDTH, height: FRAME_HEIGHT, data }
+}
+
+/** A sub-rectangle of a frame, starting at `origin` and running to the frame's far edge — what
+ * `grabFrame`'s crop hands `sampleNative` once `origin` is not `{ x: 0, y: 0 }`. */
+function cropFrame(frame: PixelBuffer, origin: { x: number; y: number }): PixelBuffer {
+  const width = frame.width - origin.x
+  const height = frame.height - origin.y
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const from = ((y + origin.y) * frame.width + (x + origin.x)) * 4
+      const to = (y * width + x) * 4
+      data[to] = frame.data[from]
+      data[to + 1] = frame.data[from + 1]
+      data[to + 2] = frame.data[from + 2]
+      data[to + 3] = frame.data[from + 3]
+    }
+  }
+  return { width, height, data }
 }
 
 /** A bitmap with individual pixels inverted, as resampling noise would leave them. */
