@@ -115,6 +115,14 @@
   white-space: pre-wrap;
 }
 
+/* One recorder action's name, at the left of its binding row — the same rank as a form's label,
+   but inline since the row wraps rather than stacks. */
+.capture-bar__binding-label {
+  font-size: var(--text-xs);
+  color: var(--text);
+  min-width: 6rem;
+}
+
 .capture-bar__hint,
 .capture-bar__note,
 .capture-bar__error {

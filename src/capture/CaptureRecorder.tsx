@@ -9,8 +9,7 @@ import {
   discardHeldFrames,
   heldUnknownTiles,
   replayHeldFrames,
-  startRecording,
-  stopRecording,
+  triggerRecording,
   useWatchState,
   useWatching,
 } from './capture-watch.ts'
@@ -72,15 +71,12 @@ export function CaptureRecorder(): ReactElement {
   const [heldState, setHeldState] = useState<HeldCaptureState>({ kind: 'idle' })
   const heldBusy = heldState.kind === 'capturing' || heldState.kind === 'learning-held'
 
-  /**
-   * Stopping is unconditional: the connection can end while the loop runs, and a trigger that
-   * refused to stop would leave it switched on with no way back. Starting is not — a blocker
-   * means there is nothing to read, and starting into a paused loop says the opposite of what
-   * happened. Same rule as each button's `disabled`, in one place so they cannot drift.
-   */
+  // `triggerRecording` is the one place that decides start versus stop — the buttons below and a
+  // bound gamepad button (#111) both call it, so neither can drift from the other's rule. `blocker`
+  // stays local: it is what each button's own `disabled` and `title` read, which is a rendering
+  // concern this component still owns.
   function trigger(mode: 'new' | 'extend'): void {
-    if (watching) stopRecording()
-    else if (blocker === null) startRecording(mode)
+    triggerRecording(mode)
   }
 
   /**

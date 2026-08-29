@@ -318,6 +318,23 @@ function stopWith(message: string | null): void {
 }
 
 /**
+ * Starts or stops a recording exactly as `CaptureRecorder`'s own two buttons decide to: stop is
+ * unconditional, start only runs when nothing currently blocks a capture. The one rule both the
+ * buttons and a bound gamepad button (#111) trigger through, so a controller press can never
+ * disagree with the button beside it about when a recording may begin.
+ */
+export function triggerRecording(mode: 'new' | 'extend'): void {
+  if (state.kind === 'watching') {
+    stopRecording()
+    return
+  }
+  const app = getState()
+  if (app.kind !== 'ready') return
+  const profile = activeCaptureProfile(app.project.captureProfiles)
+  if (captureBlocker(getCaptureSource(), profile) === null) startRecording(mode)
+}
+
+/**
  * The next tick, scheduled only after the previous one has finished rather than on an interval:
  * a tick that writes a picture into `media/` can take longer than `POLL_MS`, and overlapping ticks
  * would read the same box twice and race each other's append.

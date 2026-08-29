@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
-import type { CaptureProfile, Glyph } from '../project/types.ts'
+import type { CaptureProfile, Glyph, RecorderAction, RecorderBinding } from '../project/types.ts'
+import { RECORDER_ACTIONS } from '../project/types.ts'
 import { setActiveCaptureProfileId, useActiveCaptureProfile } from './active-profile.ts'
 import { CaptureCalibration } from './CaptureCalibration.tsx'
 import type { ProfileCalibration } from './capture-profile.ts'
@@ -17,11 +18,18 @@ import {
   useCaptureSource,
 } from './capture-session.ts'
 import { readLiveBox } from './capture-to-dialogue.ts'
+import { listenForNextEdge, useGamepadConnected } from './gamepad-watch.ts'
 import { GlyphLearner } from './GlyphLearner.tsx'
 import type { TextBoxReading } from './glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from './glyph-matcher.ts'
 import { GlyphSet } from './GlyphSet.tsx'
 import './CaptureBar.css'
+
+/** What each recorder action means, in the same words `CaptureRecorder`'s own buttons use. */
+const ACTION_LABELS: Record<RecorderAction, string> = {
+  'record-new': 'New capture',
+  'record-extend': 'Extend last',
+}
 
 /**
  * The calibration overlay, as this bar sees it. `freezing` is its own state because grabbing a
@@ -60,9 +68,11 @@ type ReadState =
 export function CaptureBar({
   profiles,
   glyphs,
+  bindings,
 }: {
   profiles: readonly CaptureProfile[]
   glyphs: readonly Glyph[]
+  bindings: readonly RecorderBinding[]
 }): ReactElement {
   const source = useCaptureSource()
   const active = useActiveCaptureProfile(profiles)
@@ -76,6 +86,43 @@ export function CaptureBar({
   const [read, setRead] = useState<ReadState>({ kind: 'idle' })
   /** Whether the alphabet is open for review. Transient UI, like every other flag in this bar. */
   const [showingGlyphs, setShowingGlyphs] = useState(false)
+
+  const gamepadConnected = useGamepadConnected()
+  /** Which action's row is waiting for the next press, or `null` — at most one row at a time. */
+  const [listeningAction, setListeningAction] = useState<RecorderAction | null>(null)
+  /** `listenForNextEdge`'s own cancel function, so a second listen or an unmount can retract it. */
+  const cancelListenRef = useRef<(() => void) | null>(null)
+
+  function startListening(action: RecorderAction): void {
+    cancelListenRef.current?.()
+    setListeningAction(action)
+    cancelListenRef.current = listenForNextEdge((buttonIndex) => {
+      dispatch({ kind: 'recorder-binding/set', action, buttonIndex })
+      cancelListenRef.current = null
+      setListeningAction(null)
+    })
+  }
+
+  function stopListening(): void {
+    cancelListenRef.current?.()
+    cancelListenRef.current = null
+    setListeningAction(null)
+  }
+
+  // A controller unplugged mid-listen leaves nothing left to press — the row would otherwise read
+  // "Listening…" forever once the section below stops rendering its rows at all.
+  useEffect(() => {
+    if (gamepadConnected) return
+    cancelListenRef.current?.()
+    cancelListenRef.current = null
+    setListeningAction(null)
+  }, [gamepadConnected])
+
+  // And a listen abandoned by navigating away from Settings must not fire onto whatever row a
+  // later visit starts listening on.
+  useEffect(() => {
+    return () => cancelListenRef.current?.()
+  }, [])
 
   /** A box may only be read through a profile drawn against the frame that is live right now. */
   const readable =
@@ -391,6 +438,35 @@ export function CaptureBar({
         </p>
       </Disclosure>
 
+      {/* Its own section too, for the same reason the alphabet is: a binding says how *this
+          player* triggers a recording, not a measurement of the console — see CLAUDE.md. */}
+      <h3 className="micro-label">Controller</h3>
+      {gamepadConnected ? (
+        RECORDER_ACTIONS.map((action) => (
+          <RecorderBindingRow
+            key={action}
+            action={action}
+            binding={bindings.find((candidate) => candidate.action === action)}
+            listening={listeningAction === action}
+            disabled={listeningAction !== null && listeningAction !== action}
+            onListen={() => startListening(action)}
+            onCancelListen={stopListening}
+          />
+        ))
+      ) : (
+        <p className="capture-bar__note" role="status">
+          No controller is connected. Chrome only reports one once a button on it has been
+          pressed, so press one now if it is already plugged in.
+        </p>
+      )}
+      <Disclosure>
+        <p className="capture-bar__hint">
+          A controller button reaches the app only while this page has focus — it does not make
+          the trigger global, only reachable without letting go of the controller. The New capture
+          and Extend last buttons in the canvas sidebar's Captures region always work, bound or not.
+        </p>
+      </Disclosure>
+
       {calibration.kind === 'failed' && (
         <p className="capture-bar__error" role="alert">
           {calibration.message}
@@ -417,6 +493,64 @@ export function CaptureBar({
         />
       )}
     </section>
+  )
+}
+
+/**
+ * One `RecorderAction`'s binding: what it is bound to, and the one control that changes that —
+ * `Press a button…` while idle, `Listening…` plus a way to cancel once pressed. Button indices are
+ * shown 1-based (`buttonIndex + 1`), matching how a person points at "button 3" on a pad rather
+ * than the zero-based index `Gamepad.buttons` actually stores.
+ */
+function RecorderBindingRow({
+  action,
+  binding,
+  listening,
+  disabled,
+  onListen,
+  onCancelListen,
+}: {
+  action: RecorderAction
+  binding: RecorderBinding | undefined
+  listening: boolean
+  /** Another row is listening — this one's `Press a button…` must not start a second one. */
+  disabled: boolean
+  onListen: () => void
+  onCancelListen: () => void
+}): ReactElement {
+  return (
+    <div className="capture-bar__row capture-bar__row--actions">
+      <span className="capture-bar__binding-label">{ACTION_LABELS[action]}</span>
+      <span className="capture-bar__size">
+        {binding === undefined ? 'Not bound' : `Button ${binding.buttonIndex + 1}`}
+      </span>
+      {listening ? (
+        <>
+          <span className="capture-bar__note" role="status">
+            Press the button to bind…
+          </span>
+          <button type="button" className="button" onClick={onCancelListen}>
+            Cancel
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="button" disabled={disabled} onClick={onListen}>
+            Press a button…
+          </button>
+          {binding !== undefined && (
+            <button
+              type="button"
+              className="button"
+              disabled={disabled}
+              onClick={() => dispatch({ kind: 'recorder-binding/cleared', action })}
+            >
+              Clear
+            </button>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 

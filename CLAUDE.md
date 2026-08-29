@@ -190,12 +190,18 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   fired while a recording runs stops it, which is what makes a third trigger unnecessary: two
   presses are a conversation, and the second press is wherever the player already is. `CaptureRecorder`
   renders both as buttons and nothing more; there is deliberately **no keyboard trigger**, now or
-  ever — a bare letter is no use to a hand on a controller, and the trigger the player actually
-  reaches for is a bound controller button (#110/#111). Queue mode is the only mode: a selected
-  dialogue means nothing to the watcher any more, so the held-frame queue (keyed by `DialogueId`,
-  replayed once the alphabet can read a tile it couldn't before) is unreachable until #109 re-keys
-  its push path to a capture — nothing currently writes into it, and an unreadable box in queue mode
-  is simply not recorded.
+  ever — a bare letter is no use to a hand on a controller. Queue mode is the only mode: a selected
+  dialogue means nothing to the watcher any more, so the held-frame queue is keyed by
+  `PendingCaptureId` (#109) — a held frame belongs to the capture being recorded when it was read,
+  never to whatever the watcher is recording into when it is replayed — and an unreadable box waits
+  for it exactly as a readable one arriving behind it does, unless no capture is open yet, in which
+  case there is nowhere for the frame to wait and the box is simply not recorded. `triggerRecording`
+  (`src/capture/capture-watch.ts`) is the one place that decides start versus stop from either
+  trigger, and a bound gamepad button (#111) calls it too, so a controller press can never disagree
+  with the button beside it about when a recording may begin. **A controller button reaches the
+  app only while the page has focus** — `navigator.getGamepads()` reports nothing for a background
+  tab, so binding one makes the trigger reachable without letting go of the controller, never
+  global; the two Captures-region buttons are what still works when it does not.
 - **Relevance is a vocabulary the project owns, not a compiled-in constant.** A `RelevanceTag` is a
   user-owned coloured record (`{ id, name, hue }`), exactly the shape `Zone` and `Quest` already use,
   stored in `project.relevanceTags`. That array's own order is the canonical order — the position a

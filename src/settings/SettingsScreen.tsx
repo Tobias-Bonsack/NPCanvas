@@ -85,7 +85,11 @@ export function SettingsScreen({ project }: { project: ProjectFile }): ReactElem
 
       {/* Session-long setup, not a per-dialogue field — moved here from the dialogue panel (#91),
           which now carries only the button that acts on the selected line. */}
-      <CaptureBar profiles={project.captureProfiles} glyphs={project.glyphs} />
+      <CaptureBar
+        profiles={project.captureProfiles}
+        glyphs={project.glyphs}
+        bindings={project.recorderBindings}
+      />
 
       <section className="settings__section" aria-labelledby="settings-shortcuts-heading">
         <h2 id="settings-shortcuts-heading" className="settings__section-title">
