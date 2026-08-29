@@ -207,25 +207,22 @@ let replaying = false
 // handed back to `DialoguePanel`/`CaptureBar` for further main-thread reads (see #112's own note
 // on why that path stays whole-frame and synchronous).
 
-type WorkerReadResponse =
+type WorkerResponse =
   | { kind: 'read'; sequence: number; reading: TextBoxReading }
+  | { kind: 'encoded'; sequence: number; blob: Blob }
   | { kind: 'error'; sequence: number; message: string }
 
-/** How long a read may go unanswered before the tick gives up on the worker for this box. */
+/** How long a request may go unanswered before the caller gives up on the worker for it. */
 const WORKER_READ_TIMEOUT_MS = 5_000
 
 let worker: Worker | null = null
 /** Set once a worker has failed to start or has crashed. Sticky for the session — see `readWorker`. */
 let workerUnavailable = false
 let nextRequestSequence = 0
-const pendingReads = new Map<
-  number,
-  {
-    resolve: (reading: TextBoxReading) => void
-    reject: (error: Error) => void
-    timer: ReturnType<typeof setTimeout>
-  }
->()
+
+type Pending<T> = { resolve: (value: T) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+const pendingReads = new Map<number, Pending<TextBoxReading>>()
+const pendingEncodes = new Map<number, Pending<Blob>>()
 
 /**
  * The alphabet last **sent** to the worker, by reference. `postMessage` structured-clones its
@@ -250,22 +247,15 @@ function readWorker(): Worker | null {
   }
   try {
     const created = new Worker(new URL('./capture-read-worker.ts', import.meta.url), { type: 'module' })
-    created.onmessage = (event: MessageEvent<WorkerReadResponse>) => {
-      const pending = pendingReads.get(event.data.sequence)
-      if (pending === undefined) return
-      clearTimeout(pending.timer)
-      pendingReads.delete(event.data.sequence)
-      if (event.data.kind === 'error') pending.reject(new Error(event.data.message))
-      else pending.resolve(event.data.reading)
+    created.onmessage = (event: MessageEvent<WorkerResponse>) => {
+      routeResponse(pendingReads, event.data, (data) => (data.kind === 'read' ? data.reading : undefined))
+      routeResponse(pendingEncodes, event.data, (data) => (data.kind === 'encoded' ? data.blob : undefined))
     }
     created.onerror = () => {
       workerUnavailable = true
       worker = null
-      for (const pending of pendingReads.values()) {
-        clearTimeout(pending.timer)
-        pending.reject(new Error('The capture read worker failed.'))
-      }
-      pendingReads.clear()
+      failAll(pendingReads)
+      failAll(pendingEncodes)
     }
     worker = created
     return created
@@ -276,10 +266,63 @@ function readWorker(): Worker | null {
 }
 
 /**
+ * Routes one response to the pending request it answers, in whichever of the two maps holds it —
+ * `sequence` is a single counter shared by both request kinds, so it names at most one pending
+ * entry across them. A `kind` that does not belong to this map (a `'read'` response checked
+ * against `pendingEncodes`, say) is `undefined` from `value`, which `resolve` never sees because
+ * the `pending` lookup itself already missed for the wrong map.
+ */
+function routeResponse<T>(
+  pending: Map<number, Pending<T>>,
+  data: WorkerResponse,
+  value: (data: WorkerResponse) => T | undefined,
+): void {
+  const entry = pending.get(data.sequence)
+  if (entry === undefined) return
+  clearTimeout(entry.timer)
+  pending.delete(data.sequence)
+  if (data.kind === 'error') {
+    entry.reject(new Error(data.message))
+    return
+  }
+  const resolved = value(data)
+  if (resolved !== undefined) entry.resolve(resolved)
+}
+
+function failAll<T>(pending: Map<number, Pending<T>>): void {
+  for (const entry of pending.values()) {
+    clearTimeout(entry.timer)
+    entry.reject(new Error('The capture read worker failed.'))
+  }
+  pending.clear()
+}
+
+/** A request to a worker request, with the shared timeout/fallback plumbing factored out. */
+async function requestFromWorker<T>(
+  active: Worker,
+  pending: Map<number, Pending<T>>,
+  build: (sequence: number) => WorkerRequestPayload,
+): Promise<T> {
+  const sequence = ++nextRequestSequence
+  return new Promise<T>((resolve, reject) => {
+    // A worker that never answers must not hang the caller forever — the timer is the backstop
+    // `readWorker`'s own `onerror` cannot cover, because a stuck worker throws nothing at all.
+    const timer = setTimeout(() => {
+      if (pending.delete(sequence)) reject(new Error('The capture read worker did not answer in time.'))
+    }, WORKER_READ_TIMEOUT_MS)
+    pending.set(sequence, { resolve, reject, timer })
+    const { message, transfer } = build(sequence)
+    active.postMessage(message, transfer)
+  })
+}
+
+type WorkerRequestPayload = { message: unknown; transfer: Transferable[] }
+
+/**
  * `readTextBox`, off the main thread when a worker is available. `frame` stays on the main thread
- * either way — `screenPng` still encodes it here if the box settles — and only a bitmap **derived**
- * from it, via `createImageBitmap(frame)`, is transferred, so the worker never needs the canonical
- * pixels handed back.
+ * either way — `screenPng`/`encodeBox` still encode it here if the box settles — and only a
+ * bitmap **derived** from it, via `createImageBitmap(frame)`, is transferred, so the worker never
+ * needs the canonical pixels handed back.
  */
 async function readBox(
   frame: ImageData,
@@ -299,22 +342,11 @@ async function readBox(
 
   const changed = glyphs !== lastSentGlyphs
   if (changed) lastSentGlyphs = glyphs
-  const sequence = ++nextRequestSequence
   try {
-    return await new Promise<TextBoxReading>((resolve, reject) => {
-      // A worker that never answers must not hang the tick forever — the timer is the backstop
-      // `readWorker`'s own `onerror` cannot cover, because a stuck worker throws nothing at all.
-      const timer = setTimeout(() => {
-        if (pendingReads.delete(sequence)) {
-          reject(new Error('The capture read worker did not answer in time.'))
-        }
-      }, WORKER_READ_TIMEOUT_MS)
-      pendingReads.set(sequence, { resolve, reject, timer })
-      active.postMessage(
-        { sequence, bitmap, origin, profile, glyphs: changed ? glyphs : undefined },
-        [bitmap],
-      )
-    })
+    return await requestFromWorker(active, pendingReads, (sequence) => ({
+      message: { kind: 'read', sequence, bitmap, origin, profile, glyphs: changed ? glyphs : undefined },
+      transfer: [bitmap],
+    }))
   } catch {
     // This request failed, or the worker died outright — either way this tick reads the frame it
     // already has rather than losing the box. A dead worker also resets `lastSentGlyphs`: the
@@ -324,18 +356,49 @@ async function readBox(
   }
 }
 
+/**
+ * The console screen as a PNG file, off the main thread when a worker is available — the encode
+ * `screenPng` did inline before #118. Falls back to `screenPng` itself on any failure, exactly as
+ * `readBox` falls back to `readTextBox`.
+ */
+async function encodeBox(frame: ImageData, origin: Point, profile: CaptureProfile): Promise<File> {
+  const active = readWorker()
+  if (active === null) return screenPng(frame, profile, origin)
+
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(frame)
+  } catch {
+    return screenPng(frame, profile, origin)
+  }
+
+  try {
+    const blob = await requestFromWorker(active, pendingEncodes, (sequence) => ({
+      message: { kind: 'encode', sequence, bitmap, origin, profile },
+      transfer: [bitmap],
+    }))
+    // The name is a label only, exactly as `screenPng` documents — `importDialogueMedia` derives
+    // the real one in `media/` from the capture and media ids.
+    return new File([blob], 'capture.png', { type: 'image/png' })
+  } catch {
+    return screenPng(frame, profile, origin)
+  }
+}
+
 /** One picture the watcher wrote, kept only long enough to judge the box that follows it. */
-type WrittenFrame = { captureId: PendingCaptureId; media: DialogueMedia; text: string }
+type WrittenFrame = { media: DialogueMedia; text: string }
 
 /**
- * The last two boxes written, oldest first — the window `middleAddsNothing` judges a middle in.
+ * The last two boxes written for each capture, oldest first — the window `middleAddsNothing`
+ * judges a middle in.
  *
  * Module-level and never in the store, for the reason the file's opening comment gives for `settle`
- * and `heldFrames`: it is transient, unserialisable, and no part of the document. It holds one
- * capture's frames at a time; a write into another capture clears it, because a replay walks
- * several conversations in one pass and two boxes of different captures have no window in common.
+ * and `heldFrames`: it is transient, unserialisable, and no part of the document. Keyed by capture
+ * rather than a single shared array (#118): the write queue now lets two different captures write
+ * concurrently, and a shared window would have no way to tell whether an entry sitting in it
+ * belongs to the capture about to judge a middle or to another one's write racing alongside it.
  */
-let written: WrittenFrame[] = []
+const writtenByCapture = new Map<PendingCaptureId, WrittenFrame[]>()
 
 /** Passed to `useSyncExternalStore` by reference — a fresh object per call renders forever. */
 function getWatchState(): WatchState {
@@ -400,7 +463,7 @@ export function startRecording(mode: 'new' | 'extend'): void {
   settle = NOTHING_SEEN
   settledFor = { profileId: null }
   currentCaptureId = null
-  written = []
+  writtenByCapture.clear()
   failures = 0
   // The held queue is deliberately not cleared: it survives the watcher being switched off and on,
   // because the alphabet is usually answered once the conversation is over.
@@ -427,6 +490,11 @@ export function startRecording(mode: 'new' | 'extend'): void {
  * Stops recording, however it was started. Unconditional: the connection can end while the loop
  * runs, and a recording that could refuse to stop would have no way back — see `CaptureRecorder`.
  * A recording that is never stopped is simply one long capture, never a lost one.
+ *
+ * `writeQueues` is deliberately left alone (#118): a box settled just before Stop can still be
+ * mid-encode or mid-write, and nothing here cancels its chain — it drains on its own, so a
+ * recording stopped mid-write still ends with every picture on disk rather than one the document
+ * names and `media/` does not have.
  */
 export function stopRecording(): void {
   stopWith(null)
@@ -567,58 +635,82 @@ async function tick(mine: number): Promise<void> {
   }
   if (settled.kind === 'held') return
 
-  try {
-    switch (await writeIntoQueue(profile, frame, origin, settled.text)) {
-      case 'appended':
-        countAppended(settled.text)
-        break
-      case 'unchanged':
-        countRepeated()
-        break
-      case 'gone':
-        break
-    }
-  } catch (error) {
-    pause(describeError(error))
-  }
+  writeIntoQueue(profile, frame, origin, settled.text)
 }
 
 /**
  * One settled box into the pending-capture queue: the first box of a conversation creates the
  * capture, every later one appends to it — ensuring `currentCaptureId` names a live one and then
- * delegating to `writeIntoCapture`, since neither `store.ts` nor `capture-to-dialogue.ts` know
+ * queuing `writeIntoCapture` against it, since neither `store.ts` nor `capture-to-dialogue.ts` know
  * about a `PendingCapture`.
+ *
+ * Synchronous, and deliberately not awaited by the tick (#118): resolving *which* capture this box
+ * belongs to has to happen now, before the next tick reads `currentCaptureId` — but the encode and
+ * the disk write do not, and queuing them is what lets `schedule` arm the next poll immediately
+ * instead of paying for those out of the reading budget.
  *
  * `currentCaptureId` names which capture that is; `null` means this settled box is the first of a
  * new conversation.
  */
-async function writeIntoQueue(
+function writeIntoQueue(
   profile: CaptureProfile,
   frame: ImageData,
   origin: Point,
   transcript: string,
-): Promise<'appended' | 'unchanged' | 'gone'> {
-  // Checked before anything is written, exactly like `writeIntoCapture` checks the capture it is
-  // appending to: a box that says nothing new a capture in progress does not already say must
-  // not cost a picture. Only meaningful once a capture exists — a conversation's first box has
-  // nothing yet to be unchanged against, so this is skipped for it.
-  if (currentCaptureId !== null) {
-    const existing = currentPendingCapture(currentCaptureId)
-    if (existing === null) {
-      // Placed or deleted since the last tick. Not 'gone' — the conversation itself is not gone,
-      // only the capture that was holding it; falling through starts a fresh one for this box.
-      setCurrentCaptureId(null)
-    } else if (appendOutcome(existing.text, transcript).text !== 'appended') {
-      return 'unchanged'
-    }
+): void {
+  if (currentCaptureId !== null && currentPendingCapture(currentCaptureId) === null) {
+    // Placed or deleted since the last tick. Not 'gone' — the conversation itself is not gone,
+    // only the capture that was holding it; falling through starts a fresh one for this box.
+    setCurrentCaptureId(null)
   }
 
   if (currentCaptureId === null) openCapture()
   const captureId = currentCaptureId
   // `openCapture` only ever leaves this null with no project open, which the tick already refused.
-  if (captureId === null) return 'gone'
+  if (captureId === null) return
 
-  return writeIntoCapture(captureId, profile, frame, origin, transcript)
+  queueWrite(captureId, profile, frame, origin, transcript)
+}
+
+/**
+ * One capture's queue of writes still in flight or waiting, run in order — the FIFO #118 needs:
+ * `appendWithoutOverlap` joins a scrolled box to the suffix before it, and boxes written out of
+ * order would join it to the wrong one. Two different captures each get their own chain and run
+ * concurrently; nothing here ever waits on another capture's.
+ */
+const writeQueues = new Map<PendingCaptureId, Promise<void>>()
+
+/**
+ * Queues one settled box's write onto `captureId`'s own chain and returns immediately. Errors
+ * surface through `pause`, exactly as they did when the tick awaited this inline — and a failure
+ * here does not break the chain for the boxes queued after it, so one bad write cannot wedge the
+ * rest of the conversation.
+ */
+function queueWrite(
+  captureId: PendingCaptureId,
+  profile: CaptureProfile,
+  frame: ImageData,
+  origin: Point,
+  transcript: string,
+): void {
+  const previous = writeQueues.get(captureId) ?? Promise.resolve()
+  const next = previous.then(async () => {
+    try {
+      switch (await writeIntoCapture(captureId, profile, frame, origin, transcript)) {
+        case 'appended':
+          countAppended(transcript)
+          break
+        case 'unchanged':
+          countRepeated()
+          break
+        case 'gone':
+          break
+      }
+    } catch (error) {
+      pause(describeError(error))
+    }
+  })
+  writeQueues.set(captureId, next)
 }
 
 /** The next settled box with no capture in progress always starts a fresh conversation. */
@@ -671,9 +763,10 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
  * That too is the watcher's alone, and for the same reason: it fires unattended, so it is the one
  * caller that can judge a frame against what came after it rather than against a press.
  *
- * Two callers: `writeIntoQueue`, once it has ensured `currentCaptureId` names a live capture, and
- * `replayInto`, which always names the capture a held frame belongs to and never creates one — a
- * capture that already left the queue is `'gone'`, not a fresh conversation started in its place.
+ * Two callers: `queueWrite`, once `writeIntoQueue` has ensured `currentCaptureId` names a live
+ * capture, and `replayInto`, which always names the capture a held frame belongs to and never
+ * creates one — a capture that already left the queue is `'gone'`, not a fresh conversation
+ * started in its place.
  */
 async function writeIntoCapture(
   captureId: PendingCaptureId,
@@ -686,7 +779,7 @@ async function writeIntoCapture(
   if (target === null) return 'gone'
   if (appendOutcome(target.text, transcript).text !== 'appended') return 'unchanged'
 
-  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile, origin))
+  const { media } = await importDialogueMedia(captureId, await encodeBox(frame, origin, profile))
   dispatch({ kind: 'pending-capture/media-added', captureId, media })
 
   // The document as it stands now, mirroring `captureIntoDialogue`'s own note: encoding and
@@ -723,22 +816,19 @@ async function keepWindow(
   media: DialogueMedia,
   text: string,
 ): Promise<void> {
-  // A replay walks several held frames in one pass, and two boxes of different conversations have
-  // no window in common.
-  if (written.length > 0 && written[0].captureId !== captureId) written = []
-
-  const middle = written.at(-1) ?? null
-  const before = written.at(-2)?.text ?? ''
-  const entry: WrittenFrame = { captureId, media, text }
+  const previous = writtenByCapture.get(captureId) ?? []
+  const middle = previous.at(-1) ?? null
+  const before = previous.at(-2)?.text ?? ''
+  const entry: WrittenFrame = { media, text }
 
   if (middle !== null && middleAddsNothing(before, middle.text, text)) {
     // Written before the await, so a write landing underneath this one cannot judge the same middle
     // a second time and try to remove it twice.
-    written = [...written.slice(0, -1), entry]
-    await takeBack(middle.captureId, middle.media)
+    writtenByCapture.set(captureId, [...previous.slice(0, -1), entry])
+    await takeBack(captureId, middle.media)
     return
   }
-  written = [...written, entry].slice(-2)
+  writtenByCapture.set(captureId, [...previous, entry].slice(-2))
 }
 
 /**

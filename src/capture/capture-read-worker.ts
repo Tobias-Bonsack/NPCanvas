@@ -1,8 +1,9 @@
 import type { CaptureProfile, Glyph } from '../project/types.ts'
-import { readTextBox } from './glyph-matcher.ts'
-import type { TextBoxReading } from './glyph-matcher.ts'
+import type { PixelBuffer, TextBoxReading } from './glyph-matcher.ts'
+import { readTextBox, sampleNative } from './glyph-matcher.ts'
 
-// The watcher's read, off the main thread (#117).
+// The watcher's read, off the main thread (#117) — and, once a box settles, the picture's PNG
+// encode too (#118).
 //
 // This worker imports only `glyph-matcher.ts` and its type dependencies — no `store.ts`, no
 // `reducer.ts`, no `capture-watch.ts`, nothing that touches `document`. `glyph-matcher.ts`'s own
@@ -12,6 +13,8 @@ import type { TextBoxReading } from './glyph-matcher.ts'
 // queue all stay on the main thread; this is a compute engine handed pixels, nothing more — the
 // same line CLAUDE.md draws in § "Async IO never enters the reducer" and § "Store scope".
 
+type Origin = { x: number; y: number }
+
 /**
  * One read request. `glyphs` is `undefined` when the caller's alphabet has not changed since the
  * last request: `postMessage` structured-clones every array it carries, so resending it on every
@@ -20,15 +23,28 @@ import type { TextBoxReading } from './glyph-matcher.ts'
  * whatever alphabet it was last given and reuses that reference until told otherwise.
  */
 type ReadRequest = {
+  kind: 'read'
   sequence: number
   bitmap: ImageBitmap
-  origin: { x: number; y: number }
+  origin: Origin
   profile: CaptureProfile
   glyphs: readonly Glyph[] | undefined
 }
 
-type ReadResponse =
+/** One box settled, so its picture is worth writing — the PNG encode `screenPng` did before #118. */
+type EncodeRequest = {
+  kind: 'encode'
+  sequence: number
+  bitmap: ImageBitmap
+  origin: Origin
+  profile: CaptureProfile
+}
+
+type WorkerRequest = ReadRequest | EncodeRequest
+
+type WorkerResponse =
   | { kind: 'read'; sequence: number; reading: TextBoxReading }
+  | { kind: 'encoded'; sequence: number; blob: Blob }
   | { kind: 'error'; sequence: number; message: string }
 
 /**
@@ -38,34 +54,43 @@ type ReadResponse =
  * globals both declare (`self`, `caches`, …), so `self` is retyped narrowly to the two members
  * this file actually calls, rather than pulling in a whole second global environment for them.
  */
-const context = self as unknown as {
-  onmessage: ((event: MessageEvent<ReadRequest>) => void) | null
-  postMessage: (message: ReadResponse) => void
+const scope = self as unknown as {
+  onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null
+  postMessage: (message: WorkerResponse, transfer: Transferable[]) => void
 }
 
-/** Reused across reads — the one canvas this worker ever needs to decode a bitmap into pixels. */
+/** Reused across reads and encodes — the one canvas this worker ever needs a bitmap decoded into. */
 let canvas: OffscreenCanvas | null = null
 
 /** The alphabet last received, kept by reference so an unchanged one keeps its identity. */
 let retainedGlyphs: readonly Glyph[] = []
 
-context.onmessage = (event) => {
-  const { sequence, bitmap, origin, profile, glyphs } = event.data
-  if (glyphs !== undefined) retainedGlyphs = glyphs
-
+scope.onmessage = (event) => {
+  const request = event.data
   try {
-    const frame = decode(bitmap)
-    const reading = readTextBox(frame, profile, retainedGlyphs, origin)
-    context.postMessage({ kind: 'read', sequence, reading })
+    if (request.kind === 'read') {
+      if (request.glyphs !== undefined) retainedGlyphs = request.glyphs
+      const frame = decode(request.bitmap)
+      const reading = readTextBox(frame, request.profile, retainedGlyphs, request.origin)
+      scope.postMessage({ kind: 'read', sequence: request.sequence, reading }, [])
+    } else {
+      const frame = decode(request.bitmap)
+      encodePng(frame, request.profile, request.origin)
+        .then((blob) => scope.postMessage({ kind: 'encoded', sequence: request.sequence, blob }, [blob]))
+        .catch((error: unknown) => postError(request.sequence, error))
+    }
   } catch (error) {
-    context.postMessage({
-      kind: 'error',
-      sequence,
-      message: error instanceof Error ? error.message : String(error),
-    })
+    postError(request.sequence, error)
   } finally {
-    bitmap.close()
+    request.bitmap.close()
   }
+}
+
+function postError(sequence: number, error: unknown): void {
+  scope.postMessage(
+    { kind: 'error', sequence, message: error instanceof Error ? error.message : String(error) },
+    [],
+  )
 }
 
 function decode(bitmap: ImageBitmap): ImageData {
@@ -78,4 +103,25 @@ function decode(bitmap: ImageBitmap): ImageData {
   if (context === null) throw new Error('This worker provided no 2D canvas context.')
   context.drawImage(bitmap, 0, 0)
   return context.getImageData(0, 0, bitmap.width, bitmap.height)
+}
+
+/**
+ * The console screen alone, at native resolution, as a PNG — mirrors `screenPng`
+ * (`capture-to-dialogue.ts`) exactly, byte for byte, so a switch between the worker and the
+ * main-thread fallback is invisible in `media/`. That function stays as the fallback path itself;
+ * this is the same three steps run through `OffscreenCanvas.convertToBlob` instead of
+ * `HTMLCanvasElement.toBlob`, because a worker has no `document` to create the latter from.
+ */
+async function encodePng(frame: PixelBuffer, profile: CaptureProfile, origin: Origin): Promise<Blob> {
+  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
+
+  const target = new OffscreenCanvas(native.width, native.height)
+  const context = target.getContext('2d')
+  if (context === null) throw new Error('This worker provided no 2D canvas context.')
+
+  const image = context.createImageData(native.width, native.height)
+  image.data.set(native.data)
+  context.putImageData(image, 0, 0)
+
+  return target.convertToBlob({ type: 'image/png' })
 }
