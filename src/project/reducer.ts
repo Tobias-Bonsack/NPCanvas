@@ -197,7 +197,7 @@ function applyAction(state: AppState, action: Action): AppState {
     }
 
     // An id already in the document would make identity ambiguous everywhere at once —
-    // `withMap` replaces by reference, a delete removes both, React renders two nodes under one
+    // `replaceIn` replaces by reference, a delete removes both, React renders two nodes under one
     // key. Unreachable through the UI (ids are UUIDs), and guarded for the same reason
     // `quest/dialogue-attached` is: parse and the reducer are the only two doors into the
     // document, and an invariant enforced on one of them is not enforced.
@@ -214,7 +214,7 @@ function applyAction(state: AppState, action: Action): AppState {
       if (state.kind !== 'ready') return state
       const target = state.project.maps.find((map) => map.id === action.mapId)
       if (target === undefined || target.name === action.name) return state
-      return withMap(state, target, { ...target, name: action.name })
+      return replaceIn(state, 'maps', target, { ...target, name: action.name })
     }
 
     // Fires once per drag, on pointerup, for the same reason `dialogue/moved` does: the map
@@ -224,7 +224,7 @@ function applyAction(state: AppState, action: Action): AppState {
       const target = state.project.maps.find((map) => map.id === action.mapId)
       if (target === undefined) return state
       if (target.origin.x === action.origin.x && target.origin.y === action.origin.y) return state
-      return withMap(state, target, { ...target, origin: action.origin })
+      return replaceIn(state, 'maps', target, { ...target, origin: action.origin })
     }
 
     // The origin moves with the scale so the map's centre stays put — the two are one
@@ -235,7 +235,7 @@ function applyAction(state: AppState, action: Action): AppState {
       if (target === undefined) return state
       const scale = clampMapScale(action.scale)
       if (target.scale === scale) return state
-      return withMap(state, target, { ...target, scale, origin: originForScale(target, scale) })
+      return replaceIn(state, 'maps', target, { ...target, scale, origin: originForScale(target, scale) })
     }
 
     // The whole cascade is one action: a map, its zones, its dialogues, and every quest
@@ -286,16 +286,16 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'zone/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findZone(state.project, action.zoneId)
+      const target = findById(state.project, 'zones', action.zoneId)
       if (target === null || target.name === action.name) return state
-      return withZone(state, target, { ...target, name: action.name })
+      return replaceIn(state, 'zones', target, { ...target, name: action.name })
     }
 
     case 'zone/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findZone(state.project, action.zoneId)
+      const target = findById(state.project, 'zones', action.zoneId)
       if (target === null || target.hue === action.hue) return state
-      return withZone(state, target, { ...target, hue: action.hue })
+      return replaceIn(state, 'zones', target, { ...target, hue: action.hue })
     }
 
     // One action for both zone gestures — a move and a resize each hand over the polygon they
@@ -305,9 +305,9 @@ function applyAction(state: AppState, action: Action): AppState {
     // reclassifies its contents with zero writes. See CLAUDE.md.
     case 'zone/reshaped': {
       if (state.kind !== 'ready') return state
-      const target = findZone(state.project, action.zoneId)
+      const target = findById(state.project, 'zones', action.zoneId)
       if (target === null || isSamePolygon(target.polygon, action.polygon)) return state
-      return withZone(state, target, { ...target, polygon: action.polygon })
+      return replaceIn(state, 'zones', target, { ...target, polygon: action.polygon })
     }
 
     // No cascade, deliberately: a zone owns nothing. Dialogues inside it merely stop deriving
@@ -357,7 +357,7 @@ function applyAction(state: AppState, action: Action): AppState {
       if (target.position.x === action.position.x && target.position.y === action.position.y) {
         return state
       }
-      return withDialogue(state, target, { ...target, position: action.position })
+      return replaceIn(state, 'dialogues', target, { ...target, position: action.position })
     }
 
     // The four field edits below each fire per keystroke or per click. They are separate
@@ -366,9 +366,9 @@ function applyAction(state: AppState, action: Action): AppState {
     // a re-render that changed nothing.
     case 'dialogue/npc-named': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null || target.npcName === action.npcName) return state
-      return withDialogue(state, target, { ...target, npcName: action.npcName })
+      return replaceIn(state, 'dialogues', target, { ...target, npcName: action.npcName })
     }
 
     /**
@@ -402,28 +402,28 @@ function applyAction(state: AppState, action: Action): AppState {
     // already carries pictures still has a line to edit — and a capture appends both.
     case 'dialogue/text-set': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null || target.text === action.text) return state
-      return withDialogue(state, target, { ...target, text: action.text })
+      return replaceIn(state, 'dialogues', target, { ...target, text: action.text })
     }
 
     // Appended, never replacing: several frames of one line is the case the list exists for.
     case 'dialogue/media-added': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null) return state
-      return withDialogue(state, target, { ...target, media: [...target.media, action.media] })
+      return replaceIn(state, 'dialogues', target, { ...target, media: [...target.media, action.media] })
     }
 
     // Deleting the file the medium referenced is the caller's job: it is IO, and IO never
     // enters the reducer.
     case 'dialogue/media-removed': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null || !target.media.some((medium) => medium.id === action.mediaId)) {
         return state
       }
-      return withDialogue(state, target, {
+      return replaceIn(state, 'dialogues', target, {
         ...target,
         media: target.media.filter((medium) => medium.id !== action.mediaId),
       })
@@ -433,27 +433,27 @@ function applyAction(state: AppState, action: Action): AppState {
     // outside could drop an id, and a list that loses a picture on a drag is a lost file.
     case 'dialogue/media-reordered': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null) return state
       const media = moveMedium(target.media, action.mediaId, action.toIndex)
       if (media === null) return state
-      return withDialogue(state, target, { ...target, media })
+      return replaceIn(state, 'dialogues', target, { ...target, media })
     }
 
     case 'dialogue/spoken-at-set': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null || target.spokenAt === action.spokenAt) return state
-      return withDialogue(state, target, { ...target, spokenAt: action.spokenAt })
+      return replaceIn(state, 'dialogues', target, { ...target, spokenAt: action.spokenAt })
     }
 
     case 'dialogue/relevance-set': {
       if (state.kind !== 'ready') return state
-      const target = findDialogue(state.project, action.dialogueId)
+      const target = findById(state.project, 'dialogues', action.dialogueId)
       if (target === null) return state
       const relevance = normalizeRelevance(action.relevance, state.project.relevanceTags)
       if (isSameRelevance(target.relevance, relevance)) return state
-      return withDialogue(state, target, { ...target, relevance })
+      return replaceIn(state, 'dialogues', target, { ...target, relevance })
     }
 
     case 'dialogue/deleted': {
@@ -494,8 +494,8 @@ function applyAction(state: AppState, action: Action): AppState {
       if (state.kind !== 'ready') return state
       const { project } = state
       if (action.intoId === action.fromId) return state
-      const into = findDialogue(project, action.intoId)
-      const from = findDialogue(project, action.fromId)
+      const into = findById(project, 'dialogues', action.intoId)
+      const from = findById(project, 'dialogues', action.fromId)
       if (into === null || from === null) return state
 
       const merged: Dialogue = {
@@ -532,30 +532,30 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'quest/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || target.name === action.name) return state
-      return withQuest(state, target, { ...target, name: action.name })
+      return replaceIn(state, 'quests', target, { ...target, name: action.name })
     }
 
     case 'quest/note-set': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || target.note === action.note) return state
-      return withQuest(state, target, { ...target, note: action.note })
+      return replaceIn(state, 'quests', target, { ...target, note: action.note })
     }
 
     case 'quest/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || target.hue === action.hue) return state
-      return withQuest(state, target, { ...target, hue: action.hue })
+      return replaceIn(state, 'quests', target, { ...target, hue: action.hue })
     }
 
     case 'quest/status-set': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || target.status === action.status) return state
-      return withQuest(state, target, { ...target, status: action.status })
+      return replaceIn(state, 'quests', target, { ...target, status: action.status })
     }
 
     // The dialogue must exist. `pruneQuestDialogues` guarantees no dangling id survives a
@@ -563,10 +563,10 @@ function applyAction(state: AppState, action: Action): AppState {
     // together are what let every reader treat a `dialogueIds` entry as resolvable.
     case 'quest/dialogue-attached': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || target.dialogueIds.includes(action.dialogueId)) return state
-      if (findDialogue(state.project, action.dialogueId) === null) return state
-      return withQuest(state, target, {
+      if (findById(state.project, 'dialogues', action.dialogueId) === null) return state
+      return replaceIn(state, 'quests', target, {
         ...target,
         dialogueIds: [...target.dialogueIds, action.dialogueId],
       })
@@ -574,9 +574,9 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'quest/dialogue-detached': {
       if (state.kind !== 'ready') return state
-      const target = findQuest(state.project, action.questId)
+      const target = findById(state.project, 'quests', action.questId)
       if (target === null || !target.dialogueIds.includes(action.dialogueId)) return state
-      return withQuest(state, target, {
+      return replaceIn(state, 'quests', target, {
         ...target,
         dialogueIds: target.dialogueIds.filter((id) => id !== action.dialogueId),
       })
@@ -610,16 +610,16 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'capture-profile/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findCaptureProfile(state.project, action.profileId)
+      const target = findById(state.project, 'captureProfiles', action.profileId)
       if (target === null || target.name === action.name) return state
-      return withCaptureProfile(state, target, { ...target, name: action.name })
+      return replaceIn(state, 'captureProfiles', target, { ...target, name: action.name })
     }
 
     case 'capture-profile/calibrated': {
       if (state.kind !== 'ready') return state
-      const target = findCaptureProfile(state.project, action.profileId)
+      const target = findById(state.project, 'captureProfiles', action.profileId)
       if (target === null) return state
-      return withCaptureProfile(state, target, { ...target, ...action.calibration })
+      return replaceIn(state, 'captureProfiles', target, { ...target, ...action.calibration })
     }
 
     // No cascade: a profile is how pixels were read, not something the document references.
@@ -675,16 +675,16 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'relevance-tag/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findRelevanceTag(state.project, action.tagId)
+      const target = findById(state.project, 'relevanceTags', action.tagId)
       if (target === null || target.name === action.name) return state
-      return withRelevanceTag(state, target, { ...target, name: action.name })
+      return replaceIn(state, 'relevanceTags', target, { ...target, name: action.name })
     }
 
     case 'relevance-tag/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findRelevanceTag(state.project, action.tagId)
+      const target = findById(state.project, 'relevanceTags', action.tagId)
       if (target === null || target.hue === action.hue) return state
-      return withRelevanceTag(state, target, { ...target, hue: action.hue })
+      return replaceIn(state, 'relevanceTags', target, { ...target, hue: action.hue })
     }
 
     // The array order is the canonical order `normalizeRelevance` sorts against, so moving a
@@ -755,18 +755,18 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'pending-capture/text-set': {
       if (state.kind !== 'ready') return state
-      const target = findPendingCapture(state.project, action.captureId)
+      const target = findById(state.project, 'pendingCaptures', action.captureId)
       if (target === null || target.text === action.text) return state
-      return withPendingCapture(state, target, { ...target, text: action.text })
+      return replaceIn(state, 'pendingCaptures', target, { ...target, text: action.text })
     }
 
     // Appended, never replacing — mirrors `dialogue/media-added`: the watcher's held-frame
     // queue can add several pictures to one conversation before it ever gets a place.
     case 'pending-capture/media-added': {
       if (state.kind !== 'ready') return state
-      const target = findPendingCapture(state.project, action.captureId)
+      const target = findById(state.project, 'pendingCaptures', action.captureId)
       if (target === null) return state
-      return withPendingCapture(state, target, { ...target, media: [...target.media, action.media] })
+      return replaceIn(state, 'pendingCaptures', target, { ...target, media: [...target.media, action.media] })
     }
 
     // Mirrors `dialogue/media-removed`: deleting the file is the caller's job, exactly as it is
@@ -774,11 +774,11 @@ function applyAction(state: AppState, action: Action): AppState {
     // with, once the queue is what it was written into instead of a placed line.
     case 'pending-capture/media-removed': {
       if (state.kind !== 'ready') return state
-      const target = findPendingCapture(state.project, action.captureId)
+      const target = findById(state.project, 'pendingCaptures', action.captureId)
       if (target === null || !target.media.some((medium) => medium.id === action.mediaId)) {
         return state
       }
-      return withPendingCapture(state, target, {
+      return replaceIn(state, 'pendingCaptures', target, {
         ...target,
         media: target.media.filter((medium) => medium.id !== action.mediaId),
       })
@@ -786,19 +786,19 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'pending-capture/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findPendingCapture(state.project, action.captureId)
+      const target = findById(state.project, 'pendingCaptures', action.captureId)
       if (target === null || target.npcName === action.npcName) return state
-      return withPendingCapture(state, target, { ...target, npcName: action.npcName })
+      return replaceIn(state, 'pendingCaptures', target, { ...target, npcName: action.npcName })
     }
 
     // Mirrors `dialogue/relevance-set` exactly, normalized against the same `relevanceTags`.
     case 'pending-capture/relevance-set': {
       if (state.kind !== 'ready') return state
-      const target = findPendingCapture(state.project, action.captureId)
+      const target = findById(state.project, 'pendingCaptures', action.captureId)
       if (target === null) return state
       const relevance = normalizeRelevance(action.relevance, state.project.relevanceTags)
       if (isSameRelevance(target.relevance, relevance)) return state
-      return withPendingCapture(state, target, { ...target, relevance })
+      return replaceIn(state, 'pendingCaptures', target, { ...target, relevance })
     }
 
     // No cascade in the reducer: the caller collects the capture's media file names before
@@ -826,7 +826,7 @@ function applyAction(state: AppState, action: Action): AppState {
     case 'pending-capture/placed': {
       if (state.kind !== 'ready') return state
       const { project } = state
-      const target = findPendingCapture(project, action.captureId)
+      const target = findById(project, 'pendingCaptures', action.captureId)
       if (target === null || !hasMap(project, action.mapId)) return state
       const dialogue: Dialogue = {
         id: action.dialogueId,
@@ -1044,128 +1044,38 @@ const EMPTY_MAP_IDS: ReadonlySet<MapId> = new Set<MapId>()
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
-/** Replaces one map by reference identity. Every single-map edit funnels through here. */
-function withMap(state: ReadyState, target: GameMap, replacement: GameMap): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      maps: state.project.maps.map((map) => (map === target ? replacement : map)),
-    },
-  }
-}
+/**
+ * Every `ProjectFile` array field keyed by an `id`, derived from `ProjectFile` so a mismatched
+ * field/element pair is a compile error. `replaceIn` still returns a fresh `project` on
+ * `replacement === target` like the seven `withX` it replaces — do not "optimize" that away,
+ * `trackHistory`/`useAppStateExceptSave` key an undo step / re-render off `project` identity.
+ */
+type ListField = {
+  [K in keyof ProjectFile]: ProjectFile[K] extends readonly { id: string }[] ? K : never
+}[keyof ProjectFile]
 
-/** Replaces one dialogue by reference identity, mirroring `withMap`. */
-function withDialogue(state: ReadyState, target: Dialogue, replacement: Dialogue): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      dialogues: state.project.dialogues.map((dialogue) =>
-        dialogue === target ? replacement : dialogue,
-      ),
-    },
-  }
-}
-
-/** Replaces one zone by reference identity, mirroring `withMap`. */
-function withZone(state: ReadyState, target: Zone, replacement: Zone): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      zones: state.project.zones.map((zone) => (zone === target ? replacement : zone)),
-    },
-  }
-}
-
-/** Replaces one quest by reference identity, mirroring `withMap`. */
-function withQuest(state: ReadyState, target: Quest, replacement: Quest): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      quests: state.project.quests.map((quest) => (quest === target ? replacement : quest)),
-    },
-  }
-}
-
-/** Replaces one capture profile by reference identity, mirroring `withMap`. */
-function withCaptureProfile(
-  state: ReadyState,
-  target: CaptureProfile,
-  replacement: CaptureProfile,
+function replaceIn<K extends ListField>(
+  state: ReadyState, field: K, target: ProjectFile[K][number], replacement: ProjectFile[K][number],
 ): AppState {
   return {
     ...state,
     project: {
       ...state.project,
-      captureProfiles: state.project.captureProfiles.map((profile) =>
-        profile === target ? replacement : profile,
-      ),
+      [field]: state.project[field].map((item) => (item === target ? replacement : item)),
     },
   }
 }
 
-/** Replaces one pending capture by reference identity, mirroring `withMap`. */
-function withPendingCapture(
-  state: ReadyState,
-  target: PendingCapture,
-  replacement: PendingCapture,
-): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      pendingCaptures: state.project.pendingCaptures.map((capture) =>
-        capture === target ? replacement : capture,
-      ),
-    },
-  }
-}
-
-/** Replaces one relevance tag by reference identity, mirroring `withMap`. */
-function withRelevanceTag(
-  state: ReadyState,
-  target: RelevanceTag,
-  replacement: RelevanceTag,
-): AppState {
-  return {
-    ...state,
-    project: {
-      ...state.project,
-      relevanceTags: state.project.relevanceTags.map((tag) => (tag === target ? replacement : tag)),
-    },
-  }
+/** Finds one element of a project list by id — the one rule every `findX` spelled out separately. */
+function findById<K extends ListField>(
+  project: ProjectFile, field: K, id: ProjectFile[K][number]['id'],
+): ProjectFile[K][number] | null {
+  return project[field].find((item) => item.id === id) ?? null
 }
 
 /** The map a `dialogue/added` or `zone/added` claims to sit on has to be a real one. */
 function hasMap(project: ProjectFile, id: MapId): boolean {
-  return project.maps.some((map) => map.id === id)
-}
-
-function findDialogue(project: ProjectFile, id: DialogueId): Dialogue | null {
-  return project.dialogues.find((dialogue) => dialogue.id === id) ?? null
-}
-
-function findZone(project: ProjectFile, id: ZoneId): Zone | null {
-  return project.zones.find((zone) => zone.id === id) ?? null
-}
-
-function findQuest(project: ProjectFile, id: QuestId): Quest | null {
-  return project.quests.find((quest) => quest.id === id) ?? null
-}
-
-function findCaptureProfile(project: ProjectFile, id: CaptureProfileId): CaptureProfile | null {
-  return project.captureProfiles.find((profile) => profile.id === id) ?? null
-}
-
-function findRelevanceTag(project: ProjectFile, id: RelevanceTagId): RelevanceTag | null {
-  return project.relevanceTags.find((tag) => tag.id === id) ?? null
-}
-
-function findPendingCapture(project: ProjectFile, id: PendingCaptureId): PendingCapture | null {
-  return project.pendingCaptures.find((capture) => capture.id === id) ?? null
+  return findById(project, 'maps', id) !== null
 }
 
 /**
