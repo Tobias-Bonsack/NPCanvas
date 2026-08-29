@@ -432,11 +432,7 @@ function readProjectFileV9(raw: Record<string, unknown>): ProjectFileV9 {
 
 // ---- migrateVN ----
 
-/**
- * V1 had no shared canvas, so its maps have no placement. They are laid out left to right at
- * native scale through the same `nextMapOrigin` an import uses, which is what guarantees a
- * migrated project opens with nothing overlapping.
- */
+// V1 had no shared canvas: lay its maps out left to right via `nextMapOrigin`, same as an import.
 function migrateV1(file: ProjectFileV1): ProjectFileV2 {
   const maps: GameMap[] = []
   for (const map of file.maps) {
@@ -445,11 +441,7 @@ function migrateV1(file: ProjectFileV1): ProjectFileV2 {
   return { ...file, schemaVersion: 2, maps }
 }
 
-/**
- * V2 drew every quest in one shared gold. Colours are handed out through the same
- * `nextQuestHue` a newly created quest calls, with the array built up as it goes so each quest
- * sees the ones already coloured — the migration and the board therefore colour identically.
- */
+// V2 drew every quest in one gold: hand out colours via `nextQuestHue`, same as creating a quest.
 function migrateV2(file: ProjectFileV2): ProjectFileV3 {
   const quests: Quest[] = []
   for (const quest of file.quests) {
@@ -458,12 +450,7 @@ function migrateV2(file: ProjectFileV2): ProjectFileV3 {
   return { ...file, schemaVersion: 3, quests }
 }
 
-/**
- * V3 held either text or exactly one file per dialogue. The text case becomes a line with no
- * pictures, and each media case a picture with no line — which is what those documents already
- * meant. `fileName` is carried over verbatim rather than renamed to the V4 scheme: a migration
- * is pure and cannot touch `media/`, and the name has always been stored rather than derived.
- */
+// V3 held text xor one file per dialogue; split into the V4 { text, media } pair, `fileName` kept as-is (a migration must not touch `media/`).
 function migrateV3(file: ProjectFileV3): ProjectFileV4 {
   return {
     ...file,
@@ -483,13 +470,7 @@ function migrateDialogueV3(dialogue: DialogueV3): DialogueV4 {
   return { ...rest, text: '', media: [{ id: newMediaId(), ...content }] }
 }
 
-/**
- * V4 compiled the relevance vocabulary in; V5 moves it into the document. The four tags are
- * built once, via the same `defaultRelevanceTags` a brand new project seeds — which is what
- * makes a migrated project and a fresh one indistinguishable — and every dialogue's slugs are
- * rewritten into the matching ids. `RELEVANCE_SLUGS_V4.indexOf` is safe here because
- * `defaultRelevanceTags` returns its four tags in that exact order.
- */
+// V4 compiled relevance in; V5 moves it into the document via `defaultRelevanceTags`, rewriting each dialogue's slugs into the matching ids.
 function migrateV4(file: ProjectFileV4): ProjectFileV5 {
   const relevanceTags = defaultRelevanceTags()
   return {
@@ -505,18 +486,7 @@ function migrateV4(file: ProjectFileV4): ProjectFileV5 {
   }
 }
 
-/**
- * V5 gave every capture profile an alphabet of its own; V6 gives the project one. The profiles'
- * alphabets are folded together in profile order, and the **first** naming of a bitmap wins.
- *
- * Deliberately not `mergeGlyphs`: that replaces on identical bits, so the last profile taught
- * would overrule every earlier one. Profiles are appended in the order they were created, which is
- * the order they were taught in, and the fullest alphabet is the one that was taught first — a
- * later profile aimed at a second box on the same console is re-learning tiles, not correcting
- * them. Where the two disagree the earlier answer is the one with the most readings behind it.
- * A disagreement is now fixable in the UI either way, which is what makes this a rule rather than
- * a guess: `forgetGlyph` plus the learner replaces a wrong entry in two clicks.
- */
+// V5 gave each profile its own alphabet; V6 folds them into one, keeping the first naming of a bitmap (not `mergeGlyphs`) since the earliest-taught profile is the fullest.
 function migrateV5(file: ProjectFileV5): ProjectFileV6 {
   const glyphs: Glyph[] = []
   const known = new Set<string>()
@@ -550,22 +520,12 @@ function stripGlyphs(profile: CaptureProfileV5): CaptureProfileV7 {
   }
 }
 
-/**
- * V6 had no way to record a conversation before it had a place to be. V7 adds the empty list —
- * nothing before this version could have written a `PendingCapture`, so there is nothing to
- * carry over.
- */
+// V6 had no `PendingCapture`; V7 just adds the empty list, nothing to carry over.
 function migrateV6(file: ProjectFileV6): ProjectFileV7 {
   return { ...file, schemaVersion: 7, pendingCaptures: [] }
 }
 
-/**
- * V7 could not tell a fight from a conversation, because nothing in a profile said where the
- * opponent's status gauge is drawn. V8 adds that measurement, and there is nothing to derive it
- * from: a rectangle guessed here would be a confident claim about a console this project may not
- * even be aimed at. `null` says it has not been measured, and the watcher then behaves exactly as
- * it did under V7.
- */
+// V8 adds `battleRect: null` — nothing to derive it from, and `null` means "not measured yet".
 function migrateV7(file: ProjectFileV7): ProjectFileV8 {
   return {
     ...file,
@@ -574,12 +534,7 @@ function migrateV7(file: ProjectFileV7): ProjectFileV8 {
   }
 }
 
-/**
- * V8 measured a gauge nothing reads: #104 deleted the M15 battle-detection machinery, so
- * `battleRect` is a claim about the screen no code checks anymore, and the calibration step that
- * asked for it was asking for nothing. V9 drops it — there is nothing to fold it into, the same
- * way `migrateV6` had nothing to carry over.
- */
+// V9 drops `battleRect` again: the battle-detection code that read it is gone, so nothing reads it anymore.
 function migrateV8(file: ProjectFileV8): ProjectFileV9 {
   return {
     ...file,
@@ -603,11 +558,7 @@ function dropBattleRect(profile: CaptureProfileV8): CaptureProfile {
   }
 }
 
-/**
- * V9 had no way to say which gamepad button starts or stops a recording. V10 adds the empty
- * list — nothing before this version could have written a `RecorderBinding`, the same shape of
- * migration as `migrateV6`.
- */
+// V9 had no `RecorderBinding`; V10 just adds the empty list, same shape as `migrateV6`.
 function migrateV9(file: ProjectFileV9): ProjectFileV10 {
   return { ...file, schemaVersion: 10, recorderBindings: [] }
 }
