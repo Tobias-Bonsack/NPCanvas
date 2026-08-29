@@ -23,13 +23,16 @@ export type PixelBuffer = {
   readonly data: Uint8ClampedArray
 }
 
-/** One 8 × 8 cell of the text box, and where it sits in the box's own tile grid. */
-export type TileMask = {
-  /** Tile column and row counted from the text rect's top-left, not from the screen's. */
-  column: number
-  row: number
-  /** One byte per pixel row, most significant bit leftmost — the order `Glyph.bits` is written in. */
-  rows: Uint8Array
+/**
+ * The text rect's cells, in reading order, as offsets into one flat buffer rather than an object
+ * per cell — a cell is eight bytes at a known offset, and `column`/`row` are `index % columns` and
+ * `Math.floor(index / columns)`, which arithmetic gives for free. `cells` holds `TILE_SIZE` bytes
+ * per cell, most significant bit leftmost within a row — the order `Glyph.bits` is written in.
+ */
+export type TileGrid = {
+  columns: number
+  rows: number
+  cells: Uint8Array
 }
 
 /** A tile no glyph accounted for: what `GlyphLearner` shows and what typing into it names. */
@@ -86,8 +89,10 @@ export function sampleNative(
   /** `screenRect`'s own frame is not always `frame`'s: a caller reading a crop passes the crop's
    * top-left in frame coordinates, so `screenRect` still names the same pixels it always has. */
   origin: Point = ORIGIN_ZERO,
+  /** Written into instead of allocating, when given and the right size — see `readTextBox`'s scratch. */
+  dest?: Uint8ClampedArray,
 ): PixelBuffer {
-  const data = new Uint8ClampedArray(nativeWidth * nativeHeight * BYTES_PER_PIXEL)
+  const data = dest ?? new Uint8ClampedArray(nativeWidth * nativeHeight * BYTES_PER_PIXEL)
   const rectX = screenRect.x - origin.x
   const rectY = screenRect.y - origin.y
   const scaleX = screenRect.width / nativeWidth
@@ -124,22 +129,34 @@ export function sampleNative(
  * throwing, which is the same tolerance a text box calibrated against a differently sized window
  * already relies on.
  */
-export function binarise(image: PixelBuffer, threshold: number, rect?: PixelRect): Uint8Array {
+export function binarise(
+  image: PixelBuffer,
+  threshold: number,
+  rect?: PixelRect,
+  /** Written into instead of allocating, when given and the right size — see `readTextBox`'s scratch. */
+  dest?: Uint8Array,
+): Uint8Array {
   const region = rect ?? { x: 0, y: 0, width: image.width, height: image.height }
   const originX = Math.round(region.x)
   const originY = Math.round(region.y)
   const width = Math.round(region.width)
   const height = Math.round(region.height)
-  const bits = new Uint8Array(width * height)
+  const bits = dest ?? new Uint8Array(width * height)
   for (let y = 0; y < height; y++) {
     const imageY = originY + y
-    if (imageY < 0 || imageY >= image.height) continue
     for (let x = 0; x < width; x++) {
       const imageX = originX + x
-      if (imageX < 0 || imageX >= image.width) continue
-      if (luminanceAt(image.data, (imageY * image.width + imageX) * BYTES_PER_PIXEL) <= threshold) {
-        bits[y * width + x] = 1
-      }
+      // Every cell is written unconditionally, in bounds or not — `dest` may carry a previous
+      // call's bits, and a cell that merely stays out of bounds must read as background rather
+      // than keep whatever that call left behind.
+      bits[y * width + x] =
+        imageY < 0 ||
+        imageY >= image.height ||
+        imageX < 0 ||
+        imageX >= image.width ||
+        luminanceAt(image.data, (imageY * image.width + imageX) * BYTES_PER_PIXEL) > threshold
+          ? 0
+          : 1
     }
   }
   return bits
@@ -206,30 +223,41 @@ export function inkThreshold(image: PixelBuffer, rect: PixelRect): number {
  * holds half a glyph, which can only ever be unmatchable. Anything outside `bits` counts as
  * background, so a rect nudged past the screen edge reads as spaces rather than throwing.
  */
-export function readTiles(bits: Uint8Array, stride: number, textRect: PixelRect): TileMask[] {
+export function readTiles(
+  bits: Uint8Array,
+  stride: number,
+  textRect: PixelRect,
+  /** Written into instead of allocating, when given and the right size — see `readTextBox`'s scratch. */
+  dest?: TileGrid,
+): TileGrid {
   const height = Math.floor(bits.length / stride)
   const columns = Math.floor(textRect.width / TILE_SIZE)
   const rows = Math.floor(textRect.height / TILE_SIZE)
+  const grid =
+    dest !== undefined && dest.columns === columns && dest.rows === rows
+      ? dest
+      : { columns, rows, cells: new Uint8Array(columns * rows * TILE_SIZE) }
 
-  const tiles: TileMask[] = []
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
-      const cell = new Uint8Array(TILE_SIZE)
+      const cellOffset = (row * columns + column) * TILE_SIZE
       for (let y = 0; y < TILE_SIZE; y++) {
         const pixelY = row * TILE_SIZE + y
-        if (pixelY < 0 || pixelY >= height) continue
         let packed = 0
-        for (let x = 0; x < TILE_SIZE; x++) {
-          const pixelX = column * TILE_SIZE + x
-          if (pixelX < 0 || pixelX >= stride) continue
-          if (bits[pixelY * stride + pixelX] === 1) packed |= 1 << (TILE_SIZE - 1 - x)
+        if (pixelY >= 0 && pixelY < height) {
+          for (let x = 0; x < TILE_SIZE; x++) {
+            const pixelX = column * TILE_SIZE + x
+            if (pixelX < 0 || pixelX >= stride) continue
+            if (bits[pixelY * stride + pixelX] === 1) packed |= 1 << (TILE_SIZE - 1 - x)
+          }
         }
-        cell[y] = packed
+        // Written unconditionally, exactly like `binarise`: a reused `grid` may carry an earlier
+        // call's bits, and a row that falls out of bounds must read as background, not stale ink.
+        grid.cells[cellOffset + y] = packed
       }
-      tiles.push({ column, row, rows: cell })
     }
   }
-  return tiles
+  return grid
 }
 
 /**
@@ -249,8 +277,8 @@ export function readTiles(bits: Uint8Array, stride: number, textRect: PixelRect)
  * is simply learned again, and two bitmaps may spell the same character. `mergeGlyphs` replaces on
  * identical bits, so at most one glyph can ever match — the first hit is the only hit.
  */
-export function matchGlyph(tile: TileMask, glyphs: readonly Glyph[]): Glyph | null {
-  return glyphIndex(glyphs).get(toGlyphBits(tile.rows)) ?? null
+export function matchGlyph(rows: Uint8Array, glyphs: readonly Glyph[]): Glyph | null {
+  return glyphIndex(glyphs).get(toGlyphBits(rows)) ?? null
 }
 
 /**
@@ -295,8 +323,16 @@ export function readTextBox(
   /** Where `frame` sits in frame coordinates, when it is a crop rather than the whole frame. */
   origin: Point = ORIGIN_ZERO,
 ): TextBoxReading {
-  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
-  const region = regionBytes(native, profile.textRect)
+  const scratch = scratchFor(profile)
+  const native = sampleNative(
+    frame,
+    profile.screenRect,
+    profile.nativeWidth,
+    profile.nativeHeight,
+    origin,
+    scratch.native,
+  )
+  const region = regionBytes(native, profile.textRect, scratch.region)
 
   if (
     cachedRead !== null &&
@@ -307,9 +343,63 @@ export function readTextBox(
     return cachedRead.reading
   }
 
-  const reading = readTextBoxUncached(native, profile, glyphs)
-  cachedRead = { profileId: profile.id, glyphs, region, reading }
+  const reading = readTextBoxUncached(native, profile, glyphs, scratch)
+  // A copy, never `scratch.region` itself: the very next call overwrites that buffer in place,
+  // which would otherwise make this comparison compare a buffer against its own later self.
+  cachedRead = { profileId: profile.id, glyphs, region: region.slice(), reading }
   return reading
+}
+
+/**
+ * The buffers one `readTextBox` call needs, reused across ticks instead of allocated fresh —
+ * `sampleNative`'s native-resolution image, the cache comparison's region copy, `binarise`'s bits
+ * and `readTiles`' tile grid. Kept as a **single** slot: reallocated whole whenever any dimension
+ * it was built for no longer matches, which happens only on a profile switch, never tick to tick.
+ */
+type ReadScratch = {
+  nativeWidth: number
+  nativeHeight: number
+  regionWidth: number
+  regionHeight: number
+  native: Uint8ClampedArray
+  region: Uint8ClampedArray
+  bits: Uint8Array
+  grid: TileGrid
+}
+
+let scratch: ReadScratch | null = null
+
+function scratchFor(profile: CaptureProfile): ReadScratch {
+  const nativeWidth = profile.nativeWidth
+  const nativeHeight = profile.nativeHeight
+  const regionWidth = Math.round(profile.textRect.width)
+  const regionHeight = Math.round(profile.textRect.height)
+  const columns = Math.floor(profile.textRect.width / TILE_SIZE)
+  const rows = Math.floor(profile.textRect.height / TILE_SIZE)
+
+  if (
+    scratch !== null &&
+    scratch.nativeWidth === nativeWidth &&
+    scratch.nativeHeight === nativeHeight &&
+    scratch.regionWidth === regionWidth &&
+    scratch.regionHeight === regionHeight &&
+    scratch.grid.columns === columns &&
+    scratch.grid.rows === rows
+  ) {
+    return scratch
+  }
+
+  scratch = {
+    nativeWidth,
+    nativeHeight,
+    regionWidth,
+    regionHeight,
+    native: new Uint8ClampedArray(nativeWidth * nativeHeight * BYTES_PER_PIXEL),
+    region: new Uint8ClampedArray(regionWidth * regionHeight * BYTES_PER_PIXEL),
+    bits: new Uint8Array(regionWidth * regionHeight),
+    grid: { columns, rows, cells: new Uint8Array(columns * rows * TILE_SIZE) },
+  }
+  return scratch
 }
 
 /**
@@ -339,36 +429,41 @@ function readTextBoxUncached(
   native: PixelBuffer,
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
+  scratch: ReadScratch,
 ): TextBoxReading {
-  const bits = binarise(native, inkThreshold(native, profile.textRect), profile.textRect)
-  const tiles = readTiles(bits, Math.round(profile.textRect.width), profile.textRect)
+  const bits = binarise(native, inkThreshold(native, profile.textRect), profile.textRect, scratch.bits)
+  const grid = readTiles(bits, Math.round(profile.textRect.width), profile.textRect, scratch.grid)
 
   const lines: string[] = []
   const contexts: string[] = []
   const pending: Omit<UnknownTile, 'context'>[] = []
-  for (const tile of tiles) {
-    const line = tile.row
-    lines[line] ??= ''
-    contexts[line] ??= ''
+  for (let index = 0; index < grid.columns * grid.rows; index++) {
+    const column = index % grid.columns
+    const row = Math.floor(index / grid.columns)
+    // A view into `grid.cells`, not a copy — nothing here retains it past this loop body, so no
+    // allocation is needed to read eight bytes at a known offset.
+    const cell = grid.cells.subarray(index * TILE_SIZE, index * TILE_SIZE + TILE_SIZE)
+    lines[row] ??= ''
+    contexts[row] ??= ''
 
     // Background only: a space, and never a question. Every text box is mostly empty cells, and
     // asking about them would bury the handful of tiles that are actually a new character.
-    if (isEmpty(tile)) {
-      lines[line] += ' '
-      contexts[line] += ' '
+    if (isEmpty(cell)) {
+      lines[row] += ' '
+      contexts[row] += ' '
       continue
     }
 
-    const glyph = matchGlyph(tile, glyphs)
+    const glyph = matchGlyph(cell, glyphs)
     if (glyph === null) {
       // Contributes nothing: `text` is only ever complete when `unknown` is empty.
-      pending.push({ column: tile.column, row: tile.row, bits: toGlyphBits(tile.rows) })
-      contexts[line] += UNKNOWN_MARK
+      pending.push({ column, row, bits: toGlyphBits(cell) })
+      contexts[row] += UNKNOWN_MARK
       continue
     }
     // An empty `char` is a glyph that is not text — the blinking continuation arrow.
-    lines[line] += glyph.char
-    contexts[line] += glyph.char
+    lines[row] += glyph.char
+    contexts[row] += glyph.char
   }
 
   const unknown: UnknownTile[] = []
@@ -451,8 +546,8 @@ export function isGlyphPixelSet(rows: Uint8Array, column: number, row: number): 
   return (((rows[row] ?? 0) >> (TILE_SIZE - 1 - column)) & 1) === 1
 }
 
-function isEmpty(tile: TileMask): boolean {
-  return tile.rows.every((row) => row === 0)
+function isEmpty(rows: Uint8Array): boolean {
+  return rows.every((row) => row === 0)
 }
 
 /** Rec. 601 luma, in integers: the same weighting a CRT applied, which is what these fonts assume. */
@@ -471,20 +566,27 @@ function clamp(value: number, max: number): number {
  * results here mean `inkThreshold`, `binarise`, `readTiles` and every `matchGlyph` call downstream
  * would produce byte-identical output too, since none of them reads anything outside this region.
  */
-function regionBytes(image: PixelBuffer, rect: PixelRect): Uint8ClampedArray {
+function regionBytes(image: PixelBuffer, rect: PixelRect, dest?: Uint8ClampedArray): Uint8ClampedArray {
   const originX = Math.round(rect.x)
   const originY = Math.round(rect.y)
   const width = Math.round(rect.width)
   const height = Math.round(rect.height)
-  const bytes = new Uint8ClampedArray(width * height * BYTES_PER_PIXEL)
+  const bytes = dest ?? new Uint8ClampedArray(width * height * BYTES_PER_PIXEL)
   for (let y = 0; y < height; y++) {
     const imageY = originY + y
-    if (imageY < 0 || imageY >= image.height) continue
     for (let x = 0; x < width; x++) {
       const imageX = originX + x
-      if (imageX < 0 || imageX >= image.width) continue
-      const from = (imageY * image.width + imageX) * BYTES_PER_PIXEL
       const to = (y * width + x) * BYTES_PER_PIXEL
+      // Written unconditionally, exactly like `binarise`: a reused `dest` may carry a previous
+      // call's bytes at a cell that is now out of bounds, and it must read as `0`, not stale ink.
+      if (imageY < 0 || imageY >= image.height || imageX < 0 || imageX >= image.width) {
+        bytes[to] = 0
+        bytes[to + 1] = 0
+        bytes[to + 2] = 0
+        bytes[to + 3] = 0
+        continue
+      }
+      const from = (imageY * image.width + imageX) * BYTES_PER_PIXEL
       bytes[to] = image.data[from]
       bytes[to + 1] = image.data[from + 1]
       bytes[to + 2] = image.data[from + 2]

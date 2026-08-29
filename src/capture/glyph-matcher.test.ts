@@ -127,6 +127,19 @@ describe('sampleNative', () => {
 
     expect(Array.from(cropped.data)).toEqual(Array.from(whole.data))
   })
+
+  it('writes into a given destination instead of allocating one', () => {
+    const native = blankNative()
+    drawTile(native, D, 1, 0)
+    const frame = toFrame(native)
+    const dest = new Uint8ClampedArray(NATIVE_WIDTH * NATIVE_HEIGHT * 4)
+
+    const sampled = sampleNative(frame, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT, undefined, dest)
+
+    expect(sampled.data).toBe(dest)
+    const withoutDest = sampleNative(frame, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+    expect(Array.from(sampled.data)).toEqual(Array.from(withoutDest.data))
+  })
 })
 
 describe('inkThreshold', () => {
@@ -150,6 +163,48 @@ describe('inkThreshold', () => {
   })
 })
 
+describe('binarise', () => {
+  it('writes into a given destination instead of allocating one', () => {
+    const native = blankNative()
+    drawTile(native, D, 1, 1)
+    const sampled = sampleNative(toFrame(native), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+    const threshold = inkThreshold(sampled, wholeScreen())
+    const dest = new Uint8Array(NATIVE_WIDTH * NATIVE_HEIGHT)
+
+    const bits = binarise(sampled, threshold, undefined, dest)
+
+    expect(bits).toBe(dest)
+    expect(Array.from(bits)).toEqual(Array.from(binarise(sampled, threshold)))
+  })
+
+  it('zeroes a reused destination rather than keeping a stale bit past the region', () => {
+    // A wide rect binarised first, then a reused destination asked for a narrower one: the bytes
+    // the narrower rect no longer covers must not still read `1` from the first call.
+    const wide = blankNative()
+    drawTile(wide, D, 0, 0)
+    const wideSampled = sampleNative(toFrame(wide), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+    const dest = new Uint8Array(8 * 8)
+    binarise(wideSampled, inkThreshold(wideSampled, { x: 0, y: 0, width: 8, height: 8 }), {
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+    }, dest)
+    expect(dest.some((bit) => bit === 1)).toBe(true)
+
+    const blank = sampleNative(toFrame(blankNative()), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+    const reused = binarise(blank, inkThreshold(blank, { x: 0, y: 0, width: 8, height: 8 }), {
+      x: 0,
+      y: 0,
+      width: 8,
+      height: 8,
+    }, dest)
+
+    expect(reused).toBe(dest)
+    expect(reused.every((bit) => bit === 0)).toBe(true)
+  })
+})
+
 describe('readTiles', () => {
   it('drops a row the text rect only half covers', () => {
     const native = blankNative()
@@ -159,39 +214,48 @@ describe('readTiles', () => {
     const sampled = sampleNative(toFrame(native), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
     const bits = binarise(sampled, inkThreshold(sampled, wholeScreen()))
 
-    const tiles = readTiles(bits, NATIVE_WIDTH, { x: 0, y: 0, width: 40, height: 20 })
+    const grid = readTiles(bits, NATIVE_WIDTH, { x: 0, y: 0, width: 40, height: 20 })
 
-    expect(tiles.length).toBe(5 * 2)
-    expect(tiles.at(-1)).toMatchObject({ column: 4, row: 1 })
+    // 5 columns × 2 rows: the last cell's index is `columns * rows - 1`, whose column and row
+    // `index % columns` / `Math.floor(index / columns)` derive back to.
+    expect(grid.columns).toBe(5)
+    expect(grid.rows).toBe(2)
   })
 
   it('reads background outside the image rather than throwing', () => {
     const bits = new Uint8Array(NATIVE_WIDTH * NATIVE_HEIGHT)
 
-    const tiles = readTiles(bits, NATIVE_WIDTH, { x: 60, y: 28, width: 16, height: 16 })
+    const grid = readTiles(bits, NATIVE_WIDTH, { x: 60, y: 28, width: 16, height: 16 })
 
-    expect(tiles.length).toBe(2 * 2)
-    expect(tiles.every((tile) => tile.rows.every((row) => row === 0))).toBe(true)
+    expect(grid.columns * grid.rows).toBe(2 * 2)
+    expect(grid.cells.every((byte) => byte === 0)).toBe(true)
+  })
+
+  it('reuses a destination grid of the same dimensions instead of allocating a new one', () => {
+    const bits = new Uint8Array(NATIVE_WIDTH * NATIVE_HEIGHT)
+    const rect = { x: 0, y: 0, width: 16, height: 16 }
+    const first = readTiles(bits, NATIVE_WIDTH, rect)
+
+    const second = readTiles(bits, NATIVE_WIDTH, rect, first)
+
+    expect(second).toBe(first)
+    expect(second.cells).toBe(first.cells)
   })
 })
 
 describe('matchGlyph', () => {
-  const tile = { column: 0, row: 0, rows: mustParse(D) }
+  const tile = mustParse(D)
 
   it('matches an exact bitmap', () => {
     expect(matchGlyph(tile, ALPHABET)?.char).toBe('D')
   })
 
   it('refuses a bitmap nothing is close to', () => {
-    const nothing = { ...tile, rows: mustParse('ffffffffffffffff') }
-
-    expect(matchGlyph(nothing, ALPHABET)).toBe(null)
+    expect(matchGlyph(mustParse('ffffffffffffffff'), ALPHABET)).toBe(null)
   })
 
   it('refuses a tile one pixel off rather than reading the glyph beside it', () => {
-    const noisy = { ...tile, rows: flipBits(D, [[4, 2]]) }
-
-    expect(matchGlyph(noisy, ALPHABET)).toBe(null)
+    expect(matchGlyph(flipBits(D, [[4, 2]]), ALPHABET)).toBe(null)
   })
 
   // The bitmaps a Yellow capture actually produced. Under a four-bit tolerance an alphabet holding
@@ -204,7 +268,7 @@ describe('matchGlyph', () => {
     const unlearned = { R: 'fc8282fc88848200', F: 'fe8080fc80808000', 'é': '08103c427e403e00' }
 
     for (const bits of Object.values(unlearned)) {
-      expect(matchGlyph({ column: 0, row: 0, rows: mustParse(bits) }, known)).toBe(null)
+      expect(matchGlyph(mustParse(bits), known)).toBe(null)
     }
   })
 
@@ -218,7 +282,7 @@ describe('matchGlyph', () => {
   it('reads a re-learned bitmap as the character it was taught', () => {
     const relearned: Glyph = { char: 'D', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
-    expect(matchGlyph({ ...tile, rows: mustParse(relearned.bits) }, [...ALPHABET, relearned])?.char).toBe('D')
+    expect(matchGlyph(mustParse(relearned.bits), [...ALPHABET, relearned])?.char).toBe('D')
   })
 
   it('ignores a bitmap that is not 16 hex characters', () => {
@@ -242,7 +306,7 @@ describe('matchGlyph', () => {
     expect(matchGlyph(tile, [...ALPHABET])?.char).toBe('D')
 
     const grown = [...ALPHABET, { char: 'X', bits: 'ffffffffffffffff' }]
-    expect(matchGlyph({ ...tile, rows: mustParse('ffffffffffffffff') }, grown)?.char).toBe('X')
+    expect(matchGlyph(mustParse('ffffffffffffffff'), grown)?.char).toBe('X')
   })
 })
 
@@ -492,6 +556,58 @@ describe('readTextBox caching', () => {
     expect(first.text).toBe('D')
     expect(second.text).toBe('U')
     expect(third.text).toBe('D')
+  })
+})
+
+describe('readTextBox scratch reuse', () => {
+  it('reads two different frames through the same scratch set into their own correct transcripts', () => {
+    const testProfile = profile({ id: asCaptureProfileId('scratch-test-1') })
+    const nativeA = blankNative()
+    write(nativeA, 0, 'DU', { D, U })
+    const nativeB = blankNative()
+    write(nativeB, 0, 'UD', { D, U })
+
+    const first = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
+    const second = readTextBox(toFrame(nativeB), testProfile, ALPHABET)
+
+    expect(first.text).toBe('DU')
+    expect(second.text).toBe('UD')
+  })
+
+  it('keeps an unknown tile\'s own bytes after a later read reuses the scratch buffers', () => {
+    const testProfile = profile({ id: asCaptureProfileId('scratch-test-2') })
+    const native = blankNative()
+    write(native, 0, 'Dß', { D, ß: SHARP_S })
+    const first = readTextBox(toFrame(native), testProfile, [{ char: 'D', bits: D }])
+    const firstUnknownBits = first.unknown[0]?.bits
+
+    // A second, unrelated read through the same profile — and therefore the same reused scratch
+    // buffers — must not retroactively change what the first read already reported.
+    const other = blankNative()
+    write(other, 0, 'UU', { U })
+    readTextBox(toFrame(other), testProfile, ALPHABET)
+
+    expect(first.unknown[0]?.bits).toBe(firstUnknownBits)
+    expect(first.unknown[0]?.bits).toBe(SHARP_S)
+  })
+
+  it('reallocates the scratch set for a profile with different native dimensions', () => {
+    const small = profile({ id: asCaptureProfileId('scratch-test-3a') })
+    const native = blankNative()
+    write(native, 0, 'DU', { D, U })
+    const smallReading = readTextBox(toFrame(native), small, ALPHABET)
+    expect(smallReading.text).toBe('DU')
+
+    const large = profile({
+      id: asCaptureProfileId('scratch-test-3b'),
+      nativeWidth: NATIVE_WIDTH * 2,
+      nativeHeight: NATIVE_HEIGHT * 2,
+      screenRect: { x: SCREEN_ORIGIN.x, y: SCREEN_ORIGIN.y, width: NATIVE_WIDTH * SCALE, height: NATIVE_HEIGHT * SCALE },
+    })
+    // A profile this different from the synthetic frame's own console screen reads as background
+    // rather than throwing — the point of this case is that switching scratch dimensions works at
+    // all, not what it transcribes.
+    expect(() => readTextBox(toFrame(native), large, ALPHABET)).not.toThrow()
   })
 })
 
