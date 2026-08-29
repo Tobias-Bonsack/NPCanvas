@@ -16,16 +16,10 @@ import { isTextFieldFocused } from '../text-field-focus.ts'
 import { useWatchState } from './capture-watch.ts'
 import './PendingCaptureList.css'
 
-/**
- * The triage queue, one capture at a time (#108). A session with several conversations waiting
- * is alternatives to page between while deciding where each one goes, not a list read top to
- * bottom — the same complaint `MediaGallery` answered for a line's own pictures, and the same
- * answer here: a frame, a `Capture n of m` counter, and a thumbnail strip, all about whichever
- * capture is on screen.
- *
- * The current capture's id lives in `MapScreen`, beside `armedCaptureId` — this component holds
- * no index or id state of its own, exactly as `MediaGallery` holds none of its own selection.
- */
+// The triage queue, one capture at a time: several waiting conversations are alternatives to page
+// between, not a list read top to bottom, so this shows a frame, a `Capture n of m` counter, and
+// a thumbnail strip for whichever capture is on screen. The current capture's id lives in
+// `MapScreen`, beside `armedCaptureId` — this component holds no state of its own.
 export function PendingCaptureList({
   project,
   armedCaptureId,
@@ -34,31 +28,24 @@ export function PendingCaptureList({
   onSelect,
 }: {
   project: ProjectFile
-  /** The capture a click on the canvas will place next, or `null` — see `MapScreen`. */
   armedCaptureId: PendingCaptureId | null
   onArm: (captureId: PendingCaptureId) => void
-  /** Which capture the carousel shows, or `null` — see `resolveGalleryIndex`'s fallback. */
   currentCaptureId: PendingCaptureId | null
   onSelect: (captureId: PendingCaptureId) => void
 }): ReactElement {
-  // Shared with `DialogueForm`'s own suggestions — recently spoken names read the same list.
   const npcNames = npcNamesIn(project.dialogues)
   const captures = project.pendingCaptures
 
-  // Its own subscription, for the same reason `CaptureRecorder`'s is (#106): only this list
-  // needs to know which capture is being written into right now.
   const watch = useWatchState()
   const recordingCaptureId = watch.kind === 'watching' ? watch.captureId : null
 
   const index = resolveGalleryIndex(captures, currentCaptureId)
   const current = captures[index] ?? null
-  // With a single capture the counter and the strip are noise — nothing to page to — exactly as
-  // `MediaGallery`'s `paged` at `src/media/MediaGallery.tsx:33-35`.
   const paged = captures.length > 1
 
   // The carousel follows the watcher: a fresh or reopened conversation is the one growing on
-  // screen while it is recorded. This only fires again once `recordingCaptureId` itself changes
-  // to a different capture, which is what lets paging away by hand afterwards stick.
+  // screen while it is recorded. Only fires again once `recordingCaptureId` changes, which lets
+  // paging away by hand afterwards stick.
   useEffect(() => {
     if (recordingCaptureId !== null) onSelect(recordingCaptureId)
   }, [recordingCaptureId, onSelect])
@@ -69,8 +56,7 @@ export function PendingCaptureList({
   }
 
   // Bound on the container, never on `window` — the sidebar sits beside a canvas that owns the
-  // arrow keys (`MapScreen`'s tool shortcuts), the same reason `MediaGallery` gives at
-  // `src/media/MediaGallery.tsx:42-45`.
+  // arrow keys (`MapScreen`'s tool shortcuts).
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
     if (!paged || isTextFieldFocused()) return
     if (event.key === 'ArrowLeft') page(-1)
@@ -81,8 +67,6 @@ export function PendingCaptureList({
 
   async function onDeleteConfirmed(capture: PendingCapture): Promise<void> {
     dispatch({ kind: 'pending-capture/deleted', captureId: capture.id })
-    // Collected from the capture the caller already holds — the dispatch above is what makes
-    // the document stop naming these files, so nothing after it could still list them.
     await discardMedia(capture.media)
   }
 
@@ -94,9 +78,7 @@ export function PendingCaptureList({
         </p>
       ) : (
         <CaptureCard
-          // Keyed so the delete confirmation (`EditableRow`'s own local state) cannot survive a
-          // page to a different capture — without this, confirming "Delete" after paging away
-          // would delete whichever capture happened to be on screen when the key was pressed.
+          // Keyed so the delete confirmation cannot survive a page to a different capture.
           key={current.id}
           project={project}
           capture={current}
@@ -135,7 +117,6 @@ function CaptureCard({
   paged: boolean
   npcNames: readonly string[]
   armed: boolean
-  /** The watcher is writing into this one right now — see `PendingCaptureList`'s own subscription. */
   recording: boolean
   onArm: () => void
   onSelect: (captureId: PendingCaptureId) => void
@@ -143,12 +124,8 @@ function CaptureCard({
 }): ReactElement {
   const editable = useEditableRow()
   const firstMedium = capture.media[0] ?? null
-  // The most recently recorded other capture — offered as a one-click carry-over, exactly the
-  // way a freshly placed dialogue offers the previous line's tags. Gated on there being
-  // something in it worth copying, not on the capture being otherwise untouched: unlike a fresh
-  // dialogue, a capture always already carries a line and a picture by the time it exists here.
-  // Record order, not paging order — a reader who has paged elsewhere still gets offered the
-  // capture that was actually recorded just before this one.
+  // The most recently recorded other capture, offered as a one-click carry-over — in record
+  // order, not paging order, so a reader who has paged elsewhere still gets the right one.
   const previous = previousRecordFor(project.pendingCaptures, capture.id)
   const previousHasSomething =
     previous !== null && (previous.npcName.trim() !== '' || previous.relevance.length > 0)
@@ -188,9 +165,6 @@ function CaptureCard({
               aria-label={`Capture ${position + 1}`}
               onClick={() => onSelect(candidate.id)}
             >
-              {/* `inert` because a thumbnail is a picture of a frame, not the frame: neither the
-                  pointer nor the Tab key may reach a video's own controls inside a button whose
-                  job is to select. */}
               <span className="pending-capture-list__thumb-media" inert>
                 {candidate.media[0] === undefined ? (
                   <span className="pending-capture-list__thumb-empty">No picture</span>

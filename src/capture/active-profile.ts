@@ -1,20 +1,13 @@
 import { useSyncExternalStore } from 'react'
 import type { CaptureProfile, CaptureProfileId } from '../project/types.ts'
 
-/**
- * Which capture profile the next capture will use.
- *
- * Not document state: a profile *belongs* to the project, but which of them is aimed at the
- * emulator right now is about this session, and writing it to `data.json` would make picking a
- * profile a save. Not component state either — `CaptureBar` unmounts whenever the settings
- * screen is navigated away from, and the dialogue panel's own capture button needs the same
- * answer without `CaptureBar` mounted at all. So it is a module-level store, for the same reason
- * `capture-session.ts` is one.
- */
+// Not document state — which profile is aimed at the emulator is about this session, not the
+// project. Not component state either: `CaptureBar` unmounts on navigation, but the dialogue
+// panel's own capture button needs the same answer without it mounted. Module-level, like
+// `capture-session.ts`.
 let activeId: CaptureProfileId | null = null
 const listeners = new Set<() => void>()
 
-/** Passed to `useSyncExternalStore` by reference; the snapshot is an id, never an object. */
 function getActiveId(): CaptureProfileId | null {
   return activeId
 }

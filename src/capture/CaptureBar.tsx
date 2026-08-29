@@ -27,43 +27,29 @@ import { mergeGlyphs, readTextBox } from './glyph-matcher.ts'
 import { GlyphSet } from './GlyphSet.tsx'
 import './CaptureBar.css'
 
-/** What each recorder action means, in the same words `CaptureRecorder`'s own buttons use. */
 const ACTION_LABELS: Record<RecorderAction, string> = {
   'record-new': 'New capture',
   'record-extend': 'Extend last',
 }
 
-/**
- * The calibration overlay, as this bar sees it. `freezing` is its own state because grabbing a
- * frame is a round trip through the video element, and a second click during it would freeze a
- * second frame and leak the first.
- */
+// `freezing` is its own state, since grabbing a frame is a round trip through the video element,
+// and a second click during it would freeze a second frame and leak the first.
 type CalibrationState =
   | { kind: 'closed' }
   | { kind: 'freezing' }
   | { kind: 'open'; frame: FrozenFrame; profile: CaptureProfile | null }
   | { kind: 'failed'; message: string }
 
-/**
- * One read of the text box. The frame is kept beside the reading because learning a tile has to
- * transcribe *that* frame again — the emulator has moved on by then, and re-grabbing would read
- * a different box than the one whose characters were just typed in.
- */
+// The frame is kept beside the reading, since learning a tile has to transcribe *that* frame
+// again — the emulator has moved on by then.
 type ReadState =
   | { kind: 'idle' }
   | { kind: 'reading' }
   | { kind: 'read'; frame: ImageData; reading: TextBoxReading }
   | { kind: 'failed'; message: string }
 
-/**
- * The screen-capture connection and the profile that says where to read pixels out of it, as a
- * strip in the dialogue panel.
- *
- * Stateless about the connection itself — that lives in `capture-session.ts`, because it has to
- * outlive this component: the bar unmounts whenever the selection changes or the quest board is
- * opened, and the picker must run once per session, not once per mount. Which profile is active
- * lives in `active-profile.ts` for the same reason.
- */
+// Stateless about the connection itself — that lives in `capture-session.ts`, since it must
+// outlive this component (the bar unmounts on selection change or a view switch).
 export function CaptureBar({
   profiles,
   glyphs,
@@ -75,22 +61,16 @@ export function CaptureBar({
 }): ReactElement {
   const source = useCaptureSource()
   const active = useActiveCaptureProfile(profiles)
-  /**
-   * A dismissed picker is not an error and not a state of the connection — nothing happened.
-   * It is advice about one interaction, so it is local, like the panel's own import warnings.
-   */
+  // A dismissed picker is not an error or a state of the connection — nothing happened, so it's local.
   const [cancelled, setCancelled] = useState(false)
   const [calibration, setCalibration] = useState<CalibrationState>({ kind: 'closed' })
   const editableProfile = useEditableRow()
   const [read, setRead] = useState<ReadState>({ kind: 'idle' })
-  /** Whether the alphabet is open for review. Transient UI, like every other flag in this bar. */
   const [showingGlyphs, setShowingGlyphs] = useState(false)
 
-  // A rename or delete confirmation belongs to the profile that was active when it opened;
-  // switching the active profile out from under it must not leave a stray form or prompt open.
-  // `close` is `useEditableRow`'s own stable `useCallback`, but the controller object wrapping
-  // it is a fresh literal every render, so it goes through a ref rather than the dependency
-  // list — the same pattern `PinLayer`'s `onPinSelectedRef` uses for the same reason.
+  // Switching the active profile must not leave a stray form or prompt open for the old one.
+  // `close` is stable, but the controller object wrapping it is a fresh literal every render, so
+  // it goes through a ref rather than the dependency list.
   const closeEditableProfileRef = useRef(editableProfile.close)
   useEffect(() => {
     closeEditableProfileRef.current = editableProfile.close
@@ -101,9 +81,7 @@ export function CaptureBar({
   }, [activeProfileId])
 
   const gamepadConnected = useGamepadConnected()
-  /** Which action's row is waiting for the next press, or `null` — at most one row at a time. */
   const [listeningAction, setListeningAction] = useState<RecorderAction | null>(null)
-  /** `listenForNextEdge`'s own cancel function, so a second listen or an unmount can retract it. */
   const cancelListenRef = useRef<(() => void) | null>(null)
 
   function startListening(action: RecorderAction): void {
@@ -122,8 +100,7 @@ export function CaptureBar({
     setListeningAction(null)
   }
 
-  // A controller unplugged mid-listen leaves nothing left to press — the row would otherwise read
-  // "Listening…" forever once the section below stops rendering its rows at all.
+  // A controller unplugged mid-listen leaves nothing left to press.
   useEffect(() => {
     if (gamepadConnected) return
     cancelListenRef.current?.()
@@ -131,20 +108,17 @@ export function CaptureBar({
     setListeningAction(null)
   }, [gamepadConnected])
 
-  // And a listen abandoned by navigating away from Settings must not fire onto whatever row a
-  // later visit starts listening on.
   useEffect(() => {
     return () => cancelListenRef.current?.()
   }, [])
 
-  /** A box may only be read through a profile drawn against the frame that is live right now. */
   const readable =
     source.kind === 'live' &&
     active !== null &&
     profileApplies(active, source.frameWidth, source.frameHeight)
 
-  // The frozen frame is an object URL this component owns; closing the overlay by any route —
-  // including the selection changing out from under it — has to give it back.
+  // The frozen frame is an object URL this component owns; closing the overlay by any route has
+  // to give it back.
   const frozen = calibration.kind === 'open' ? calibration.frame : null
   useEffect(() => {
     return () => {
@@ -176,7 +150,6 @@ export function CaptureBar({
     if (target === null) {
       const profile = createCaptureProfile(name, values)
       dispatch({ kind: 'capture-profile/added', profile })
-      // A profile is created to be used, so it becomes the active one immediately.
       setActiveCaptureProfileId(profile.id)
     } else {
       dispatch({ kind: 'capture-profile/renamed', profileId: target.id, name })
@@ -197,8 +170,7 @@ export function CaptureBar({
 
   function onGlyphsLearned(profile: CaptureProfile, frame: ImageData, learned: Glyph[]): void {
     dispatch({ kind: 'glyphs/learned', glyphs: learned })
-    // The store's own copy arrives on the next render, and the transcript is wanted now — so the
-    // grown alphabet is applied here through the same merge the reducer just ran.
+    // The transcript is wanted now, before the store's own copy arrives next render.
     setRead({ kind: 'read', frame, reading: readTextBox(frame, profile, mergeGlyphs(glyphs, learned)) })
   }
 
@@ -209,7 +181,6 @@ export function CaptureBar({
 
   function onDeleteConfirmed(profile: CaptureProfile): void {
     dispatch({ kind: 'capture-profile/deleted', profileId: profile.id })
-    // Falls back to whatever is left, which `useActiveCaptureProfile` resolves on the next render.
     setActiveCaptureProfileId(null)
   }
 
@@ -379,8 +350,6 @@ export function CaptureBar({
               {read.kind === 'reading' ? 'Reading…' : 'Read the text box'}
             </button>
           </div>
-          {/* Says what this is *not*, because there are now two buttons that read the same box:
-              this one is the calibration check, and Capture the screen is the one that writes. */}
           <Disclosure>
             <p className="capture-bar__hint hint-text">
               A trial read. It shows what the box says and learns whatever tiles are new, but
@@ -401,9 +370,6 @@ export function CaptureBar({
         </>
       )}
 
-      {/* Its own section, and not inside the `active !== null` block above: an alphabet belongs to
-          the project, so correcting a mistyped character must not require a profile to be aimed at
-          anything or a screen to be shared. */}
       <h3 className="micro-label">Alphabet</h3>
       <div className="capture-bar__row capture-bar__row--actions">
         <button type="button" className="button" onClick={() => setShowingGlyphs(true)}>
@@ -420,8 +386,6 @@ export function CaptureBar({
         </p>
       </Disclosure>
 
-      {/* Its own section too, for the same reason the alphabet is: a binding says how *this
-          player* triggers a recording, not a measurement of the console — see CLAUDE.md. */}
       <h3 className="micro-label">Controller</h3>
       {gamepadConnected ? (
         RECORDER_ACTIONS.map((action) => (
@@ -478,12 +442,8 @@ export function CaptureBar({
   )
 }
 
-/**
- * One `RecorderAction`'s binding: what it is bound to, and the one control that changes that —
- * `Press a button…` while idle, `Listening…` plus a way to cancel once pressed. Button indices are
- * shown 1-based (`buttonIndex + 1`), matching how a person points at "button 3" on a pad rather
- * than the zero-based index `Gamepad.buttons` actually stores.
- */
+// Button indices are shown 1-based (`buttonIndex + 1`), matching how a person points at "button
+// 3" on a pad rather than the zero-based index `Gamepad.buttons` stores.
 function RecorderBindingRow({
   action,
   binding,
@@ -495,7 +455,6 @@ function RecorderBindingRow({
   action: RecorderAction
   binding: RecorderBinding | undefined
   listening: boolean
-  /** Another row is listening — this one's `Press a button…` must not start a second one. */
   disabled: boolean
   onListen: () => void
   onCancelListen: () => void
@@ -536,11 +495,7 @@ function RecorderBindingRow({
   )
 }
 
-/**
- * Says so, loudly, when the live frame is not the one the profile was drawn against. Naming both
- * sizes is the whole point: re-fitting the rectangles would be a guess that fails quietly, and
- * reading glyphs out of pixels that moved is worse than reading none. See CLAUDE.md.
- */
+// Naming both sizes is the point — re-fitting the rectangles would be a guess that fails quietly.
 function MismatchWarning({
   source,
   profile,

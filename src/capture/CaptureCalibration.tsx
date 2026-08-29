@@ -19,37 +19,22 @@ import {
 } from './capture-profile.ts'
 import './CaptureCalibration.css'
 
-/**
- * Which rectangle the next drag draws. The screen comes first because the text box is stored in
- * native pixels, and there is no native space to store it in until the screen is outlined.
- */
+// The screen comes first because the text box is stored in native pixels, and there is no native
+// space to store it in until the screen is outlined.
 type Step = 'screen' | 'text'
 
-/** A drag in progress, in frame pixels. In state rather than a ref: it is drawn every move. */
+// In state rather than a ref, since it's drawn every move.
 type Drag = { pointerId: number; from: Point; to: Point }
 
-/** How large the frozen frame is drawn. `fit` is for aiming, 1 and 2 for judging the grid. */
 const ZOOMS = ['fit', 1, 2] as const
 type Zoom = (typeof ZOOMS)[number]
 
-/**
- * How far the two tile steps may differ before the bar says so, as a share of the larger.
- *
- * A stretched emulator window is legitimate, so this is not an error — but a grid whose rows are
- * half again as tall as its columns is the shape of a screen rect that swallowed a title bar, and
- * that mistake is invisible until `GlyphLearner` shows tiles nobody can name.
- */
+// A stretched emulator window is legitimate, so this isn't an error, but a grid whose rows are
+// half again as tall as its columns is the shape of a screen rect that swallowed a title bar.
 const TILE_STEP_TOLERANCE = 0.05
 
-/**
- * Outlining a console screen and its text box, on one frozen frame.
- *
- * Only the first rectangle is measured freely: the screen rect plus the console's own resolution
- * fix the 8-pixel tile grid exactly, so the text box can be dragged sloppily and snap to whole
- * tiles. The grid is drawn over the frame throughout, because a screen rect that is a few pixels
- * off is obvious there and invisible everywhere else — it would surface as glyphs that never
- * match, several issues later.
- */
+// Only the first rectangle is measured freely — the screen rect plus the console's own resolution
+// fix the 8-pixel tile grid exactly, so the text box snaps to whole tiles.
 export function CaptureCalibration({
   frame,
   profile,
@@ -57,7 +42,6 @@ export function CaptureCalibration({
   onSave,
 }: {
   frame: FrozenFrame
-  /** The profile being re-calibrated, or `null` for a new one. */
   profile: CaptureProfile | null
   onCancel: () => void
   onSave: (name: string, calibration: ProfileCalibration) => void
@@ -66,7 +50,7 @@ export function CaptureCalibration({
   const [nativeWidth, setNativeWidth] = useState(profile?.nativeWidth ?? DEFAULT_NATIVE_WIDTH)
   const [nativeHeight, setNativeHeight] = useState(profile?.nativeHeight ?? DEFAULT_NATIVE_HEIGHT)
   // A screen rect measured against a different frame size means nothing, so it is dropped and
-  // drawn again. The text box is native-pixel and therefore still true — see CLAUDE.md.
+  // drawn again; the text box, being native-pixel, is still true.
   const [screenRect, setScreenRect] = useState<PixelRect | null>(() =>
     profile !== null && profileApplies(profile, frame.width, frame.height) ? profile.screenRect : null,
   )
@@ -76,7 +60,6 @@ export function CaptureCalibration({
   )
   const [zoom, setZoom] = useState<Zoom>('fit')
   const [drag, setDrag] = useState<Drag | null>(null)
-  /** Only ever a failure: a measurement that worked is visible as the rectangles it drew. */
   const [measureFailed, setMeasureFailed] = useState(false)
 
   useEffect(() => {
@@ -93,7 +76,7 @@ export function CaptureCalibration({
   const mapping: ScreenMapping | null =
     screenRect === null ? null : { screenRect, nativeWidth, nativeHeight }
 
-  /** The rectangle a live drag would commit — snapped already, so what is drawn is what is kept. */
+  // Snapped already, so what is drawn is what is kept.
   function dragResult(current: Drag): PixelRect | null {
     const dragged = rectFromCorners(current.from, current.to)
     if (step === 'screen') return dragged
@@ -102,13 +85,8 @@ export function CaptureCalibration({
     return snapToTileGrid(native, nativeBounds)
   }
 
-  /**
-   * Measures the console screen out of the frozen frame, and the text box out of that.
-   *
-   * Writes the same state a drag writes, so what is measured is drawn, nudgeable and still saved
-   * by hand. A failure changes nothing at all: half a calibration is worse than none, because the
-   * half that is wrong is the half nobody looks at.
-   */
+  // Writes the same state a drag writes, so what is measured is drawn, nudgeable and still saved
+  // by hand. A failure changes nothing — half a calibration is worse than none.
   function measure(): void {
     const detected = detectScreenRect(frame.pixels, nativeWidth, nativeHeight)
     if (detected === null) {
@@ -118,8 +96,6 @@ export function CaptureCalibration({
     setMeasureFailed(false)
     setScreenRect(detected.screenRect)
     setTextRect(detectTextRect(sampleNative(frame.pixels, detected.screenRect, nativeWidth, nativeHeight)))
-    // The box is what the user came to check either way — found, it wants confirming; missed, it
-    // wants drawing.
     setStep('text')
   }
 
@@ -144,17 +120,13 @@ export function CaptureCalibration({
     if (step === 'screen') {
       // A stray click must not wipe a screen rect that took aiming to place.
       if (result.width < 8 || result.height < 8) return
-      // Rounded, because the number fields below are how a screen rect is actually finished:
-      // a drag aims it, and single frame pixels are nudged in afterwards.
       setScreenRect(roundRect(result))
-      // Straight on to the box, which is what the user came to draw.
       setStep('text')
       return
     }
     setTextRect(result)
   }
 
-  /** Pointer position in frame pixels, independent of how large the frame is being drawn. */
   function framePoint(event: ReactPointerEvent<SVGSVGElement>): Point {
     const bounds = event.currentTarget.getBoundingClientRect()
     return {
@@ -163,7 +135,6 @@ export function CaptureCalibration({
     }
   }
 
-  /** The live drag, in frame pixels — the text step draws its snapped native rect mapped back. */
   function previewRect(): PixelRect | null {
     if (drag === null) return null
     const result = dragResult(drag)
@@ -307,9 +278,6 @@ export function CaptureCalibration({
           />
         </div>
 
-        {/* The grid's own numbers. A drag cannot place a rectangle to the pixel — a frame pixel
-            is a fraction of a screen pixel at Fit zoom — and being one pixel out is exactly what
-            makes the tile grid drift across the screen. So the rect is nudged, not redrawn. */}
         {screenRect !== null && (
           <div className="capture-calibration__controls">
             <p className="capture-calibration__legend capture-calibration__legend--row micro-label">
@@ -406,11 +374,8 @@ const STEP_HINTS: Readonly<Record<Step, string>> = {
   text: 'Drag roughly around the text box. It snaps to the tile grid, so sloppy is fine.',
 }
 
-/**
- * The console's own 8-pixel cells, drawn over the frame. Lines rather than a `<pattern>`: the
- * grid has to start exactly at the screen rect and step by a non-integer number of frame pixels,
- * which is what makes a screen rect that is off by two pixels visible as drift across the screen.
- */
+// Lines rather than a `<pattern>` — the grid starts exactly at the screen rect and steps by a
+// non-integer number of frame pixels, which is what makes a two-pixel-off rect visible as drift.
 function TileGrid({ mapping }: { mapping: ScreenMapping }): ReactElement {
   const step = tileStep(mapping)
   const { screenRect } = mapping
@@ -429,28 +394,20 @@ function TileGrid({ mapping }: { mapping: ScreenMapping }): ReactElement {
       <line key={`r${row}`} x1={screenRect.x} y1={y} x2={screenRect.x + screenRect.width} y2={y} />,
     )
   }
-  // `vector-effect` does not inherit, so the stroke width is pinned on the lines themselves
-  // through the stylesheet rather than as an attribute on this group.
   return <g className="capture-calibration__grid">{lines}</g>
 }
 
-/** How far the two tile steps differ, as a share of the larger. `0` is a perfectly square tile. */
 function tileStepMismatch(mapping: ScreenMapping): number {
   const step = tileStep(mapping)
   const largest = Math.max(step.x, step.y)
   return largest === 0 ? 0 : Math.abs(step.x - step.y) / largest
 }
 
-/** `fit` lets CSS size the frame; a numeric zoom pins it and lets the viewport scroll. */
 function stageStyle(frame: FrozenFrame, zoom: Zoom): { width: string; height?: string; aspectRatio?: string } {
   if (zoom === 'fit') return { width: '100%', aspectRatio: `${frame.width} / ${frame.height}` }
   return { width: `${frame.width * zoom}px`, height: `${frame.height * zoom}px` }
 }
 
-/**
- * One number in the calibration bar. Every value here is whole frame or native pixels, so the
- * arrow keys are a real adjustment tool rather than a rounding hazard.
- */
 function NumberField({
   label,
   value,
@@ -479,10 +436,8 @@ function NumberField({
   )
 }
 
-/**
- * An emptied or half-typed field must not become NaN and take the whole tile grid with it, so
- * it holds its previous value — clearing the box changes nothing until a number is in it.
- */
+// Holds its previous value rather than becoming NaN — clearing the box changes nothing until a
+// number is in it.
 function readNumber(raw: string, fallback: number, min: number): number {
   const value = Number.parseInt(raw, 10)
   if (!Number.isFinite(value) || value < min) return fallback

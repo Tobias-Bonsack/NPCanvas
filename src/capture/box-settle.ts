@@ -1,73 +1,30 @@
 import type { TextBoxReading } from './glyph-matcher.ts'
 
-// When a text box has stopped changing, and is therefore worth reading.
-//
-// A console types a box out one character at a time, so a loop that wrote every frame it saw would
-// log a dozen half-sentences per line. Waiting for the box to hold still is what turns a stream of
-// frames back into the discrete thing it represents: one box, read once.
-//
-// **Stillness is measured on the transcript, not on the pixels.** A text box carries a blinking
-// continuation arrow, so on pixels the box never holds still at all. Once the arrow has been
-// learned as a glyph with an empty `char` — the learner's "Not text" checkbox — it contributes
-// nothing to the transcript, and the transcript is simply constant.
-//
-// Before it has been learned the arrow is an *unnamed tile*: present on one frame, gone on the
-// next, so the box alternates between a reading that can be transcribed and one that cannot. That
-// is the first session, where the whole alphabet is still open — so the second rule: **a box has
-// changed when it shows something it has not shown before.** A transcript that grew is a change;
-// more unnamed tiles at once than the box has shown so far is a change; a tile that merely
-// disappeared and came back is not. That covers the arrow without letting a box that is still
-// filling settle underneath it — a box typing itself out in characters the alphabet cannot name
-// raises its unnamed count even while its transcript stands still.
-//
-// Pure, and its own module for the same reason `append-overlap.ts` is one: the loop is four lines
-// and the judgement around it is the rest.
-//
-// There was once a second question here — when a conversation ends, guessed from a run of gap
-// polls — and it is gone (#107). The player says both ends of a conversation now, with the two
-// triggers `capture-watch.ts` exposes; nothing in this module needs to guess either any more.
+// **Stillness is measured on the transcript, not the pixels** — a blinking continuation arrow
+// means the box never holds still on pixels, but once learned as a glyph with an empty `char` it
+// drops out of the transcript. Unlearned, it's an unnamed tile appearing/disappearing each frame,
+// so a box also counts as changed when its unnamed-tile count grows past its own high-water mark.
 
-/**
- * One tick's reading of the text box, reduced to what settling cares about.
- *
- * `held` is a box whose transcript is incomplete — `readTextBox` could not name every tile — so it
- * can be recognised as unchanged, but never written. Its `signature` is only the part that *was*
- * legible, deliberately: that is what makes the arrow blinking on and off one box rather than two.
- */
 export type BoxReading =
   | { kind: 'empty' }
   | { kind: 'held'; signature: string; unreadable: number }
   | { kind: 'text'; text: string }
 
-/**
- * A box that has come to rest, and is therefore worth acting on. Never `empty`: an empty box is
- * the gap between two boxes, and there is nothing in it to write or to hold.
- */
+// Never `empty` — an empty box is the gap between two boxes, with nothing in it to act on.
 export type SettledBox = Extract<BoxReading, { kind: 'held' } | { kind: 'text' }>
 
-/**
- * What the watcher carries between ticks.
- *
- * `unreadable` is a high-water mark rather than the last reading's count — see the blinking arrow
- * above. `emitted` is what makes a settled box settle **once**: without it a box left on screen
- * while the player reads it would be emitted again on every tick after the third.
- */
 export type SettleState = {
-  /** What the box said, as far as it could be read. `null` before anything was seen. */
   signature: string | null
-  /** The most tiles this box has failed to name at once. */
+  // A high-water mark, not the last reading's count — see the blinking-arrow note above.
   unreadable: number
   repeats: number
+  // Makes a settled box settle **once** — without it, a box left on screen would re-emit every tick.
   emitted: boolean
-  /**
-   * The most legible reading of this box so far — a `text` outranks a `held`, because a box whose
-   * only unnamed tile is the blinking arrow can be read whole on the frames the arrow is dark, and
-   * that reading is worth more than whichever frame happened to complete the count.
-   */
+  // `text` outranks `held`: a box whose only unnamed tile is the blinking arrow can be read whole
+  // on the frames the arrow is dark, which beats whichever frame happened to complete the count.
   best: SettledBox | null
 }
 
-/** Before the first tick, and after every empty box. Shared, so an unchanged state stays identical. */
 export const NOTHING_SEEN: SettleState = {
   signature: null,
   unreadable: 0,
@@ -76,21 +33,13 @@ export const NOTHING_SEEN: SettleState = {
   best: null,
 }
 
-/**
- * The state after one more reading, and the box to act on once it has come to rest.
- *
- * `settled` is non-null on exactly the tick that completes `settleTicks` readings showing nothing
- * new — a box that stays on screen for another minute yields nothing more, and a box that changes
- * starts over. The returned state is the argument **itself** when nothing moved, so a caller
- * holding it can compare by identity.
- */
+// `settled` is non-null on exactly the tick that completes `settleTicks` unchanged readings.
 export function nextSettle(
   state: SettleState,
   reading: BoxReading,
   settleTicks: number,
 ): { state: SettleState; settled: SettledBox | null } {
-  // An empty box is the gap between two boxes, and that gap is what makes the same sentence said
-  // twice in a row two boxes rather than one: the signature has to be forgotten, not superseded.
+  // The gap between two boxes is what makes the same sentence said twice in a row two boxes, not one.
   if (reading.kind === 'empty') return { state: NOTHING_SEEN, settled: null }
 
   const signature = reading.kind === 'text' ? reading.text : reading.signature
@@ -113,26 +62,18 @@ function settleAt(
   state: SettleState,
   settleTicks: number,
 ): { state: SettleState; settled: SettledBox | null } {
-  // A floor of one, so a caller that tuned the constant down to zero settles immediately rather
-  // than never — `repeats` starts at one and could never reach a threshold below it.
+  // A floor of one — `repeats` starts at one, so `settleTicks` tuned to zero would never settle otherwise.
   if (state.repeats < Math.max(1, settleTicks)) return { state, settled: null }
   return { state: { ...state, emitted: true }, settled: state.best }
 }
 
-/** A transcribable reading beats one with tiles missing; otherwise the first one seen stands. */
 function moreLegible(best: SettledBox | null, reading: SettledBox): SettledBox {
   if (best === null) return reading
   return best.kind === 'text' ? best : reading
 }
 
-/**
- * What one `readTextBox` result means to the settle loop.
- *
- * The count of unnamed tiles comes from `readTextBox` rather than from `unknown.length`, because
- * that array holds one entry per distinct *bitmap*: a box typing itself out in a character the
- * alphabet cannot name repeats one bitmap, and counting entries would call the growing box
- * unchanged.
- */
+// Uses `reading.unreadable`, not `unknown.length` — that array is one entry per distinct bitmap, so
+// a box typing itself out in an unnamed character would repeat one bitmap and read as unchanged.
 export function boxReadingFrom(reading: TextBoxReading): BoxReading {
   if (reading.unknown.length > 0) {
     return { kind: 'held', signature: reading.text, unreadable: reading.unreadable }

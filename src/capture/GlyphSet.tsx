@@ -98,14 +98,9 @@ export function GlyphSet({
   )
 }
 
-/**
- * Alphabetical, with the tiles that are not text last.
- *
- * Display only — the document's own order is never rewritten. It carries no meaning to rewrite:
- * `matchGlyph` is an exact lookup and `mergeGlyphs` keeps the bitmaps unique, so unlike
- * `relevanceTags` nothing reads the position of an entry. Sorting here is purely so a wrong
- * character can be found among sixty-odd right ones.
- */
+// Display only — the document's own order carries no meaning (`matchGlyph` is an exact lookup),
+// so this sorts alphabetically, tiles that are not text last, purely so a wrong character can be
+// found among sixty-odd right ones.
 function sortForReading(glyphs: readonly Glyph[]): Glyph[] {
   return [...glyphs].sort((left, right) => {
     // Both halves matter: a project can hold several tiles that are not text, and a comparator

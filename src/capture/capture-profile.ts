@@ -1,41 +1,27 @@
 import { newCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile, PixelRect, Point } from '../project/types.ts'
 
-// Three pixel spaces meet here, and only this module converts between them.
-//
-// **Frame** pixels are the captured desktop or window, whatever size the source happens to be.
-// **Native** pixels are the console's own screen — 160 × 144 for a Game Boy — which is the space
-// `CaptureProfile.textRect` is stored in, so the box does not move when the emulator window does.
-// **Tiles** are the 8 × 8 cells the console renders in, counted from native (0, 0): once the
-// screen rect is outlined the grid is a consequence of the hardware, not an estimate.
-//
-// Nothing here knows about the DOM, the store, or the live capture connection.
+// Three pixel spaces meet here, only converted between in this module: **frame** (the captured
+// desktop/window, any size), **native** (the console's own screen, e.g. 160x144 — the space
+// `CaptureProfile.textRect` is stored in, so the box doesn't move when the window does), and
+// **tiles** (the 8x8 cells the console renders in, counted from native (0, 0)).
 
-/** A console renders its font in 8 × 8 cells from (0, 0) of its screen. Not configurable. */
 export const TILE_SIZE = 8
 
-/** A Game Boy, because that is what this feature was built against. Editable per profile. */
 export const DEFAULT_NATIVE_WIDTH = 160
 export const DEFAULT_NATIVE_HEIGHT = 144
 
-/**
- * What fixes the native ↔ frame mapping. A `CaptureProfile` satisfies it, and so does a
- * half-finished calibration — which is the point: the calibration view has to draw the tile grid
- * before a profile with an id and a name exists.
- */
+// A half-finished calibration satisfies this too, since the calibration view draws the tile grid
+// before a profile with an id and a name exists.
 export type ScreenMapping = Pick<CaptureProfile, 'screenRect' | 'nativeWidth' | 'nativeHeight'>
 
-/**
- * Everything one calibration pass produces: a profile minus its identity and its name.
- * `frameWidth`/`frameHeight` belong to it because they record what the rects were measured
- * against — a profile that forgot them could only be silently wrong on a resized window.
- */
+// `frameWidth`/`frameHeight` record what the rects were measured against, so a profile can't be
+// silently wrong on a resized window.
 export type ProfileCalibration = Pick<
   CaptureProfile,
   'frameWidth' | 'frameHeight' | 'screenRect' | 'nativeWidth' | 'nativeHeight' | 'textRect'
 >
 
-/** Frame pixels per native pixel, per axis. Non-integer in general — an emulator scales freely. */
 export function screenScale(mapping: ScreenMapping): Point {
   return {
     x: mapping.screenRect.width / mapping.nativeWidth,
@@ -43,13 +29,11 @@ export function screenScale(mapping: ScreenMapping): Point {
   }
 }
 
-/** Frame pixels per tile, per axis — what the calibration overlay steps its grid lines by. */
 export function tileStep(mapping: ScreenMapping): Point {
   const scale = screenScale(mapping)
   return { x: scale.x * TILE_SIZE, y: scale.y * TILE_SIZE }
 }
 
-/** A native-pixel rectangle placed inside the captured frame. */
 export function nativeToFrame(mapping: ScreenMapping, rect: PixelRect): PixelRect {
   const scale = screenScale(mapping)
   return {
@@ -60,7 +44,6 @@ export function nativeToFrame(mapping: ScreenMapping, rect: PixelRect): PixelRec
   }
 }
 
-/** The inverse of `nativeToFrame` — what a rectangle dragged over the frame means natively. */
 export function frameToNative(mapping: ScreenMapping, rect: PixelRect): PixelRect {
   const scale = screenScale(mapping)
   return {
@@ -71,14 +54,8 @@ export function frameToNative(mapping: ScreenMapping, rect: PixelRect): PixelRec
   }
 }
 
-/**
- * A native-pixel rectangle grown outwards to whole tiles, and clamped to the screen.
- *
- * Outwards rather than nearest, because the rectangle the user dragged is a claim about what has
- * to be *inside* the box — rounding a sloppy edge inwards would clip the first column of glyphs
- * and produce unmatchable tiles. Always at least one tile: a click without a drag is a mistake,
- * not an empty selection.
- */
+// Grown outwards, not to nearest: a dragged rectangle claims what must be *inside* it, so rounding
+// inward would clip the first column of glyphs. Always at least one tile.
 export function snapToTileGrid(rect: PixelRect, bounds: { width: number; height: number }): PixelRect {
   const normalized = normalizeRect(rect)
   const x = snapAxis(normalized.x, normalized.width, bounds.width)
@@ -86,14 +63,8 @@ export function snapToTileGrid(rect: PixelRect, bounds: { width: number; height:
   return { x: x.start, y: y.start, width: x.size, height: y.size }
 }
 
-/**
- * The largest whole-tile rectangle that fits *inside* a native-pixel rectangle.
- *
- * The mirror of `snapToTileGrid`, and needed for the opposite claim: a detected text box is a
- * region the glyphs are known to be inside of, so growing it outwards would swallow the box's
- * border and hand the matcher a row of tiles that can never be named. `null` when not even one
- * whole tile fits, which is a detection that found nothing rather than an empty selection.
- */
+// The mirror of `snapToTileGrid`, for the opposite claim: a detected text box is a region the
+// glyphs are known to be inside of, so growing it outward would swallow the border.
 export function snapInsideTileGrid(rect: PixelRect): PixelRect | null {
   const normalized = normalizeRect(rect)
   const x = snapInsideAxis(normalized.x, normalized.width)
@@ -102,11 +73,7 @@ export function snapInsideTileGrid(rect: PixelRect): PixelRect | null {
   return { x: x.start, y: y.start, width: x.size, height: y.size }
 }
 
-/**
- * Whether a profile still describes what is on screen. Exact, not approximate: one pixel of
- * difference is a different window layout, and reading glyphs out of pixels that moved is the
- * failure this check exists to make loud.
- */
+// Exact, not approximate — one pixel of difference is a different window layout.
 export function profileApplies(
   profile: CaptureProfile,
   frameWidth: number,
@@ -115,23 +82,13 @@ export function profileApplies(
   return profile.frameWidth === frameWidth && profile.frameHeight === frameHeight
 }
 
-/**
- * A rectangle from two dragged corners, in whichever space the corners are in. Dragging up and
- * to the left is ordinary, so the negative extents it produces are normalized away here rather
- * than by every caller.
- */
+// Dragging up-left produces negative extents; normalized here rather than by every caller.
 export function rectFromCorners(from: Point, to: Point): PixelRect {
   return normalizeRect({ x: from.x, y: from.y, width: to.x - from.x, height: to.y - from.y })
 }
 
-/**
- * The same rectangle on whole frame pixels.
- *
- * A frame pixel is the finest thing the source can resolve, so a screen rect carrying fractions
- * of one is precision that isn't there — and it is what makes the calibration view's number
- * fields unusable, because nudging 199.54022637728986 by one is not an adjustment anyone can
- * reason about.
- */
+// A frame pixel is the finest thing the source can resolve, so fractional precision isn't real —
+// and it would make the calibration view's number fields unusable to nudge.
 export function roundRect(rect: PixelRect): PixelRect {
   const normalized = normalizeRect(rect)
   return {
@@ -142,7 +99,6 @@ export function roundRect(rect: PixelRect): PixelRect {
   }
 }
 
-/** The same rectangle with non-negative extents. */
 function normalizeRect(rect: PixelRect): PixelRect {
   return {
     x: rect.width < 0 ? rect.x + rect.width : rect.x,
@@ -152,10 +108,7 @@ function normalizeRect(rect: PixelRect): PixelRect {
   }
 }
 
-/**
- * A new profile. The only place one is constructed — and it takes nothing but a name and a
- * measurement, because the alphabet it will read with belongs to the project, not to it.
- */
+// The only place a profile is constructed — takes no alphabet, since that belongs to the project.
 export function createCaptureProfile(
   name: string,
   calibration: ProfileCalibration,
@@ -163,11 +116,8 @@ export function createCaptureProfile(
   return { id: newCaptureProfileId(), name, ...calibration }
 }
 
-/**
- * One axis of `snapToTileGrid`. Tile indices are clamped to the whole tiles the screen holds,
- * so a native size that is not a multiple of 8 loses its ragged last column rather than
- * producing a box whose edges sit inside a cell.
- */
+// Tile indices are clamped to the whole tiles the screen holds, so a native size not a multiple
+// of 8 loses its ragged last column rather than producing a box whose edges sit inside a cell.
 function snapAxis(start: number, size: number, bound: number): { start: number; size: number } {
   const tiles = Math.max(1, Math.floor(bound / TILE_SIZE))
   const first = clampTile(Math.floor(start / TILE_SIZE), tiles - 1)
@@ -176,7 +126,6 @@ function snapAxis(start: number, size: number, bound: number): { start: number; 
   return { start: first * TILE_SIZE, size: (end - first) * TILE_SIZE }
 }
 
-/** One axis of `snapInsideTileGrid`: the whole tiles strictly covered by the span. */
 function snapInsideAxis(start: number, size: number): { start: number; size: number } | null {
   const first = Math.ceil(start / TILE_SIZE)
   const last = Math.floor((start + size) / TILE_SIZE)

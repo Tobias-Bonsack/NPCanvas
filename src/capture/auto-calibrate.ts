@@ -3,55 +3,31 @@ import { TILE_SIZE, roundRect, snapInsideTileGrid } from './capture-profile.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 import { binarise, inkThreshold, luminanceAt } from './glyph-matcher.ts'
 
-// Measuring the console screen inside a captured frame, instead of aiming at it.
-//
-// The screen is a nearest-neighbour upscale of a 160 × 144 image, so the frame repeats every
-// native column `pitch` times and the difference between neighbouring columns is zero everywhere
-// except on a native-pixel boundary. Those boundaries are a lattice, `x = phase + k · pitch`, and
-// a single-frequency DFT over the difference signal reads both numbers off hundreds of boundaries
-// at once — a precision two dragged corners cannot reach.
-//
-// The axes are fitted independently and nothing here assumes square pixels: an emulator window
-// that stretches its output is ordinary, and it is the *disagreement* between two axes that has to
-// be measurable rather than assumed away.
-//
-// Pure, like `glyph-matcher.ts`. `CaptureCalibration` decides what to do with a measurement.
+// The screen is a nearest-neighbour upscale of a 160x144 image, so the frame repeats every native
+// column `pitch` times and the difference between neighbouring columns is zero except on a
+// native-pixel boundary. Those boundaries form a lattice, `x = phase + k * pitch`, and a
+// single-frequency DFT over the difference signal reads both numbers off hundreds of boundaries at
+// once — a precision two dragged corners can't reach. Axes are fitted independently since nothing
+// here assumes square pixels. Pure, like `glyph-matcher.ts`.
 
-/** Which way a lattice runs. Columns are fitted along `x`, rows along `y`. */
+// Columns are fitted along `x`, rows along `y`.
 type Axis = 'x' | 'y'
 
-/**
- * Which signal a lattice was read out of, and therefore what its phase points at.
- *
- * `step` is a nearest-neighbour upscale: the frame jumps at every native-pixel **boundary**, so
- * the first difference is a comb and the phase is a boundary. `ramp` is a smooth one — the frame
- * runs linearly from one native pixel's colour to the next, so the first difference is flat and
- * carries nothing, while the *curvature* spikes at every native-pixel **centre**. The two combs
- * therefore sit half a native pixel apart, which is the whole reason this is recorded rather than
- * inferred later.
- */
+// `step` (hard upscale) jumps at every native-pixel boundary, so its first difference is a comb.
+// `ramp` (smooth upscale) is flat in the first difference but spikes in curvature at every
+// native-pixel centre — half a native pixel away from `step`'s comb, which is why this is recorded
+// rather than inferred later.
 type LatticeSignal = 'step' | 'ramp'
 
-/** One axis, measured. */
 type AxisMeasurement = { lattice: Lattice; signal: LatticeSignal }
 
 type Lattice = {
-  /** Frame pixels per native pixel along this axis. */
   pitch: number
-  /** The first boundary, relative to the start of the region that was fitted, in `[0, pitch)`. */
   phase: number
-  /** The share of the prepared energy that lies on this lattice. Says which signal is the real one. */
   share: number
-  /**
-   * How many times better the winning pitch scores than the same energy shuffled scores.
-   *
-   * A share is not comparable between frames — a short signal has a high noise floor, a busy
-   * desktop behind a small console answers weakly at the right pitch, and two strong edges and
-   * nothing else answer at *every* pitch. Nor is the peak's height above the band's middle enough:
-   * the best of a hundred candidates stands well above the middle even when all hundred are
-   * accidents. So the comparison is against the strongest accident the *same numbers* can produce
-   * once their order is destroyed. One means the fit found nothing a shuffle could not.
-   */
+  // How many times better the winning pitch scores than the same energy shuffled. A raw share
+  // isn't comparable across frames (noise floor and content vary), so this compares against the
+  // strongest accident the same numbers can produce with their order destroyed.
   prominence: number
 }
 
@@ -61,59 +37,29 @@ type ScreenDetection = {
   vertical: AxisMeasurement
 }
 
-/**
- * How far the winning pitch must beat a shuffle of its own energy before it is offered at all.
- *
- * Measured, not guessed. Pure noise scores between 0.6 and 1.6 whatever the frame size — by
- * construction, since a shuffle of noise is noise. Two real VisualBoyAdvance captures at
- * 3840 × 2088 score 2.1, 2.7, 2.8 and 3.5 across their axes; the 2.1 is the axis of a screen whose
- * right third is black, so it has the least structure a real console frame is likely to offer.
- * 1.8 sits in the gap, and both axes have to clear it.
- */
+// Measured, not guessed: pure noise scores 0.6-1.6 regardless of frame size, while two real
+// VisualBoyAdvance captures at 3840x2088 scored 2.1-3.5 across their axes. 1.8 sits in the gap.
 export const MIN_PROMINENCE = 1.8
 
-/** Chebyshev distance in RGB that still counts as the window's own background. */
 const BACKGROUND_TOLERANCE = 24
 
-/** Pitch search: 0.05 px to find the peak, then 0.002 px to place it — 0.3 px over 160 pixels. */
+// 0.05px to find the peak, then 0.002px to place it — 0.3px over 160 pixels.
 const COARSE_STEP = 0.05
 const FINE_STEP = 0.002
 
-/** How close a rival pitch may score before the larger of the two wins. See `strongest`. */
 const HARMONIC_MARGIN = 0.95
-
-/** Where the energy is capped, as a quantile of itself. See `prepare`. */
 const CLIP_QUANTILE = 0.9
-
-/** A shuffle that scores nothing at all would divide by zero; a peak beside it is as good as it gets. */
 const PROMINENCE_CAP = 99
-
-/** The band the true pitch can lie in, as a fraction of `region / native`. */
 const MIN_PITCH_SHARE = 0.25
 const MAX_PITCH_SHARE = 1.05
-
-/** Below this a lattice is not a lattice — two frame pixels per native pixel is already generous. */
 const SMALLEST_PITCH = 2
-
-/** See `latticeOrigin`: an edge peak lands on the ceiling of the boundary that produced it. */
 const EDGE_TO_BOUNDARY = 0.5
-
-/** How far the fitted region reaches past the content, so both outer boundaries are in it. */
 const EDGE_MARGIN = 1
-
-/** How many lines across the axis the energy sum samples. See `axisEnergy`. */
 const CROSS_AXIS_SAMPLES = 600
-
-/** The shortest thing `detectTextRect` will call a text box: a border, a line, and a border. */
 const MIN_BOX_HEIGHT = TILE_SIZE * 3
 
-/**
- * The console screen inside a frame, or `null` when the frame does not hold one.
- *
- * `null` rather than a rectangle nobody can trust: a frame with no lattice in it at all has none
- * to find, and a measurement nobody can trust is worse than no measurement — the user would save
- * it, and the error would only surface as unnameable tiles two steps later.
- */
+// `null` rather than a rectangle nobody can trust — a bad guess here would only surface as
+// unnameable tiles two steps later.
 export function detectScreenRect(
   frame: PixelBuffer,
   nativeWidth: number,
@@ -124,9 +70,8 @@ export function detectScreenRect(
   const bounds = contentBounds(frame, BACKGROUND_TOLERANCE)
   if (bounds === null) return null
 
-  // A pixel of margin, because the difference at index `i` is the one between `i - 1` and `i`:
-  // without it the screen's own first and last boundary fall outside the signal, and the window
-  // search cannot tell the true placement from one that starts a native pixel early.
+  // A pixel of margin: the difference at index `i` is between `i-1` and `i`, so without it the
+  // screen's own first/last boundary would fall outside the signal.
   const region = grow(bounds, EDGE_MARGIN, frame)
   const horizontal = measureAxis(frame, region, 'x', nativeWidth)
   const vertical = measureAxis(frame, region, 'y', nativeHeight)
@@ -145,14 +90,9 @@ export function detectScreenRect(
   }
 }
 
-/**
- * Everything in the frame that is not the window's own background, as one rectangle.
- *
- * A coarse answer on purpose: it only has to bracket the screen closely enough to pin the pitch
- * search and to say which lattice line the screen starts on. Whatever it includes beyond the
- * screen — a title bar, a second window — the lattice corrects, because the size it produces is
- * `native × pitch` rather than anything this measured.
- */
+// A coarse answer on purpose — it only has to bracket the screen closely enough to pin the pitch
+// search; the lattice corrects anything extra (a title bar, a second window) since its output size
+// is `native * pitch`, not whatever this measured.
 export function contentBounds(frame: PixelBuffer, tolerance: number): PixelRect | null {
   if (frame.width === 0 || frame.height === 0) return null
   const background = borderColour(frame)
@@ -179,34 +119,21 @@ export function contentBounds(frame: PixelBuffer, tolerance: number): PixelRect 
   return { x: left, y: top, width: right - left + 1, height: bottom - top + 1 }
 }
 
-/**
- * How much the frame changes from one row or column to the next, summed across the other axis.
- *
- * Zero inside an upscaled native pixel and large on its boundary, which is the whole signal the
- * lattice is fitted to. Summed rather than averaged: a boundary that only a few rows disagree
- * across is a weaker boundary, and the fit should treat it as one.
- */
+// Zero inside an upscaled native pixel, large on its boundary — the signal the lattice fits.
+// Summed rather than averaged, so a boundary only a few rows disagree across scores as weaker.
 export function edgeEnergy(frame: PixelBuffer, region: PixelRect, axis: Axis): Float64Array {
   return axisEnergy(frame, region, axis, 'step')
 }
 
-/**
- * How much the frame *bends* from one row or column to the next, summed across the other axis.
- *
- * What survives a source that scales smoothly. Interpolating between two native pixels makes the
- * frame run in straight lines whose only kinks are the native pixel centres they were drawn
- * between — so the first difference is flat and says nothing, while the second difference is a
- * comb as clean as the one a hard upscale leaves behind.
- */
+// What survives a source that scales smoothly: the first difference is flat, but the second is a
+// comb as clean as a hard upscale's.
 function curvatureEnergy(frame: PixelBuffer, region: PixelRect, axis: Axis): Float64Array {
   return axisEnergy(frame, region, axis, 'ramp')
 }
 
-/**
- * Both signals, over one axis. The cross-axis sum is sampled rather than exhaustive: a boundary in
- * an upscaled image runs the full height of the screen, so a few hundred lines settle it, and a
- * 4K frame would otherwise cost tens of millions of reads per press of one button.
- */
+// Sampled across the cross axis rather than exhaustive — a boundary runs the full height of the
+// screen, so a few hundred lines settle it, and a 4K frame would otherwise cost tens of millions
+// of reads per button press.
 function axisEnergy(
   frame: PixelBuffer,
   region: PixelRect,
@@ -240,13 +167,9 @@ function axisEnergy(
   return energy
 }
 
-/**
- * The lattice the edge signal repeats on, or `null` when it does not repeat.
- *
- * One frequency of a DFT per candidate pitch: the magnitude says how much of the energy lines up,
- * the argument says where the first boundary is. Dividing by the total energy makes the score a
- * share rather than a brightness, so the same threshold holds for a dim frame and a vivid one.
- */
+// One DFT frequency per candidate pitch: magnitude says how much energy lines up, argument says
+// where the first boundary is. Dividing by total energy makes the score a share, not a brightness,
+// so the same threshold holds for a dim frame and a vivid one.
 export function fitLattice(
   energy: Float64Array,
   minPitch: number,
@@ -279,16 +202,9 @@ export function fitLattice(
   return { ...best, prominence: prominenceOf(best.share, prepared, low, maxPitch) }
 }
 
-/**
- * The energy as the fit should see it: pedestal removed, spikes capped.
- *
- * Both steps exist because a real frame is not a comb on an empty background. Window chrome and
- * dithered textures raise every index a little, which is a pedestal that adds nothing to any pitch
- * but drowns the share; and the console's own outer edge runs the full height of the screen, so it
- * alone can outweigh every boundary inside it — two such spikes answer at *any* pitch. Subtracting
- * the median and capping at the ninetieth percentile leaves each boundary counting roughly once,
- * which is what makes one pitch win on merit.
- */
+// Pedestal removed, spikes capped: window chrome and dithered textures add a pedestal that drowns
+// the share, and the screen's own outer edge can outweigh every boundary inside it. Subtracting
+// the median and capping at the 90th percentile leaves each boundary counting roughly once.
 function prepare(energy: Float64Array): Float64Array {
   if (energy.length === 0) return energy
   const baseline = median(Array.from(energy))
@@ -307,13 +223,8 @@ function prepare(energy: Float64Array): Float64Array {
   return flattened
 }
 
-/**
- * The real pitch among the band's candidates: the largest of those scoring near the best.
- *
- * A comb with spacing `p` answers just as strongly at `p / 2` and `p / 3` — they are its own
- * harmonics, not competitors — so the largest near-best pitch is the fundamental. Without this the
- * search reliably locks onto half the true scale.
- */
+// The largest of the candidates scoring near the best — a comb with spacing `p` answers just as
+// strongly at `p/2` and `p/3` (its own harmonics), so without this the search locks onto half scale.
 function strongest(band: readonly Lattice[]): Lattice | null {
   let best = 0
   for (const candidate of band) best = Math.max(best, candidate.share)
@@ -327,21 +238,16 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]
 }
 
-/**
- * The text box inside an already-sampled native screen, snapped to whole tiles, or `null`.
- *
- * Found by its border rather than by its emptiness: the interior is not empty — it is the text —
- * so what marks the box out is the run of ink that encloses it, wider than any glyph can be. The
- * interior is then verified to be mostly background, which is what rules out a solid block of
- * scenery that happened to have a straight edge.
- */
+// Found by its border, not its emptiness — the interior is the text, so the box is marked by the
+// enclosing run of ink wider than any glyph, then verified mostly background inside (ruling out
+// scenery with a straight edge).
 export function detectTextRect(native: PixelBuffer): PixelRect | null {
   const bits = binarise(
     native,
     inkThreshold(native, { x: 0, y: 0, width: native.width, height: native.height }),
   )
-  // The box lives in the lower part of the screen in every game this reads; searching the whole
-  // screen would find the status window at the top just as happily.
+  // The box lives in the lower part of the screen in every game this reads; the whole screen would
+  // also match the status window at the top.
   const first = Math.floor(native.height / 2)
   const minRun = Math.floor(native.width * 0.6)
 
@@ -351,10 +257,8 @@ export function detectTextRect(native: PixelBuffer): PixelRect | null {
   }
   if (rows.length < 2) return null
 
-  // The box is the *lowest* structure on the screen, not the tallest one: a room's wall runs the
-  // full width just as convincingly, and taking the topmost full-width line would stretch the box
-  // up over the scenery. So the bottom border is the last such line, and the top border is the
-  // last one still far enough above it to hold text.
+  // The box is the *lowest* full-width structure, not the tallest — a room's wall matches too, so
+  // the bottom border is the last such line and the top is the last one far enough above it.
   const bottom = rows[rows.length - 1]
   const top = rows.filter((row) => bottom - row >= MIN_BOX_HEIGHT).at(-1)
   if (top === undefined) return null
@@ -378,11 +282,6 @@ export function detectTextRect(native: PixelBuffer): PixelRect | null {
   return snapInsideTileGrid(interior)
 }
 
-/**
- * One axis, fitted from whichever signal the source left behind — and the first difference
- * regardless, because the screen's own outer edge is a hard edge whatever the source did to the
- * pixels inside it. See `latticeOrigin`.
- */
 type AxisFit = {
   lattice: Lattice
   signal: LatticeSignal
@@ -390,14 +289,8 @@ type AxisFit = {
   edges: Float64Array
 }
 
-/**
- * One axis of `detectScreenRect`: both signals, and the stronger one wins.
- *
- * A hard upscale answers on `step` and only weakly on `ramp` — its curvature is a pair of spikes
- * either side of each boundary rather than one. A smooth upscale answers on `ramp` and not at all
- * on `step`. Choosing by score therefore identifies the source as a side effect of measuring it,
- * which is what the half-native-pixel difference between the two combs needs.
- */
+// Both signals are fitted and the stronger wins: a hard upscale answers on `step` and only weakly
+// on `ramp`, a smooth one the reverse — so choosing by score identifies the source as a side effect.
 function measureAxis(
   frame: PixelBuffer,
   region: PixelRect,
@@ -410,8 +303,7 @@ function measureAxis(
   const stepFit = fitAxis(step, span, native)
   const rampFit = fitAxis(ramp, span, native)
 
-  // Chosen by share rather than by prominence: the question here is which comb carries the
-  // energy, and both signals can be prominent in a band that has no console in it at all.
+  // Chosen by share, not prominence — both signals can be prominent in a band with no console at all.
   const best =
     (stepFit?.share ?? 0) >= (rampFit?.share ?? 0)
       ? { lattice: stepFit, signal: 'step' as const, energy: step }
@@ -420,38 +312,19 @@ function measureAxis(
   return { lattice: best.lattice, signal: best.signal, energy: best.energy, edges: step }
 }
 
-/** The band the pitch can lie in, then the fit. */
 function fitAxis(energy: Float64Array, span: number, native: number): Lattice | null {
   return fitLattice(energy, (span / native) * MIN_PITCH_SHARE, (span / native) * MAX_PITCH_SHARE)
 }
 
-/**
- * Which lattice line the screen starts on, relative to the region.
- *
- * The region is only a bracket: a title bar or a letterbox inside it would put its own edge at the
- * start, and anchoring there would place the origin whole native pixels early — the pitch right,
- * every tile still wrong. So the screen is found by sliding a window of exactly `native` pixels
- * along the lattice and asking, at each placement, how strong the frame's own edges are at the two
- * ends of it. That is the decisive signal: an emulator draws its output against window chrome or a
- * black client area, so the screen's border is the largest step in the frame — on a real
- * VisualBoyAdvance capture it beat every rival placement eighteen to one, where the energy *inside*
- * the window separated them by five percent, which is noise.
- *
- * Ties go to the smallest offset, because the region's own start is the one piece of evidence the
- * lattice cannot supply: a screen with no contrast at its border would otherwise be placed anywhere
- * it fits.
- *
- * Half a pixel comes off the answer. A native pixel that begins at a fractional frame position
- * claims the frame pixel *containing* that position, so every peak sits at the ceiling of the
- * boundary that produced it — half a pixel late on average, and exactly the amount that decides
- * which way `roundRect` goes.
- */
+// Which lattice line the screen starts on. The region is only a bracket — a title bar inside it
+// could anchor the origin whole native pixels early — so this slides a `native`-pixel window along
+// the lattice and picks the placement whose two outer edges are strongest: an emulator's screen
+// border is the largest step in the frame (on a real capture it beat rivals 18:1, where interior
+// energy separated placements by only 5%, i.e. noise). Half a pixel comes off the result, since a
+// peak sits at the ceiling of the boundary that produced it.
 function latticeOrigin(fit: AxisFit, native: number): number {
   const { lattice, energy, edges } = fit
-  // A boundary peak sits half a pixel late; a centre peak sits half a pixel late *and* half a
-  // native pixel past the edge it is being asked about.
   const toEdge = fit.signal === 'step' ? -EDGE_TO_BOUNDARY : EDGE_TO_BOUNDARY - lattice.pitch / 2
-  // A boundary comb has one more line than the screen has pixels; a centre comb has one fewer.
   const lines = fit.signal === 'step' ? native + 1 : native
   const span = native * lattice.pitch
   const last = Math.max(0, Math.floor((energy.length - span) / lattice.pitch))
@@ -464,10 +337,7 @@ function latticeOrigin(fit: AxisFit, native: number): number {
     for (let step = 0; step < lines; step++) {
       inside += energyNear(energy, lattice.phase + (line + step) * lattice.pitch)
     }
-    // The two outer edges decide, and the interior only breaks ties — hence dividing it down to
-    // what a single line is worth. Placements a native pixel apart share almost all their
-    // interior, so the interior alone separates them by a few percent, which is noise; the
-    // screen's outer edge is the largest edge in the whole frame, which is not.
+    // Outer edges decide; interior only breaks ties, so it's divided down to one line's worth.
     const score = energyNear(edges, start) + energyNear(edges, start + span) + inside / native
     if (score > bestScore) {
       bestScore = score
@@ -476,12 +346,10 @@ function latticeOrigin(fit: AxisFit, native: number): number {
   }
 
   const start = lattice.phase + bestLine * lattice.pitch + toEdge
-  // The very first line may equally be the one just before the region — the screen can start a
-  // fraction of a native pixel earlier than the content that betrayed it.
+  // The screen can start a fraction of a native pixel earlier than the content that betrayed it.
   return bestLine === 0 && start > lattice.pitch / 2 ? start - lattice.pitch : start
 }
 
-/** The energy of one lattice line, allowing a pixel of rounding either side of it. */
 function energyNear(energy: Float64Array, position: number): number {
   const centre = Math.round(position)
   let sum = 0
@@ -505,12 +373,7 @@ function scanPitches(
   return candidates
 }
 
-/**
- * One frequency of a DFT: how much of the energy repeats at `pitch`, and where it starts.
- *
- * `prominence` is filled in by `fitLattice`, which is the only place that knows what the rest of
- * the band scored.
- */
+// `prominence` is filled in by `fitLattice`, the only place that knows the rest of the band's score.
 function latticeAt(energy: Float64Array, total: number, pitch: number): Lattice {
   let real = 0
   let imaginary = 0
@@ -530,13 +393,8 @@ function latticeAt(energy: Float64Array, total: number, pitch: number): Lattice 
   }
 }
 
-/**
- * How many times the winning share beats the best a shuffle of the same energy can manage.
- *
- * The shuffle is the null hypothesis made concrete: same values, same count, same distribution,
- * no order. Seeded from the data's own length so the answer is identical every time it is asked —
- * a pure function that gave two answers would be untestable.
- */
+// The shuffle is the null hypothesis made concrete: same values, no order. Seeded from the data's
+// own length so the same input always gives the same answer.
 function prominenceOf(share: number, energy: Float64Array, minPitch: number, maxPitch: number): number {
   const shuffled = shuffle(energy)
   let total = 0
@@ -550,7 +408,7 @@ function prominenceOf(share: number, energy: Float64Array, minPitch: number, max
   return Math.min(PROMINENCE_CAP, share / best)
 }
 
-/** Fisher-Yates with a fixed generator: the same array always shuffles the same way. */
+// Fisher-Yates with a fixed generator — the same array always shuffles the same way.
 function shuffle(energy: Float64Array): Float64Array {
   const out = Float64Array.from(energy)
   let state = (energy.length * 2654435761) >>> 0
@@ -564,7 +422,6 @@ function shuffle(energy: Float64Array): Float64Array {
   return out
 }
 
-/** The most common colour along the frame's outermost ring — the window's own background. */
 function borderColour(frame: PixelBuffer): [number, number, number] {
   const counts = new Map<number, number>()
   const consider = (x: number, y: number): void => {
@@ -592,9 +449,7 @@ function borderColour(frame: PixelBuffer): [number, number, number] {
   return [(winner >> 16) & 0xff, (winner >> 8) & 0xff, winner & 0xff]
 }
 
-/**
- * The longest run of ink along a line of the mask. `stride` 1 walks a row, the row width a column.
- */
+// `stride` 1 walks a row, the row width a column.
 function longestRun(bits: Uint8Array, stride: number, start: number, length: number): number {
   let longest = 0
   let run = 0
@@ -625,7 +480,6 @@ function backgroundShare(bits: Uint8Array, width: number, rect: PixelRect): numb
   return total === 0 ? 0 : background / total
 }
 
-/** The rectangle widened by `margin` on every side, without leaving the frame. */
 function grow(rect: PixelRect, margin: number, frame: PixelBuffer): PixelRect {
   const x = Math.max(0, rect.x - margin)
   const y = Math.max(0, rect.y - margin)
