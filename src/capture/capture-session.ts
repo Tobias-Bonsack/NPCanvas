@@ -135,6 +135,39 @@ export type FrameCrop = {
  * what keeps every caller that does not pass one working exactly as before.
  */
 export async function grabFrame(rect?: PixelRect): Promise<FrameCrop> {
+  const { element, crop } = await readyCrop(rect)
+  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
+  try {
+    const canvas = new OffscreenCanvas(crop.width, crop.height)
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (context === null) throw new Error('This browser provided no 2D canvas context.')
+    context.drawImage(bitmap, 0, 0)
+    return { pixels: context.getImageData(0, 0, crop.width, crop.height), origin: { x: crop.x, y: crop.y } }
+  } finally {
+    bitmap.close()
+  }
+}
+
+/** A crop of the live frame, still an `ImageBitmap` — what a worker can own without a copy. */
+export type FrameBitmapCrop = {
+  bitmap: ImageBitmap
+  /** The crop's top-left in frame coordinates — `{ x: 0, y: 0 }` when no rectangle was requested. */
+  origin: Point
+}
+
+/**
+ * `grabFrame`'s crop, stopping one step earlier: the bitmap is handed back **undecoded**, so a
+ * caller that is about to transfer it into a worker never pays for a `getImageData` this thread
+ * will throw away.
+ */
+export async function grabFrameBitmap(rect?: PixelRect): Promise<FrameBitmapCrop> {
+  const { element, crop } = await readyCrop(rect)
+  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
+  return { bitmap, origin: { x: crop.x, y: crop.y } }
+}
+
+/** The frame-readiness check and crop math `grabFrame` and `grabFrameBitmap` both start with. */
+async function readyCrop(rect: PixelRect | undefined): Promise<{ element: HTMLVideoElement; crop: PixelRect }> {
   const element = video
   if (state.kind !== 'live' || element === null) {
     throw new Error('Connect a screen or window before capturing a frame.')
@@ -149,17 +182,7 @@ export async function grabFrame(rect?: PixelRect): Promise<FrameCrop> {
   if (frameWidth === 0 || frameHeight === 0) throw new Error('The capture source has no frame yet.')
 
   const crop = rect === undefined ? { x: 0, y: 0, width: frameWidth, height: frameHeight } : growAndClamp(rect, frameWidth, frameHeight)
-
-  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
-  try {
-    const canvas = new OffscreenCanvas(crop.width, crop.height)
-    const context = canvas.getContext('2d', { willReadFrequently: true })
-    if (context === null) throw new Error('This browser provided no 2D canvas context.')
-    context.drawImage(bitmap, 0, 0)
-    return { pixels: context.getImageData(0, 0, crop.width, crop.height), origin: { x: crop.x, y: crop.y } }
-  } finally {
-    bitmap.close()
-  }
+  return { element, crop }
 }
 
 /**

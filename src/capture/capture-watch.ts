@@ -19,7 +19,7 @@ import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 import { getCaptureSource, grabFrame } from './capture-session.ts'
 import { appendOutcome, captureBlocker, screenPng } from './capture-to-dialogue.ts'
-import type { UnknownTile } from './glyph-matcher.ts'
+import type { TextBoxReading, UnknownTile } from './glyph-matcher.ts'
 import { readTextBox } from './glyph-matcher.ts'
 import { middleAddsNothing } from './middle-frame.ts'
 
@@ -200,6 +200,129 @@ function setCurrentCaptureId(id: PendingCaptureId | null): void {
 let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
+
+// #117: the read runs off the main thread when a worker is available, falling back to the same
+// `readTextBox` this file already called inline when it is not. Only the tick uses the worker —
+// `readLiveBox` (a manual press) keeps reading on the main thread, because its own frame is
+// handed back to `DialoguePanel`/`CaptureBar` for further main-thread reads (see #112's own note
+// on why that path stays whole-frame and synchronous).
+
+type WorkerReadResponse =
+  | { kind: 'read'; sequence: number; reading: TextBoxReading }
+  | { kind: 'error'; sequence: number; message: string }
+
+/** How long a read may go unanswered before the tick gives up on the worker for this box. */
+const WORKER_READ_TIMEOUT_MS = 5_000
+
+let worker: Worker | null = null
+/** Set once a worker has failed to start or has crashed. Sticky for the session — see `readWorker`. */
+let workerUnavailable = false
+let nextRequestSequence = 0
+const pendingReads = new Map<
+  number,
+  {
+    resolve: (reading: TextBoxReading) => void
+    reject: (error: Error) => void
+    timer: ReturnType<typeof setTimeout>
+  }
+>()
+
+/**
+ * The alphabet last **sent** to the worker, by reference. `postMessage` structured-clones its
+ * payload, so sending `glyphs` on every tick would hand the worker's own `readTextBox` a fresh
+ * array every time and defeat #114's and #115's identity-keyed caches from inside the very thread
+ * built to make them cheap. `readBox` sends it again only when this reference has moved.
+ */
+let lastSentGlyphs: readonly Glyph[] | null = null
+
+/**
+ * The shared worker, created lazily on the first read and kept for the rest of the session —
+ * `stopRecording` does not tear it down, because a manual capture can still reach for it later.
+ * Once unavailable it stays that way: the fallback is a deliberate, permanent choice for the
+ * session rather than something retried every tick.
+ */
+function readWorker(): Worker | null {
+  if (workerUnavailable) return null
+  if (worker !== null) return worker
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') {
+    workerUnavailable = true
+    return null
+  }
+  try {
+    const created = new Worker(new URL('./capture-read-worker.ts', import.meta.url), { type: 'module' })
+    created.onmessage = (event: MessageEvent<WorkerReadResponse>) => {
+      const pending = pendingReads.get(event.data.sequence)
+      if (pending === undefined) return
+      clearTimeout(pending.timer)
+      pendingReads.delete(event.data.sequence)
+      if (event.data.kind === 'error') pending.reject(new Error(event.data.message))
+      else pending.resolve(event.data.reading)
+    }
+    created.onerror = () => {
+      workerUnavailable = true
+      worker = null
+      for (const pending of pendingReads.values()) {
+        clearTimeout(pending.timer)
+        pending.reject(new Error('The capture read worker failed.'))
+      }
+      pendingReads.clear()
+    }
+    worker = created
+    return created
+  } catch {
+    workerUnavailable = true
+    return null
+  }
+}
+
+/**
+ * `readTextBox`, off the main thread when a worker is available. `frame` stays on the main thread
+ * either way — `screenPng` still encodes it here if the box settles — and only a bitmap **derived**
+ * from it, via `createImageBitmap(frame)`, is transferred, so the worker never needs the canonical
+ * pixels handed back.
+ */
+async function readBox(
+  frame: ImageData,
+  origin: Point,
+  profile: CaptureProfile,
+  glyphs: readonly Glyph[],
+): Promise<TextBoxReading> {
+  const active = readWorker()
+  if (active === null) return readTextBox(frame, profile, glyphs, origin)
+
+  let bitmap: ImageBitmap
+  try {
+    bitmap = await createImageBitmap(frame)
+  } catch {
+    return readTextBox(frame, profile, glyphs, origin)
+  }
+
+  const changed = glyphs !== lastSentGlyphs
+  if (changed) lastSentGlyphs = glyphs
+  const sequence = ++nextRequestSequence
+  try {
+    return await new Promise<TextBoxReading>((resolve, reject) => {
+      // A worker that never answers must not hang the tick forever — the timer is the backstop
+      // `readWorker`'s own `onerror` cannot cover, because a stuck worker throws nothing at all.
+      const timer = setTimeout(() => {
+        if (pendingReads.delete(sequence)) {
+          reject(new Error('The capture read worker did not answer in time.'))
+        }
+      }, WORKER_READ_TIMEOUT_MS)
+      pendingReads.set(sequence, { resolve, reject, timer })
+      active.postMessage(
+        { sequence, bitmap, origin, profile, glyphs: changed ? glyphs : undefined },
+        [bitmap],
+      )
+    })
+  } catch {
+    // This request failed, or the worker died outright — either way this tick reads the frame it
+    // already has rather than losing the box. A dead worker also resets `lastSentGlyphs`: the
+    // next worker, if `readWorker` ever builds one again, has no alphabet of its own yet.
+    if (workerUnavailable) lastSentGlyphs = null
+    return readTextBox(frame, profile, glyphs, origin)
+  }
+}
 
 /** One picture the watcher wrote, kept only long enough to judge the box that follows it. */
 type WrittenFrame = { captureId: PendingCaptureId; media: DialogueMedia; text: string }
@@ -420,7 +543,11 @@ async function tick(mine: number): Promise<void> {
   failures = 0
 
   const glyphs = app.project.glyphs
-  const step = nextSettle(settle, boxReadingFrom(readTextBox(frame, profile, glyphs, origin)), SETTLE_TICKS)
+  const reading = await readBox(frame, origin, profile, glyphs)
+  // The stop, start or profile switch that bumped the session owns the state now: a worker round
+  // trip is an await like any other, and a reply arriving after that must not be acted on.
+  if (mine !== session) return
+  const step = nextSettle(settle, boxReadingFrom(reading), SETTLE_TICKS)
   settle = step.state
   markRead()
 
