@@ -1,4 +1,5 @@
 import { assertNever } from '../assert-never.ts'
+import { dialoguesByTimeAsc } from '../dialogue/dialogue-order.ts'
 import type { Dialogue } from '../project/types.ts'
 
 /**
@@ -82,12 +83,12 @@ export function bucketDialogues(
   dialogues: readonly Dialogue[],
   unit: BucketUnit,
 ): TimeBucket[] {
-  const dated = dialogues
-    .flatMap((dialogue) => {
-      const at = Date.parse(dialogue.spokenAt)
-      return Number.isNaN(at) ? [] : [{ dialogue, at }]
-    })
-    .sort((a, b) => a.at - b.at)
+  // Read off the shared cached order rather than sorting here: `flatMap` preserves order, so
+  // an already-ascending source needs no `.sort` of its own to stay ascending.
+  const dated = dialoguesByTimeAsc(dialogues).flatMap((dialogue) => {
+    const at = Date.parse(dialogue.spokenAt)
+    return Number.isNaN(at) ? [] : [{ dialogue, at }]
+  })
 
   // `dated` is sorted, so a bucket is only ever extended while it is the last one — one pass
   // builds the whole ascending run, and no bucket is created that nothing goes into.

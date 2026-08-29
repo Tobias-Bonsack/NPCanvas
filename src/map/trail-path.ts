@@ -1,3 +1,4 @@
+import { byTimeAsc } from '../dialogue/dialogue-order.ts'
 import type { Dialogue, DialogueId, GameMap, MapId, Point } from '../project/types.ts'
 import { mapLocalToCanvas } from './canvas-layout.ts'
 
@@ -31,25 +32,24 @@ export function trailVertices(
 ): readonly TrailVertex[] {
   const byId = new Map<MapId, GameMap>(maps.map((map) => [map.id, map]))
 
-  // `Date.parse` rather than comparing the ISO strings directly the way `QuestBoard` does: the
-  // same call is the validity guard the sort needs, and it is also correct for a hand-edited
-  // `data.json` carrying an offset — "…+02:00" sorts before "…Z" as text and after it in time.
-  //
   // The map is carried alongside rather than looked up again after the sort, so the conversion
   // below needs no non-null assertion for something this loop has already proved.
-  const timed: { dialogue: Dialogue; map: GameMap; at: number }[] = []
+  const timed: { dialogue: Dialogue; map: GameMap }[] = []
   for (const dialogue of dialogues) {
     const map = byId.get(dialogue.mapId)
     if (map === undefined) continue
-    const at = Date.parse(dialogue.spokenAt)
-    if (Number.isNaN(at)) continue
-    timed.push({ dialogue, map, at })
+    if (Number.isNaN(Date.parse(dialogue.spokenAt))) continue
+    timed.push({ dialogue, map })
   }
 
+  // Through the shared comparator, not the shared cached order: a drag substitutes the moved
+  // pin's live position into `vertices` after this sort, so a `pointermove` must never re-sort
+  // the document (see CLAUDE.md § "World-space layers must stay viewport-independent").
+  //
   // `Array.prototype.sort` is stable, so lines sharing one instant keep the order the document
   // gives them. That is what makes the trail through a burst of captures deterministic without
   // decorating every entry with its index.
-  timed.sort((a, b) => a.at - b.at)
+  timed.sort((a, b) => byTimeAsc(a.dialogue, b.dialogue))
 
   return timed.map(({ dialogue, map }) => ({
     id: dialogue.id,

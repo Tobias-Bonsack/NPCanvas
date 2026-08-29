@@ -8,6 +8,7 @@ import { assertNever } from '../assert-never.ts'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { DialogueRow, DialogueRowContent } from '../dialogue-row/DialogueRow.tsx'
 import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.ts'
+import { subsetByTimeAsc, subsetByTimeDesc } from '../dialogue/dialogue-order.ts'
 import { npcKey, npcLabel } from '../insights/filters.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
 import { dialogueSearchTexts } from '../project/derived.ts'
@@ -212,8 +213,8 @@ function QuestCard({
       const dialogue = dialoguesById.get(id)
       return dialogue === undefined ? [] : [dialogue]
     })
-    return found.sort((a, b) => a.spokenAt.localeCompare(b.spokenAt))
-  }, [quest.dialogueIds, dialoguesById])
+    return subsetByTimeAsc(found, dialogues)
+  }, [quest.dialogueIds, dialoguesById, dialogues])
 
   const toggle = STATUS_TOGGLE[quest.status]
   const name = questName(quest)
@@ -482,7 +483,7 @@ function DialoguePicker({
       needle === ''
         ? candidates
         : candidates.filter((dialogue) => (searchTexts.get(dialogue.id) ?? '').includes(needle))
-    return [...hits].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
+    return subsetByTimeDesc(hits, dialogues)
   }, [dialogues, attached, query])
 
   return (

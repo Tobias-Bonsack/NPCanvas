@@ -54,14 +54,16 @@ describe('trailVertices', () => {
     ])
   })
 
-  it('compares instants rather than the ISO strings, so an offset sorts by what it means', () => {
-    // 09:00+02:00 is 07:00Z — earlier in time, later as text.
+  it('orders by the shared comparator, as text, the same as every other chronological sort', () => {
+    // 09:00+02:00 is 07:00Z, earlier in time — but the shared comparator (`byTimeAsc`) compares
+    // `spokenAt` as text like every other caller, so an offset still sorts by what it reads as.
+    // The trail is one more reader of the one rule, not a second definition of "chronological".
     const offset = dialogue('offset', HARBOUR, '2026-08-15T09:00:00.000+02:00', { x: 1, y: 1 })
     const utc = dialogue('utc', HARBOUR, '2026-08-15T08:00:00.000Z', { x: 2, y: 2 })
 
     expect(trailVertices([AT_ORIGIN], [utc, offset]).map((vertex) => vertex.id)).toEqual([
-      offset.id,
       utc.id,
+      offset.id,
     ])
   })
 

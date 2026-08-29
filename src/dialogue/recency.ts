@@ -1,3 +1,4 @@
+import { byTimeDesc, dialoguesByTimeDesc } from './dialogue-order.ts'
 import type { Dialogue } from '../project/types.ts'
 
 /** How many of the most-recently-spoken NPCs lead the list before it falls back to alphabetical. */
@@ -13,7 +14,7 @@ const RECENT_NPC_LIMIT = 5
  * shares this — and because a `.tsx` that exports anything but components breaks Fast Refresh.
  */
 export function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
-  const byRecency = [...dialogues].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
+  const byRecency = dialoguesByTimeDesc(dialogues)
   const ordered: string[] = []
   const seen = new Set<string>()
   for (const dialogue of byRecency) {
@@ -38,9 +39,5 @@ export function previousRecordFor<T extends { id: string; spokenAt: string }>(
   items: readonly T[],
   excludeId: T['id'],
 ): T | null {
-  return (
-    items
-      .filter((candidate) => candidate.id !== excludeId)
-      .sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))[0] ?? null
-  )
+  return items.filter((candidate) => candidate.id !== excludeId).sort(byTimeDesc)[0] ?? null
 }

@@ -29,6 +29,7 @@ import { zoneHueStyle } from '../map/zone-style.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
 import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
+import { subsetByTimeAsc } from './dialogue-order.ts'
 import type {
   CaptureProfile,
   Dialogue,
@@ -771,9 +772,12 @@ function MergeIntoThisLine({
   const [chosen, setChosen] = useState<DialogueId | ''>('')
   const selectId = useId()
   const name = dialogue.npcName.trim()
-  const others = dialogues
-    .filter((other) => other.id !== dialogue.id && other.npcName.trim() === name && name !== '')
-    .sort((a, b) => a.spokenAt.localeCompare(b.spokenAt))
+  const others = subsetByTimeAsc(
+    dialogues.filter(
+      (other) => other.id !== dialogue.id && other.npcName.trim() === name && name !== '',
+    ),
+    dialogues,
+  )
 
   if (others.length === 0) return null
   const target = others.find((other) => other.id === chosen) ?? null

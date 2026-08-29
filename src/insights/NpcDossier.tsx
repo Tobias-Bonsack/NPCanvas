@@ -9,6 +9,7 @@ import { zoneHueStyle } from '../map/zone-style.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import { dispatch } from '../project/store.ts'
+import { subsetByTimeAsc } from '../dialogue/dialogue-order.ts'
 import type {
   Dialogue,
   DialogueId,
@@ -478,7 +479,7 @@ function buildProfiles(
   }
 
   const profiles = [...byKey].map(([key, lines]) => {
-    const ordered = [...lines].sort((a, b) => a.spokenAt.localeCompare(b.spokenAt))
+    const ordered = subsetByTimeAsc(lines, dialogues)
     const counts = emptyTally(relevanceTags)
     const zones = new Map<ZoneId, Zone>()
     const questSet = new Map<Quest['id'], Quest>()
