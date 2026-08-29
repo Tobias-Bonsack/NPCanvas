@@ -208,9 +208,12 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   `readTextBox(frame, profile, glyphs)` takes it as a separate argument. All of it — the connection, the profile picker, calibration, and the
   alphabet — lives on the settings screen (`CaptureBar`, mounted once in `SettingsScreen.tsx`; see
   #90/#91), a session-long setup step rather than a field of the dialogue it used to render inside.
-  The dialogue panel keeps only what acts on the selected line: the capture button and the two
-  `GlyphLearner` overlays. Per-profile alphabets meant a second profile aimed at another box on the
-  same game re-learned the whole font tile by tile. Unlike `relevanceTags`, the array's **order
+  The dialogue panel keeps only what acts on the selected line: the capture button and its own
+  `GlyphLearner` overlay. The held queue's own `GlyphLearner` and its `HeldNote` live in
+  `CaptureRecorder` instead (#109) — a held frame belongs to the capture the watcher was recording
+  when it read it, never to whichever line happens to be selected. Per-profile alphabets meant a
+  second profile aimed at another box on the same game re-learned the whole font tile by tile.
+  Unlike `relevanceTags`, the array's **order
   carries no meaning**: `matchGlyph` is an exact lookup and `mergeGlyphs` keeps the bitmaps unique,
   so nothing may start reading the position of an entry — `GlyphSet` sorts for display only.
   `mergeGlyphs` is the only addition path (it replaces on identical bits, which is what makes

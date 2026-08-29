@@ -4,10 +4,41 @@ import { useActiveCaptureProfile } from './active-profile.ts'
 import { useCaptureSource } from './capture-session.ts'
 import { captureBlocker } from './capture-to-dialogue.ts'
 import type { WatchState } from './capture-watch.ts'
-import { startRecording, stopRecording, useWatchState, useWatching } from './capture-watch.ts'
-import type { PendingCapture } from '../project/types.ts'
-import { useAppStateExceptSave } from '../project/store.ts'
+import {
+  describeReplay,
+  discardHeldFrames,
+  heldUnknownTiles,
+  replayHeldFrames,
+  startRecording,
+  stopRecording,
+  useWatchState,
+  useWatching,
+} from './capture-watch.ts'
+import { GlyphLearner } from './GlyphLearner.tsx'
+import type { UnknownTile } from './glyph-matcher.ts'
+import { mergeGlyphs } from './glyph-matcher.ts'
+import { HeldNote } from './HeldNote.tsx'
+import type { CaptureProfile, Glyph, PendingCapture } from '../project/types.ts'
+import { dispatch, useAppStateExceptSave } from '../project/store.ts'
+import { describeError } from '../storage/project-directory.ts'
 import './CaptureRecorder.css'
+
+/**
+ * One round of answering — or throwing away — the held queue, as this region alone sees it. Its
+ * own state, separate from a manual capture's: the two share nothing but a `CaptureProfile`, and
+ * a learner opened over one must not disable the other.
+ */
+type HeldCaptureState =
+  | { kind: 'idle' }
+  | { kind: 'capturing' }
+  | {
+      kind: 'learning-held'
+      profile: CaptureProfile
+      glyphs: readonly Glyph[]
+      tiles: readonly UnknownTile[]
+    }
+  | { kind: 'done'; message: string }
+  | { kind: 'failed'; message: string }
 
 /**
  * The watcher's two triggers and status, rendered in the canvas sidebar (moved here from `Nav.tsx`
@@ -21,16 +52,25 @@ import './CaptureRecorder.css'
  * has. There is deliberately no keyboard trigger — a bare letter is no use to a hand on a
  * controller, and the trigger the player will actually reach for is a bound controller button
  * (#110, #111).
+ *
+ * `HeldNote` is rendered here rather than from the dialogue panel (#109): a held frame belongs to
+ * the capture the watcher was recording when it read it, not to whichever line happens to be
+ * selected — #107 already made a selected line meaningless to the watcher, and the queue itself
+ * lives beside the trigger that fills it.
  */
 export function CaptureRecorder(): ReactElement {
   const appState = useAppStateExceptSave()
   const captureProfiles = appState.kind === 'ready' ? appState.project.captureProfiles : []
   const pendingCaptures = appState.kind === 'ready' ? appState.project.pendingCaptures : []
+  const glyphs = appState.kind === 'ready' ? appState.project.glyphs : []
   const source = useCaptureSource()
   const profile = useActiveCaptureProfile(captureProfiles)
   const blocker = captureBlocker(source, profile)
   const watching = useWatching()
   const watch = useWatchState()
+
+  const [heldState, setHeldState] = useState<HeldCaptureState>({ kind: 'idle' })
+  const heldBusy = heldState.kind === 'capturing' || heldState.kind === 'learning-held'
 
   /**
    * Stopping is unconditional: the connection can end while the loop runs, and a trigger that
@@ -41,6 +81,63 @@ export function CaptureRecorder(): ReactElement {
   function trigger(mode: 'new' | 'extend'): void {
     if (watching) stopRecording()
     else if (blocker === null) startRecording(mode)
+  }
+
+  /**
+   * The held queue's questions, asked once for the whole queue.
+   *
+   * A queue that has nothing left to ask — the alphabet grew for another reason since — replays
+   * straight away rather than opening a learner with no tiles in it.
+   */
+  function answerHeld(): void {
+    if (heldBusy || profile === null) return
+    const tiles = heldUnknownTiles(profile, glyphs)
+    if (tiles.length === 0) {
+      void replayHeld(profile, glyphs)
+      return
+    }
+    setHeldState({ kind: 'learning-held', profile, glyphs, tiles })
+  }
+
+  /**
+   * Empties the queue without writing any of it. The frames are the only record of those boxes, so
+   * `HeldNote` asks first — this runs after that answer, and says how much went.
+   */
+  function discardHeld(): void {
+    const waiting = discardHeldFrames()
+    setHeldState({
+      kind: 'done',
+      message:
+        waiting === 1
+          ? '1 waiting box was discarded. Nothing was written.'
+          : `${waiting} waiting boxes were discarded. Nothing was written.`,
+    })
+  }
+
+  async function replayHeld(target: CaptureProfile, alphabet: readonly Glyph[]): Promise<void> {
+    setHeldState({ kind: 'capturing' })
+    try {
+      setHeldState({
+        kind: 'done',
+        message: describeReplay(await replayHeldFrames(target, alphabet)),
+      })
+    } catch (error) {
+      // `replayHeldFrames` keeps a frame it could not write, so nothing is lost here — but the
+      // region must not be left reading "Writing…" with every control disabled behind it.
+      setHeldState({ kind: 'failed', message: describeError(error) })
+    }
+  }
+
+  function onHeldGlyphsLearned(
+    target: CaptureProfile,
+    alphabet: readonly Glyph[],
+    learned: Glyph[],
+  ): void {
+    dispatch({ kind: 'glyphs/learned', glyphs: learned })
+    // The store's own copy arrives on the next render and the frames are being re-read now, so
+    // the grown alphabet is applied here through the same merge the reducer just ran — as
+    // `CaptureBar` and `DialoguePanel` do.
+    void replayHeld(target, mergeGlyphs(alphabet, learned))
   }
 
   const last: PendingCapture | undefined = pendingCaptures.at(-1)
@@ -84,6 +181,32 @@ export function CaptureRecorder(): ReactElement {
           </button>
         </div>
       </div>
+      <HeldNote
+        onAnswer={answerHeld}
+        onDiscard={discardHeld}
+        answerDisabled={heldBusy || profile === null}
+        discardDisabled={heldBusy}
+      />
+      {heldState.kind === 'done' && (
+        <p className="capture-recorder__watch-note" role="status">
+          {heldState.message}
+        </p>
+      )}
+      {heldState.kind === 'failed' && (
+        <p className="capture-recorder__held-error" role="alert">
+          {heldState.message}
+        </p>
+      )}
+      {/* Cancelling here discards nothing at all: the held frames are still in the queue, and the
+          control that opened this is still right above it. */}
+      {heldState.kind === 'learning-held' && (
+        <GlyphLearner
+          tiles={heldState.tiles}
+          cancelLabel="Cancel"
+          onCancel={() => setHeldState({ kind: 'idle' })}
+          onConfirm={(learned) => onHeldGlyphsLearned(heldState.profile, heldState.glyphs, learned)}
+        />
+      )}
     </div>
   )
 }

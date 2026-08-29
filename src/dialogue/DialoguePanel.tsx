@@ -16,14 +16,6 @@ import {
   readLiveBox,
 } from '../capture/capture-to-dialogue.ts'
 import { useCaptureSource } from '../capture/capture-session.ts'
-import {
-  describeReplay,
-  discardHeldFrames,
-  heldUnknownTiles,
-  replayHeldFrames,
-  setDraftFlush,
-  useHeldFrames,
-} from '../capture/capture-watch.ts'
 import { GlyphLearner } from '../capture/GlyphLearner.tsx'
 import type { UnknownTile } from '../capture/glyph-matcher.ts'
 import { mergeGlyphs, readTextBox } from '../capture/glyph-matcher.ts'
@@ -84,16 +76,6 @@ type CaptureState =
           typed in, which the store has not handed back yet. */
       glyphs: readonly Glyph[]
       frame: ImageData
-      tiles: readonly UnknownTile[]
-    }
-  /**
-   * The same questions, asked for the watcher's whole held queue at once. No single frame: the
-   * tiles are the union across all of them, and every frame is re-read on confirm.
-   */
-  | {
-      kind: 'learning-held'
-      profile: CaptureProfile
-      glyphs: readonly Glyph[]
       tiles: readonly UnknownTile[]
     }
   | { kind: 'done'; message: string }
@@ -281,15 +263,7 @@ export function DialoguePanel({
   const profile = useActiveCaptureProfile(project.captureProfiles)
   const blocker = captureBlocker(source, profile)
 
-  // The watcher writes without anyone touching the browser, so it has to be able to push the line
-  // field's draft down first — exactly as the capture button does before it appends. Registered
-  // for as long as a panel is mounted, and taken back on unmount so a stale closure cannot commit
-  // into a dialogue that is no longer on screen.
-  useEffect(() => {
-    setDraftFlush(() => flushDraft.current?.())
-    return () => setDraftFlush(null)
-  }, [])
-  const busy = captureState.kind === 'capturing' || isLearning(captureState)
+  const busy = captureState.kind === 'capturing' || captureState.kind === 'learning'
 
   // Bound on `window`, not on the panel: the selected pin keeps focus after a click, and an
   // Escape aimed at "close this" would otherwise have to be pressed inside the panel first.
@@ -299,7 +273,7 @@ export function DialoguePanel({
   // field never loses what is being typed into it just because Escape was the key pressed —
   // and an open alertdialog or the quest picker claims the key before it can bubble this far;
   // see `useAlertDialogFocus` and `DialogueQuestLinks`'s picker.
-  const learning = isLearning(captureState)
+  const learning = captureState.kind === 'learning'
   useEffect(() => {
     if (learning || resizing) return
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -447,63 +421,6 @@ export function DialoguePanel({
     } catch (error) {
       setCaptureState({ kind: 'failed', message: describeError(error) })
     }
-  }
-
-  /**
-   * The held queue's questions, asked once for the whole queue.
-   *
-   * A queue that has nothing left to ask — the alphabet grew for another reason since — replays
-   * straight away rather than opening a learner with no tiles in it.
-   */
-  function answerHeld(): void {
-    if (busy || profile === null) return
-    const tiles = heldUnknownTiles(profile, project.glyphs)
-    if (tiles.length === 0) {
-      void replayHeld(profile, project.glyphs)
-      return
-    }
-    setCaptureState({ kind: 'learning-held', profile, glyphs: project.glyphs, tiles })
-  }
-
-  /**
-   * Empties the queue without writing any of it. The frames are the only record of those boxes, so
-   * `HeldNote` asks first — this runs after that answer, and says how much went.
-   */
-  function discardHeld(): void {
-    const waiting = discardHeldFrames()
-    setCaptureState({
-      kind: 'done',
-      message:
-        waiting === 1
-          ? '1 waiting box was discarded. Nothing was written.'
-          : `${waiting} waiting boxes were discarded. Nothing was written.`,
-    })
-  }
-
-  async function replayHeld(target: CaptureProfile, alphabet: readonly Glyph[]): Promise<void> {
-    setCaptureState({ kind: 'capturing' })
-    try {
-      setCaptureState({
-        kind: 'done',
-        message: describeReplay(await replayHeldFrames(target, alphabet)),
-      })
-    } catch (error) {
-      // `replayHeldFrames` keeps a frame it could not write, so nothing is lost here — but the
-      // panel must not be left reading "Capturing…" with every control disabled behind it.
-      setCaptureState({ kind: 'failed', message: describeError(error) })
-    }
-  }
-
-  function onHeldGlyphsLearned(
-    target: CaptureProfile,
-    alphabet: readonly Glyph[],
-    learned: Glyph[],
-  ): void {
-    dispatch({ kind: 'glyphs/learned', glyphs: learned })
-    // The store's own copy arrives on the next render and the frames are being re-read now, so
-    // the grown alphabet is applied here through the same merge the reducer just ran — as
-    // `CaptureBar` and `onGlyphsLearned` do.
-    void replayHeld(target, mergeGlyphs(alphabet, learned))
   }
 
   function onGlyphsLearned(
@@ -743,12 +660,6 @@ export function DialoguePanel({
                 : `Capture the screen · ${CAPTURE_SHORTCUT}`}
             </button>
           </div>
-          <HeldNote
-            onAnswer={answerHeld}
-            onDiscard={discardHeld}
-            answerDisabled={busy || profile === null}
-            discardDisabled={busy}
-          />
           <input
             id={pickerId}
             className="visually-hidden dialogue-media__input"
@@ -836,33 +747,10 @@ export function DialoguePanel({
           }
         />
       )}
-      {/* Cancelling here discards nothing at all: the held frames are still in the queue, and the
-          control that opened this is still beside the capture button. */}
-      {captureState.kind === 'learning-held' && (
-        <GlyphLearner
-          tiles={captureState.tiles}
-          cancelLabel="Cancel"
-          onCancel={() => setCaptureState({ kind: 'idle' })}
-          onConfirm={(learned) =>
-            onHeldGlyphsLearned(captureState.profile, captureState.glyphs, learned)
-          }
-        />
-      )}
     </aside>
   )
 }
 
-/** Both learners stand in front of the panel and both block a second capture. */
-function isLearning(state: CaptureState): boolean {
-  return state.kind === 'learning' || state.kind === 'learning-held'
-}
-
-/**
- * The boxes the alphabet could not name, and the one control that turns them back into lines.
- *
- * Shown whether or not the watcher is still running: the queue outlives it, and the alphabet is
- * usually answered once the conversation is over. Its own subscription, like `WatchNote`.
- */
 /**
  * Two records that were always one, joined back together.
  *
@@ -943,93 +831,6 @@ function mergeOptionLabel(dialogue: Dialogue): string {
   if (shown !== '') return `${when} — ${shown}`
   return `${when} — ${dialogue.media.length === 1 ? '1 picture' : `${dialogue.media.length} pictures`}`
 }
-
-function HeldNote({
-  onAnswer,
-  onDiscard,
-  answerDisabled,
-  discardDisabled,
-}: {
-  onAnswer: () => void
-  onDiscard: () => void
-  answerDisabled: boolean
-  /**
-   * Its own flag, and deliberately not `answerDisabled`: writing the queue needs a profile to read
-   * the frames with, throwing it away needs nothing. A queue stuck behind a profile that was
-   * deleted or re-calibrated is exactly the one the user wants rid of, so the two controls cannot
-   * share a condition.
-   */
-  discardDisabled: boolean
-}): ReactElement | null {
-  const held = useHeldFrames()
-  /** The confirm step, local and transient — `CaptureBar`'s `confirming-delete` in miniature. */
-  const [confirming, setConfirming] = useState(false)
-  if (held.waiting === 0 && held.dropped === 0) return null
-
-  return (
-    <div className="dialogue-media__held" role="status">
-      <p className="dialogue-media__watch-note">
-        {held.waiting === 1
-          ? '1 box is waiting for the alphabet'
-          : `${held.waiting} boxes are waiting for the alphabet`}
-        {held.dropped > 0 &&
-          ` · ${held.dropped} older ${held.dropped === 1 ? 'one was' : 'ones were'} pushed out of the queue and lost`}
-      </p>
-      {/* Why the line has stopped growing even though the watcher says it is reading: a box the
-          alphabet cannot name holds up the boxes after it, because a held box can only ever be
-          appended at the end of the line. */}
-      {held.waiting > 1 && (
-        <Disclosure>
-          <p className="dialogue-media__hint">
-            The boxes after the one it could not read are waiting with it, so the line keeps its
-            order.
-          </p>
-        </Disclosure>
-      )}
-      {held.waiting > 0 &&
-        (confirming ? (
-          /* Confirmed rather than done on the click: a replay is the only other way these frames
-             leave the queue, and the pixels are gone for good — the game has long since advanced
-             past the box they show. */
-          <div className="dialogue-media__held-confirm">
-            <span>
-              Discard {held.waiting === 1 ? 'the waiting box' : `all ${held.waiting} waiting boxes`}?
-              Nothing is written, and the pictures cannot be captured again.
-            </span>
-            <button
-              type="button"
-              className="button button--danger"
-              onClick={() => {
-                setConfirming(false)
-                onDiscard()
-              }}
-            >
-              Discard them
-            </button>
-            <button type="button" className="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <div className="dialogue-media__held-actions">
-            <button type="button" className="button" disabled={answerDisabled} onClick={onAnswer}>
-              Name the tiles and write them
-            </button>
-            <button
-              type="button"
-              className="button"
-              disabled={discardDisabled}
-              title="Throw the waiting boxes away. The line they were read for keeps whatever is already in it."
-              onClick={() => setConfirming(true)}
-            >
-              Discard them
-            </button>
-          </div>
-        ))}
-    </div>
-  )
-}
-
 
 /**
  * The dragged width as the inherited custom property `.dialogue-panel` reads. The intersection

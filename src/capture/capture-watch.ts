@@ -2,11 +2,10 @@ import { useSyncExternalStore } from 'react'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
 import { newPendingCaptureId } from '../project/ids.ts'
-import { currentDialogue, dispatch, getState } from '../project/store.ts'
+import { dispatch, getState } from '../project/store.ts'
 import type {
   CaptureProfile,
   CaptureProfileId,
-  DialogueId,
   DialogueMedia,
   Glyph,
   PendingCapture,
@@ -18,12 +17,7 @@ import { activeCaptureProfile } from './active-profile.ts'
 import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
 import { getCaptureSource, grabFrame } from './capture-session.ts'
-import {
-  appendOutcome,
-  captureBlocker,
-  captureIntoDialogue,
-  screenPng,
-} from './capture-to-dialogue.ts'
+import { appendOutcome, captureBlocker, screenPng } from './capture-to-dialogue.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
 import { readTextBox } from './glyph-matcher.ts'
 import { middleAddsNothing } from './middle-frame.ts'
@@ -105,21 +99,15 @@ export type WatchState =
  * A box the watcher read but could not transcribe, kept until the alphabet can name it.
  *
  * The frame is carried rather than the reading, because learning a tile has to transcribe *that*
- * frame again — and `captureIntoDialogue` takes a frame, so a held one replays through the
- * ordinary path with nothing special about it.
+ * frame again — and `writeIntoCapture` takes a frame, so a held one replays through the ordinary
+ * path with nothing special about it.
  *
- * The `dialogueId` is carried because the alphabet may be completed long after the player has
- * moved on: a held frame belongs to the line that was selected when it was read, never to
- * whatever happens to be selected when it is replayed.
- *
- * **Currently unreachable.** #107 removed dialogue-mode recording — the watcher writes only into
- * the pending-capture queue now — and `hold()`/`holdsFrameFor()`, the functions that keyed a frame
- * to a `DialogueId` and were only ever called from that mode, went with it. Nothing pushes a frame
- * in here any more: an unreadable box in queue mode is simply not recorded (see `tick`). The queue
- * itself, its replay (`replayHeldFrames`) and its discard control (`discardHeldFrames`) all stay,
- * because #109 re-keys the push path to a capture rather than a dialogue instead of deleting it.
+ * The `captureId` is carried because the alphabet may be completed long after the player has
+ * moved on: a held frame belongs to the **capture that was being recorded when it was read**
+ * (#109), never to whatever the watcher happens to be recording into when it is replayed —
+ * `dialogueId` was the pre-#107 shape, back when the watcher wrote into a selected line.
  */
-export type HeldFrame = { dialogueId: DialogueId; frame: ImageData }
+export type HeldFrame = { captureId: PendingCaptureId; frame: ImageData }
 
 /** The queue, as the panel shows it. Its own snapshot, because it outlives the watcher being off. */
 export type HeldState = {
@@ -131,11 +119,11 @@ export type HeldState = {
 /** What one round of answering the learner did. */
 export type HeldReplay = {
   appended: number
-  /** Frames whose line no longer exists. Dropped with their entry rather than written elsewhere. */
+  /** Frames whose capture no longer exists. Dropped with their entry rather than written elsewhere. */
   gone: number
   /** Frames the grown alphabet still cannot read whole. They stay in the queue. */
   stillHeld: number
-  /** Frames whose box says only what the line already says — see `replayInto`. */
+  /** Frames whose box says only what the capture already says — see `replayInto`. */
   repeated: number
   /** Frames the cap had already pushed out before this round. */
   dropped: number
@@ -159,6 +147,13 @@ const SETTLE_TICKS = 3
  * producing frames for good, while a single hiccup is not worth ending a conversation over.
  */
 const FAILURES_BEFORE_STOP = 3
+
+/**
+ * How many held frames the queue keeps at once. The oldest is dropped past this, because the
+ * queue is replayed in capture order and the newest frames are the ones whose conversation the
+ * player can still remember.
+ */
+const HELD_LIMIT = 24
 
 const OFF: WatchState = { kind: 'off', message: null }
 const NOTHING_HELD: HeldState = { waiting: 0, dropped: 0 }
@@ -205,39 +200,18 @@ let failures = 0
 /** Whether `replayHeldFrames` is writing. The tick stands down rather than interleaving with it. */
 let replaying = false
 
-/** Which line or capture a written frame belongs to — the two things `keepWindow` can write into. */
-type WrittenOwner = { kind: 'dialogue'; id: DialogueId } | { kind: 'queue'; id: PendingCaptureId }
-
-function sameOwner(a: WrittenOwner, b: WrittenOwner): boolean {
-  return a.kind === b.kind && a.id === b.id
-}
-
 /** One picture the watcher wrote, kept only long enough to judge the box that follows it. */
-type WrittenFrame = { owner: WrittenOwner; media: DialogueMedia; text: string }
+type WrittenFrame = { captureId: PendingCaptureId; media: DialogueMedia; text: string }
 
 /**
  * The last two boxes written, oldest first — the window `middleAddsNothing` judges a middle in.
  *
  * Module-level and never in the store, for the reason the file's opening comment gives for `settle`
  * and `heldFrames`: it is transient, unserialisable, and no part of the document. It holds one
- * line's frames at a time; a write into another line clears it, because a replay walks several
- * lines in one pass and two boxes of different conversations have no window in common.
+ * capture's frames at a time; a write into another capture clears it, because a replay walks
+ * several conversations in one pass and two boxes of different captures have no window in common.
  */
 let written: WrittenFrame[] = []
-
-/**
- * Pushes the panel's line draft into the document, if a panel is mounted — see `setDraftFlush`.
- * The watcher appends to what the document says, and the field is 300 ms ahead of it.
- */
-let flushDraft: (() => void) | null = null
-
-/**
- * Registers the mounted panel's draft flush, so an unattended append cannot discard what is being
- * typed. `null` on unmount: a stale closure would commit into a dialogue that is no longer shown.
- */
-export function setDraftFlush(flush: (() => void) | null): void {
-  flushDraft = flush
-}
 
 /** Passed to `useSyncExternalStore` by reference — a fresh object per call renders forever. */
 function getWatchState(): WatchState {
@@ -386,16 +360,15 @@ async function tick(mine: number): Promise<void> {
   }
 
   // A replay writes the held queue frame by frame, each one an await long. Reading on underneath
-  // it would interleave two writers into one line, and put boxes into it out of order.
+  // it would interleave two writers into one capture, and put boxes into it out of order.
   if (replaying) {
     pause('Writing the boxes that were waiting for the alphabet.')
     return
   }
 
-  // Both halves are load-bearing. `useFieldDraft` yields to the document whenever it changes
-  // underneath, so an append landing in an unflushed draft would discard what was just typed —
-  // and the line's textarea stays `document.activeElement` for as long as you play in the
-  // emulator, so without `document.hasFocus()` the loop would pause for the rest of the session.
+  // Both halves are load-bearing. A text field anywhere in the app can stay `document.activeElement`
+  // for as long as you play in the emulator afterwards, so without `document.hasFocus()` the loop
+  // would pause for the rest of the session the moment a field was last clicked into.
   if (document.hasFocus() && isTextFieldFocused()) {
     pause('Holding while you type. Click back into the game and it carries on.')
     return
@@ -433,10 +406,17 @@ async function tick(mine: number): Promise<void> {
   const settled = step.settled
   if (settled === null) return
 
-  // An unreadable box has nowhere to wait: the held queue is keyed by `DialogueId` (see
-  // `HeldFrame`) and its only push path went with dialogue-mode recording in #107. The box is
-  // simply not captured; if it is still on screen once the alphabet can read it whole, it reads as
-  // a change from this held signature and settles again.
+  // A box the alphabet cannot yet name — or a readable one arriving behind one that is still
+  // waiting — belongs to the capture in progress and waits with it: a held frame can only ever be
+  // appended at the *end* of a capture, so writing the boxes that came after it would put the
+  // conversation down out of order, and `appendWithoutOverlap` would then join the held one to the
+  // wrong suffix or swallow it whole. A capture not yet open has nowhere for the frame to wait —
+  // the box is simply not captured; if it is still on screen once the alphabet can read it whole,
+  // it reads as a change from this held signature and settles again.
+  if (currentCaptureId !== null && (settled.kind === 'held' || holdsFrameFor(currentCaptureId))) {
+    hold(currentCaptureId, frame)
+    return
+  }
   if (settled.kind === 'held') return
 
   try {
@@ -457,8 +437,9 @@ async function tick(mine: number): Promise<void> {
 
 /**
  * One settled box into the pending-capture queue: the first box of a conversation creates the
- * capture, every later one appends to it — mirroring `writeBox`, but against a `PendingCapture`
- * rather than a `Dialogue`, since neither `store.ts` nor `capture-to-dialogue.ts` know about one.
+ * capture, every later one appends to it — ensuring `currentCaptureId` names a live one and then
+ * delegating to `writeIntoCapture`, since neither `store.ts` nor `capture-to-dialogue.ts` know
+ * about a `PendingCapture`.
  *
  * `currentCaptureId` names which capture that is; `null` means this settled box is the first of a
  * new conversation.
@@ -468,7 +449,7 @@ async function writeIntoQueue(
   frame: ImageData,
   transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
-  // Checked before anything is written, exactly like `writeBox` checks the dialogue it is
+  // Checked before anything is written, exactly like `writeIntoCapture` checks the capture it is
   // appending to: a box that says nothing new a capture in progress does not already say must
   // not cost a picture. Only meaningful once a capture exists — a conversation's first box has
   // nothing yet to be unchanged against, so this is skipped for it.
@@ -488,24 +469,7 @@ async function writeIntoQueue(
   // `openCapture` only ever leaves this null with no project open, which the tick already refused.
   if (captureId === null) return 'gone'
 
-  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile))
-  dispatch({ kind: 'pending-capture/media-added', captureId, media })
-
-  // The document as it stands now, mirroring `captureIntoDialogue`'s own note: encoding and
-  // writing the picture takes long enough for the capture to have been placed or deleted
-  // underneath this write.
-  const into = currentPendingCapture(captureId)
-  if (into === null) {
-    await discardMediaFile(media.file.fileName)
-    return 'gone'
-  }
-
-  const outcome = appendOutcome(into.text, transcript)
-  if (outcome.text !== 'appended') return 'unchanged'
-  dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
-  const owner: WrittenOwner = { kind: 'queue', id: captureId }
-  await keepWindow(owner, media, transcript)
-  return 'appended'
+  return writeIntoCapture(captureId, profile, frame, transcript)
 }
 
 /** The next settled box with no capture in progress always starts a fresh conversation. */
@@ -543,7 +507,9 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
 }
 
 /**
- * One settled box into one line: the picture and what the box said that the line does not.
+ * One settled box into one **specific** capture: the picture and what the box said that it does
+ * not. Never opens or bootstraps one — `captureId` already names a capture, live or held, and the
+ * caller decides what "gone" means for it.
  *
  * The document as it stands **now**, never a copy taken before an await: a settled box is written
  * several hundred milliseconds after the tick that read it began, and a replayed one minutes
@@ -556,27 +522,36 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
  * That too is the watcher's alone, and for the same reason: it fires unattended, so it is the one
  * caller that can judge a frame against what came after it rather than against a press.
  *
- * `replayInto` is the only caller left after #107: the tick itself writes only into the
- * pending-capture queue now (`writeIntoQueue`), and dialogue-mode recording — the branch that used
- * to call this directly — is gone. This stays for the held queue's replay, itself unreachable at
- * the moment (see `HeldFrame`) until #109 gives that queue a new push path.
+ * Two callers: `writeIntoQueue`, once it has ensured `currentCaptureId` names a live capture, and
+ * `replayInto`, which always names the capture a held frame belongs to and never creates one — a
+ * capture that already left the queue is `'gone'`, not a fresh conversation started in its place.
  */
-async function writeBox(
-  dialogueId: DialogueId,
+async function writeIntoCapture(
+  captureId: PendingCaptureId,
   profile: CaptureProfile,
   frame: ImageData,
-  text: string,
+  transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
-  const target = currentDialogue(dialogueId)
+  const target = currentPendingCapture(captureId)
   if (target === null) return 'gone'
-  if (appendOutcome(target.text, text).text !== 'appended') return 'unchanged'
-  // Asked twice, because the answer can change in between: `captureIntoDialogue` encodes a PNG and
-  // writes it before it appends, and a manual capture running alongside can land its own append in
-  // that window. Its verdict is the one that describes what the document actually took.
-  const result = await captureIntoDialogue(target, profile, frame, text)
-  if (result.text !== 'appended') return 'unchanged'
-  const owner: WrittenOwner = { kind: 'dialogue', id: dialogueId }
-  await keepWindow(owner, result.media, text)
+  if (appendOutcome(target.text, transcript).text !== 'appended') return 'unchanged'
+
+  const { media } = await importDialogueMedia(captureId, await screenPng(frame, profile))
+  dispatch({ kind: 'pending-capture/media-added', captureId, media })
+
+  // The document as it stands now, mirroring `captureIntoDialogue`'s own note: encoding and
+  // writing the picture takes long enough for the capture to have been placed or deleted
+  // underneath this write.
+  const into = currentPendingCapture(captureId)
+  if (into === null) {
+    await discardMediaFile(media.file.fileName)
+    return 'gone'
+  }
+
+  const outcome = appendOutcome(into.text, transcript)
+  if (outcome.text !== 'appended') return 'unchanged'
+  dispatch({ kind: 'pending-capture/text-set', captureId, text: outcome.next })
+  await keepWindow(captureId, media, transcript)
   return 'appended'
 }
 
@@ -584,8 +559,8 @@ async function writeBox(
  * Slides the window on by one box, taking back the picture it pushes out of the middle.
  *
  * Here rather than in the tick, so a replayed frame is judged exactly as a live one is: both write
- * through `writeBox`, and a held box replayed in capture order sits in the same run of a scrolling
- * text box as the rest.
+ * through `writeIntoCapture`, and a held box replayed in capture order sits in the same run of a
+ * scrolling text box as the rest.
  *
  * The box that just landed is the *third* of the three, so the judgement is always about the one
  * before it — which is why nothing is ever taken back until a box after it exists. `before` is
@@ -593,20 +568,24 @@ async function writeBox(
  * rather than a scrolling one. After a removal `before` stays the anchor, so a whole run of
  * in-between boxes falls away one at a time as the run goes on.
  */
-async function keepWindow(owner: WrittenOwner, media: DialogueMedia, text: string): Promise<void> {
-  // A replay walks several lines in one pass, and two boxes of different conversations — or one
-  // in a line and the next in the queue — have no window in common.
-  if (written.length > 0 && !sameOwner(written[0].owner, owner)) written = []
+async function keepWindow(
+  captureId: PendingCaptureId,
+  media: DialogueMedia,
+  text: string,
+): Promise<void> {
+  // A replay walks several held frames in one pass, and two boxes of different conversations have
+  // no window in common.
+  if (written.length > 0 && written[0].captureId !== captureId) written = []
 
   const middle = written.at(-1) ?? null
   const before = written.at(-2)?.text ?? ''
-  const entry: WrittenFrame = { owner, media, text }
+  const entry: WrittenFrame = { captureId, media, text }
 
   if (middle !== null && middleAddsNothing(before, middle.text, text)) {
     // Written before the await, so a write landing underneath this one cannot judge the same middle
     // a second time and try to remove it twice.
     written = [...written.slice(0, -1), entry]
-    await takeBack(middle.owner, middle.media)
+    await takeBack(middle.captureId, middle.media)
     return
   }
   written = [...written, entry].slice(-2)
@@ -616,25 +595,19 @@ async function keepWindow(owner: WrittenOwner, media: DialogueMedia, text: strin
  * Takes one picture back out: the document first, the file after.
  *
  * The order and the reason are the panel's own remove — after the dispatch nothing in the document
- * names the file, so it would sit in `media/` forever, invisible from inside the app. The line's
- * text is deliberately left as it stands: it was already joined from every box, and this frame's
- * words are all still in it, carried by the two frames around it.
+ * names the file, so it would sit in `media/` forever, invisible from inside the app. The
+ * conversation's text is deliberately left as it stands: it was already joined from every box, and
+ * this frame's words are all still in it, carried by the two frames around it.
  *
  * A picture the user removed by hand in the meantime is left alone, rather than relying on the
  * reducer's no-op and deleting a file the document may since have handed to something else. The
  * same holds for a capture placed or deleted in the meantime — `currentPendingCapture` returning
- * `null` is that check for the queue.
+ * `null` is that check.
  */
-async function takeBack(owner: WrittenOwner, media: DialogueMedia): Promise<void> {
-  if (owner.kind === 'dialogue') {
-    const target = currentDialogue(owner.id)
-    if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
-    dispatch({ kind: 'dialogue/media-removed', dialogueId: owner.id, mediaId: media.id })
-  } else {
-    const target = currentPendingCapture(owner.id)
-    if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
-    dispatch({ kind: 'pending-capture/media-removed', captureId: owner.id, mediaId: media.id })
-  }
+async function takeBack(captureId: PendingCaptureId, media: DialogueMedia): Promise<void> {
+  const target = currentPendingCapture(captureId)
+  if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
+  dispatch({ kind: 'pending-capture/media-removed', captureId, mediaId: media.id })
   await discardMediaFile(media.file.fileName)
   countDropped()
 }
@@ -672,6 +645,27 @@ function countAppended(text: string): void {
 function countConversation(): void {
   if (state.kind !== 'watching') return
   setState({ ...state, conversations: state.conversations + 1 })
+}
+
+/**
+ * Keeps a box the alphabet could not name, so the first play session — exactly the session where
+ * the alphabet is still open — does not silently lose the most lines.
+ */
+function hold(captureId: PendingCaptureId, frame: ImageData): void {
+  heldFrames.push({ captureId, frame })
+  let dropped = held.dropped
+  // The oldest goes: the queue is replayed in capture order, and the newest frames are the ones
+  // whose conversation the player can still remember.
+  while (heldFrames.length > HELD_LIMIT) {
+    heldFrames.shift()
+    dropped += 1
+  }
+  setHeld({ waiting: heldFrames.length, dropped })
+}
+
+/** Whether a box of this capture is already waiting, and the next one must therefore wait behind it. */
+function holdsFrameFor(captureId: PendingCaptureId): boolean {
+  return heldFrames.some((entry) => entry.captureId === captureId)
 }
 
 /**
@@ -722,11 +716,9 @@ export async function replayHeldFrames(
   // The count is what the panel showed; the frames themselves went long ago. Cleared here because
   // this round is the acknowledgement.
   setHeld({ waiting: heldFrames.length, dropped: 0 })
-  // The tick stands down for the duration: two writers appending to one line would interleave the
-  // boxes, and each one's append is computed while the other's is still in flight.
+  // The tick stands down for the duration: two writers appending to one capture would interleave
+  // the boxes, and each one's append is computed while the other's is still in flight.
   replaying = true
-  // The panel's line field is 300 ms ahead of the document, exactly as it is for a live tick.
-  flushDraft?.()
 
   try {
     await replayInto(pending, profile, glyphs, replay)
@@ -743,24 +735,25 @@ async function replayInto(
   glyphs: readonly Glyph[],
   replay: { appended: number; gone: number; stillHeld: number; repeated: number; failures: string[] },
 ): Promise<void> {
-  // Lines with a frame left behind in this round. Everything after it waits, for the reason the
-  // tick holds a readable box behind a held one: appending it now would put the line out of order.
-  const blocked = new Set<DialogueId>()
+  // Captures with a frame left behind in this round. Everything after it waits, for the reason the
+  // tick holds a readable box behind a held one: appending it now would put the conversation out
+  // of order.
+  const blocked = new Set<PendingCaptureId>()
 
   for (const entry of pending) {
-    if (currentDialogue(entry.dialogueId) === null) {
+    if (currentPendingCapture(entry.captureId) === null) {
       release(entry)
       replay.gone += 1
       continue
     }
     const reading = readTextBox(entry.frame, profile, glyphs)
-    if (reading.unknown.length > 0 || blocked.has(entry.dialogueId)) {
-      blocked.add(entry.dialogueId)
+    if (reading.unknown.length > 0 || blocked.has(entry.captureId)) {
+      blocked.add(entry.captureId)
       replay.stillHeld += 1
       continue
     }
     try {
-      const written = await writeBox(entry.dialogueId, profile, entry.frame, reading.text)
+      const written = await writeIntoCapture(entry.captureId, profile, entry.frame, reading.text)
       release(entry)
       if (written === 'appended') {
         replay.appended += 1
@@ -768,16 +761,16 @@ async function replayInto(
       } else if (written === 'gone') {
         replay.gone += 1
       } else {
-        // The line already says what this box says. It is *not* counted as written: a held box
-        // replayed after the boxes that followed it can only be appended at the end of the line,
-        // and `appendWithoutOverlap` swallowing it there is exactly the case the reader has to be
-        // told about rather than left to notice.
+        // The capture already says what this box says. It is *not* counted as written: a held box
+        // replayed after the boxes that followed it can only be appended at the end of the
+        // conversation, and `appendWithoutOverlap` swallowing it there is exactly the case the
+        // reader has to be told about rather than left to notice.
         replay.repeated += 1
       }
     } catch (error) {
       // Kept, not dropped: the frame is still the only record of that box — and the boxes behind
-      // it in the same line are kept with it, so a retry writes them in order.
-      blocked.add(entry.dialogueId)
+      // it in the same capture are kept with it, so a retry writes them in order.
+      blocked.add(entry.captureId)
       replay.failures.push(describeError(error))
     }
   }
@@ -813,18 +806,18 @@ export function describeReplay(replay: HeldReplay): string {
     replay.appended === 1 ? '1 held box was written' : `${replay.appended} held boxes were written`,
   ]
   if (replay.gone > 0) {
-    parts.push(`${replay.gone} belonged to a line that no longer exists and were dropped`)
+    parts.push(`${replay.gone} belonged to a capture that no longer exists and were dropped`)
   }
   if (replay.stillHeld > 0) {
     parts.push(`${replay.stillHeld} still hold tiles the alphabet cannot name, and are kept`)
   }
   if (replay.repeated > 0) {
-    // Named, because a held box can only be appended at the *end* of the line, after the boxes
-    // that were written while it waited — and one that says what the line already says is swallowed
-    // there rather than slotted back into its place.
+    // Named, because a held box can only be appended at the *end* of the capture, after the boxes
+    // that were written while it waited — and one that says what the capture already says is
+    // swallowed there rather than slotted back into its place.
     parts.push(
-      `${replay.repeated} said only what the line already said, and were not written — a held box ` +
-        'is appended at the end of the line, not back in its place',
+      `${replay.repeated} said only what the capture already said, and were not written — a held ` +
+        'box is appended at the end of the capture, not back in its place',
     )
   }
   if (replay.dropped > 0) {

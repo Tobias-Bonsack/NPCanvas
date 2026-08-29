@@ -1,0 +1,35 @@
+/* The held queue's own block: a count and the two controls that answer or empty it. Boxed,
+   because it is the only thing in the Captures region that is waiting for the user rather than
+   reporting to them. */
+.held-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  background: var(--surface-2);
+}
+
+.held-note__status {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+
+.held-note__hint {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+/* Both rows inside the block: the two controls side by side, and the confirm that replaces them.
+   Mirrors `.capture-bar__confirm`, which asks the same kind of question. */
+.held-note__actions,
+.held-note__confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
