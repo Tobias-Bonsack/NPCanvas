@@ -2049,6 +2049,134 @@ describe('reduce: history', () => {
     expect(second.history.undo.length).toBe(2)
   })
 
+  it('coalesces a whole recording — many boxes into one capture — into one undo step', () => {
+    const state = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    let step = state
+    for (let i = 0; i < 5; i++) {
+      step = reduce(step, {
+        kind: 'pending-capture/media-added',
+        captureId: asPendingCaptureId('capture-1'),
+        media: medium(`media-${i}`),
+      })
+      step = reduce(step, {
+        kind: 'pending-capture/text-set',
+        captureId: asPendingCaptureId('capture-1'),
+        text: `line ${i}`,
+      })
+    }
+    const done = readyOf(step)
+    // One step for the capture's own creation, one for the whole run of boxes after it.
+    expect(done.history.undo.length).toBe(2)
+
+    const undone = readyOf(reduce(done, { kind: 'history/undo' }))
+    expect(undone.project.pendingCaptures[0].text).toBe('')
+    expect(undone.project.pendingCaptures[0].media).toEqual([])
+  })
+
+  it('keeps pending-capture/added its own undo step even when every box after it coalesces', () => {
+    const created = readyOf(
+      reduce(ready(twoMapProject()), {
+        kind: 'pending-capture/added',
+        capture: pendingCapture('capture-1'),
+      }),
+    )
+    const written = readyOf(
+      reduce(created, {
+        kind: 'pending-capture/text-set',
+        captureId: asPendingCaptureId('capture-1'),
+        text: 'Hello',
+      }),
+    )
+    const undone = readyOf(reduce(written, { kind: 'history/undo' }))
+    expect(undone.project.pendingCaptures).toEqual([pendingCapture('capture-1')])
+
+    const undoneAgain = readyOf(reduce(undone, { kind: 'history/undo' }))
+    expect(undoneAgain.project.pendingCaptures).toEqual([])
+  })
+
+  it('breaks a recording\'s coalescing on a dispatch of another kind in between', () => {
+    const created = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    const firstBox = reduce(created, {
+      kind: 'pending-capture/text-set',
+      captureId: asPendingCaptureId('capture-1'),
+      text: 'Hi',
+    })
+    const renamed = reduce(firstBox, {
+      kind: 'pending-capture/renamed',
+      captureId: asPendingCaptureId('capture-1'),
+      npcName: 'Old Fisher',
+    })
+    const secondBox = readyOf(
+      reduce(renamed, {
+        kind: 'pending-capture/text-set',
+        captureId: asPendingCaptureId('capture-1'),
+        text: 'Hi there',
+      }),
+    )
+    // Creation, first box, rename, second box: four steps, none of them coalesced together.
+    expect(secondBox.history.undo.length).toBe(4)
+  })
+
+  it('does not coalesce two captures recorded one after another', () => {
+    const first = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    const firstWritten = reduce(first, {
+      kind: 'pending-capture/text-set',
+      captureId: asPendingCaptureId('capture-1'),
+      text: 'Hi',
+    })
+    const second = reduce(firstWritten, {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-2'),
+    })
+    const secondWritten = readyOf(
+      reduce(second, {
+        kind: 'pending-capture/text-set',
+        captureId: asPendingCaptureId('capture-2'),
+        text: 'Ahoy',
+      }),
+    )
+    expect(secondWritten.history.undo.length).toBe(4)
+  })
+
+  it('starts a new chain for an extended recording rather than merging into the earlier one', () => {
+    const created = reduce(ready(twoMapProject()), {
+      kind: 'pending-capture/added',
+      capture: pendingCapture('capture-1'),
+    })
+    const original = reduce(created, {
+      kind: 'pending-capture/text-set',
+      captureId: asPendingCaptureId('capture-1'),
+      text: 'Hi',
+    })
+    // Something else happens between the two recordings, as it does whenever a player is not
+    // pressing the two record triggers back to back with nothing at all in between.
+    const between = reduce(original, {
+      kind: 'zone/renamed',
+      zoneId: asZoneId('zone-harbour'),
+      name: 'Renamed',
+    })
+    const extended = readyOf(
+      reduce(between, {
+        kind: 'pending-capture/text-set',
+        captureId: asPendingCaptureId('capture-1'),
+        text: 'Hi, welcome back',
+      }),
+    )
+    expect(extended.history.undo.length).toBe(4)
+
+    const undone = readyOf(reduce(extended, { kind: 'history/undo' }))
+    expect(undone.project.pendingCaptures[0].text).toBe('Hi')
+  })
+
   it('bounds the undo stack, dropping the oldest step past the limit', () => {
     let state = withTwoDialogues()
     const ids = [asDialogueId('dialogue-1'), asDialogueId('dialogue-2')]

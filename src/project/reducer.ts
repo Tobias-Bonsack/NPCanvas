@@ -1002,6 +1002,15 @@ function coalesceKeyFor(action: Action): string | null {
       return `relevance-tag/renamed:${action.tagId}`
     case 'relevance-tag/hue-set':
       return `relevance-tag/hue-set:${action.tagId}`
+    // The watcher's own three dispatches, once per settled box, for as long as a recording runs —
+    // #107's two triggers make one recording the unit a player thinks of, so undoing one undoes
+    // that whole conversation rather than the box before last. `pending-capture/added` is
+    // deliberately not here: the capture's own creation stays its own step, so it is always
+    // undoable on its own even when every box after it coalesces away.
+    case 'pending-capture/media-added':
+    case 'pending-capture/text-set':
+    case 'pending-capture/media-removed':
+      return `pending-capture:${action.captureId}`
     default:
       return null
   }
