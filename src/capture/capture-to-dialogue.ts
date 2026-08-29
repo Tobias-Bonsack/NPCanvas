@@ -189,7 +189,7 @@ export async function captureIntoDialogue(
  * What appending `transcript` to `existing` would do, and what the line would then say.
  *
  * Split out of `captureIntoDialogue` because the watcher has to know **before** it writes: a box
- * that says nothing new is the ordinary case for a loop reading four times a second, and writing a
+ * that says nothing new is the ordinary case for a loop reading ten times a second, and writing a
  * picture for it would bury the conversation under identical frames. A deliberate press is a claim
  * that *this* frame is worth keeping, so the manual path still attaches its picture either way —
  * only the caller that fires unattended asks first.

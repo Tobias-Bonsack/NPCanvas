@@ -87,9 +87,10 @@ export async function connectCaptureSource(): Promise<ConnectOutcome> {
   let picked: MediaStream
   try {
     picked = await navigator.mediaDevices.getDisplayMedia({
-      // A dialogue box is read off a still frame, so frames per second buys nothing and costs
-      // encode work on the captured window for the whole session.
-      video: { frameRate: { ideal: 5 } },
+      // A dialogue box is read off a still frame, so more frames per second than the watcher
+      // actually polls at buys nothing and costs encode work on the captured window for the
+      // whole session — matched to `POLL_MS` in `capture-watch.ts`.
+      video: { frameRate: { ideal: 10 } },
       audio: false,
       selfBrowserSurface: 'exclude',
       surfaceSwitching: 'include',

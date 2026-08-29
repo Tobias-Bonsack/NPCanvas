@@ -29,7 +29,7 @@ import { middleAddsNothing } from './middle-frame.ts'
 // frame afterwards is a `drawImage` with no prompt — so the pixels are available continuously,
 // including while the emulator holds the OS focus and the page sees no key events at all. What was
 // missing was only something to decide *when* a frame is worth reading, which `box-settle.ts`
-// answers and this loop asks four times a second.
+// answers and this loop asks ten times a second.
 //
 // Module-level rather than component state, for the same reason `capture-session.ts` and
 // `active-profile.ts` are: the loop has to outlive `DialoguePanel` unmounting, which switching to
@@ -132,16 +132,23 @@ export type HeldReplay = {
   failures: readonly string[]
 }
 
-/** How often the box is read. Fast enough that a line is never on screen without being seen. */
-const POLL_MS = 200
+/**
+ * How often the box is read. Fast enough that a line is never on screen without being seen —
+ * matched to `frameRate: { ideal: 10 }` in `connectCaptureSource` (`capture-session.ts`), since
+ * polling faster than the source itself produces frames would just re-read the same one.
+ */
+const POLL_MS = 100
 
 /**
  * How many identical readings make a box settled — see `box-settle.ts`.
  *
- * Three at 200 ms is roughly six tenths of a second of stillness: longer than the gap between two
- * characters of the typing animation, and shorter than anyone reads a line in.
+ * Six at 100 ms is exactly six tenths of a second of stillness: longer than the gap between two
+ * characters of the typing animation, and shorter than anyone reads a line in. Kept in step with
+ * `POLL_MS`: this constant is a *duration*, not a tick count, so a faster poll needs more of them
+ * to mean the same thing — see `autosave-decision.ts`'s own "every 600 ms" for the other place
+ * that duration is assumed.
  */
-const SETTLE_TICKS = 3
+const SETTLE_TICKS = 6
 
 /**
  * Frame grabs in a row that end the session. A captured window minimised to the tray stops
@@ -418,7 +425,7 @@ export function useWatchState(): WatchState {
 
 /**
  * Whether the loop is running, on its own subscription — mirroring `useSaveState` over the
- * document store, and for the same reason. A watcher reading four times a second changes its
+ * document store, and for the same reason. A watcher reading ten times a second changes its
  * counters constantly, and the panel around the toggle has no business re-rendering for that; a
  * boolean is a stable return per the `useSyncExternalStore` contract in CLAUDE.md, so only the
  * status line beside the button subscribes to the whole state.
@@ -544,7 +551,7 @@ async function run(mine: number): Promise<void> {
     await tick(mine)
   } catch (error) {
     // Nothing in `tick` is expected to throw that it does not handle itself, so this is the
-    // backstop: without it a bad frame would become an unhandled rejection every 200 ms, invisible
+    // backstop: without it a bad frame would become an unhandled rejection every 100 ms, invisible
     // outside the console, while the loop kept going as if it were reading.
     if (mine === session) pause(describeError(error))
   } finally {
@@ -755,7 +762,7 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
  * The document as it stands **now**, never a copy taken before an await: a settled box is written
  * several hundred milliseconds after the tick that read it began, and a replayed one minutes
  * after. `unchanged` writes nothing at all — no picture and no dispatch — because a box that says
- * nothing new is the ordinary case for a loop reading four times a second, and a picture of it
+ * nothing new is the ordinary case for a loop reading ten times a second, and a picture of it
  * would bury the conversation. Only the watcher applies that rule; a deliberate press still keeps
  * its frame.
  *
@@ -856,7 +863,7 @@ async function takeBack(captureId: PendingCaptureId, media: DialogueMedia): Prom
  * Notes that a frame was read — at whole-second resolution, deliberately.
  *
  * The panel shows this as "read a moment ago", so a millisecond nobody can see is not worth a
- * notify: at `POLL_MS` the exact stamp would publish a new state five times a second and re-render
+ * notify: at `POLL_MS` the exact stamp would publish a new state ten times a second and re-render
  * everything subscribed to it, for a line that changes once a second at most.
  */
 function markRead(): void {
