@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef } from 'react'
  * The buttons in a sidebar list row that open a mode of their own. `colour` exists only on a
  * zone row; a row that never renders one simply never registers it.
  */
-export type RowTrigger = 'rename' | 'colour' | 'delete'
+type RowTrigger = 'rename' | 'colour' | 'delete'
 
 /**
  * Puts focus back on the button that opened a row's rename form, colour palette or delete

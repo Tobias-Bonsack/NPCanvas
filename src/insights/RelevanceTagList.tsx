@@ -1,16 +1,15 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { EditableRowDeleteConfirm, EditableRowRenameForm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { RowActions } from '../app/RowActions.tsx'
-import { assertNever } from '../assert-never.ts'
 import { RELEVANCE_HUES, nextRelevanceHue, relevanceHueStyle } from '../dialogue/relevance.ts'
 import type { DragGesture } from '../map/drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
-import type { RowTrigger } from '../map/row-focus.ts'
 import { useRowFocus } from '../map/row-focus.ts'
 import { newRelevanceTagId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts'
-import { useFieldDraft } from '../use-field-draft.ts'
 
 /**
  * What a tag's drag carries; `DragGesture` owns the pointer bookkeeping. `toIndex` is advanced
@@ -29,18 +28,6 @@ type TagDragPreview = { id: RelevanceTagId; toIndex: number }
 const DEFAULT_ROW_HEIGHT = 32
 
 /**
- * Transient list UI — the rename draft, the open palette, the delete confirmation — is
- * component state, never the store. See CLAUDE.md § Store scope. One mode for the whole list
- * rather than one per row, because only one row can be mid-edit — the same shape `ZoneList` and
- * `QuestBoard` already use.
- */
-type RelevanceTagListMode =
-  | { kind: 'idle' }
-  | { kind: 'renaming'; id: RelevanceTagId }
-  | { kind: 'recolouring'; id: RelevanceTagId }
-  | { kind: 'confirming-delete'; id: RelevanceTagId }
-
-/**
  * The relevance vocabulary, as a list a user edits — mounted on the settings screen (#90), since
  * editing the vocabulary is the project telling the app what words it uses, not a reading of the
  * vocabulary the way the filter chips and the breakdown panel on insights are.
@@ -52,8 +39,6 @@ export function RelevanceTagList({
   relevanceTags: readonly RelevanceTag[]
   dialogues: readonly Dialogue[]
 }): ReactElement {
-  const [mode, setMode] = useState<RelevanceTagListMode>({ kind: 'idle' })
-
   // The drag gesture's own bookkeeping lives in a ref, exactly as `PinLayer`'s does; only the
   // live preview it produces is state, so a pointermove costs a re-render of this list and
   // nothing else.
@@ -67,8 +52,8 @@ export function RelevanceTagList({
       hue: nextRelevanceHue(relevanceTags),
     }
     dispatch({ kind: 'relevance-tag/added', tag })
-    // Straight into renaming: a nameless tag in a list is nothing to click on.
-    setMode({ kind: 'renaming', id: tag.id })
+    // Straight into renaming (below, `RelevanceTagRow` opens on an empty name): a nameless tag
+    // in a list is nothing to click on.
   }
 
   function onHandlePointerDown(
@@ -167,9 +152,6 @@ export function RelevanceTagList({
                   index={index}
                   count={relevanceTags.length}
                   dialogues={dialogues}
-                  // Only the row the mode names is in that mode; every other row stays idle.
-                  mode={'id' in mode && mode.id === tag.id ? mode : { kind: 'idle' }}
-                  onSetMode={setMode}
                   onHandlePointerDown={(event) => onHandlePointerDown(event, tag, index)}
                   onHandlePointerMove={onHandlePointerMove}
                   onHandlePointerUp={onHandlePointerUp}
@@ -187,14 +169,16 @@ export function RelevanceTagList({
   )
 }
 
-/** Exhaustive over `RelevanceTagListMode`; the `ReactElement` return type rejects a silently added one. */
+/**
+ * One tag's row — rename and delete are both `EditableRow`'s. Colour is not: it is its own,
+ * untouched third mode (see the issue's non-goals), tracked locally beside `EditableRow`'s own
+ * state rather than folded into it.
+ */
 function RelevanceTagRow({
   tag,
   index,
   count,
   dialogues,
-  mode,
-  onSetMode,
   onHandlePointerDown,
   onHandlePointerMove,
   onHandlePointerUp,
@@ -207,196 +191,145 @@ function RelevanceTagRow({
   /** How many tags there are, so the last row's "Move down" can disable itself. */
   count: number
   dialogues: readonly Dialogue[]
-  mode: RelevanceTagListMode
-  onSetMode: (mode: RelevanceTagListMode) => void
   onHandlePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onHandlePointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onHandlePointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onHandlePointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onMove: (toIndex: number) => void
 }): ReactElement {
-  const triggerRef = useRowFocus(triggerOf(mode))
+  // A tag created nameless (see `createTag`) opens straight into renaming — a blank tag in a
+  // list is nothing to click on. Seeded only on the first render, exactly like `useState`'s own
+  // lazy initializer: `relevance-tag/renamed` never commits an empty trimmed name, so an
+  // existing tag can never re-acquire a blank one later and re-trigger this.
+  const editable = useEditableRow(tag.name === '' ? 'rename' : 'idle')
+  const [colouring, setColouring] = useState(false)
+  const triggerRef = useRowFocus(colouring ? 'colour' : editable.mode === 'idle' ? null : editable.mode)
 
-  switch (mode.kind) {
-    case 'renaming':
-      return <RelevanceTagRenameForm tag={tag} onDone={() => onSetMode({ kind: 'idle' })} />
+  if (editable.mode === 'rename') {
+    return (
+      <EditableRowRenameForm
+        value={tag.name}
+        label="Relevance tag name"
+        onCommit={(name) => {
+          const trimmed = name.trim()
+          if (trimmed !== '') dispatch({ kind: 'relevance-tag/renamed', tagId: tag.id, name: trimmed })
+        }}
+        close={editable.close}
+        className="relevance-tag-list__form"
+        inputClassName="relevance-tag-list__input"
+      />
+    )
+  }
 
+  if (editable.mode === 'delete') {
+    const cascadeCount = dialogues.filter((dialogue) => dialogue.relevance.includes(tag.id)).length
+    return (
+      <EditableRowDeleteConfirm
+        message={
+          <>
+            Delete <strong>{tagLabel(tag)}</strong>? {describeCascade(cascadeCount)}
+          </>
+        }
+        onConfirm={() => dispatch({ kind: 'relevance-tag/deleted', tagId: tag.id })}
+        close={editable.close}
+        className="relevance-tag-list__confirm"
+      />
+    )
+  }
+
+  if (colouring) {
     // The swatches carry the raw hue: a relevance tag has no status that overrides its colour,
     // unlike a quest's, so there is nothing else the palette would need to show instead.
-    case 'recolouring':
-      return (
-        <div className="relevance-tag-list__palette" role="group" aria-label={`Colour of ${tagLabel(tag)}`}>
-          {RELEVANCE_HUES.map((hue) => (
-            <button
-              key={hue}
-              type="button"
-              className="relevance-tag-list__swatch"
-              style={relevanceHueStyle(hue)}
-              aria-label={`Hue ${hue}`}
-              aria-pressed={hue === tag.hue}
-              onClick={() => {
-                dispatch({ kind: 'relevance-tag/hue-set', tagId: tag.id, hue })
-                onSetMode({ kind: 'idle' })
-              }}
-            />
-          ))}
-          <button type="button" className="button" onClick={() => onSetMode({ kind: 'idle' })}>
-            Cancel
-          </button>
-        </div>
-      )
-
-    case 'confirming-delete': {
-      const count = dialogues.filter((dialogue) => dialogue.relevance.includes(tag.id)).length
-      return (
-        <div className="relevance-tag-list__confirm" role="alert">
-          <span>
-            Delete <strong>{tagLabel(tag)}</strong>? {describeCascade(count)}
-          </span>
+    return (
+      <div className="relevance-tag-list__palette" role="group" aria-label={`Colour of ${tagLabel(tag)}`}>
+        {RELEVANCE_HUES.map((hue) => (
           <button
+            key={hue}
             type="button"
-            className="button button--danger"
+            className="relevance-tag-list__swatch"
+            style={relevanceHueStyle(hue)}
+            aria-label={`Hue ${hue}`}
+            aria-pressed={hue === tag.hue}
             onClick={() => {
-              dispatch({ kind: 'relevance-tag/deleted', tagId: tag.id })
-              onSetMode({ kind: 'idle' })
+              dispatch({ kind: 'relevance-tag/hue-set', tagId: tag.id, hue })
+              setColouring(false)
             }}
-          >
-            Delete
-          </button>
-          <button type="button" className="button" onClick={() => onSetMode({ kind: 'idle' })}>
-            Cancel
-          </button>
-        </div>
-      )
-    }
-
-    case 'idle':
-      return (
-        <>
-          {/* Pointer-only: a keyboard user reorders with the Move buttons below instead, which
-              is why this carries no keydown handling of its own. */}
-          <button
-            type="button"
-            className="relevance-tag-list__handle"
-            aria-label={`Reorder ${tagLabel(tag)}`}
-            onPointerDown={onHandlePointerDown}
-            onPointerMove={onHandlePointerMove}
-            onPointerUp={onHandlePointerUp}
-            onPointerCancel={onHandlePointerCancel}
-          >
-            ⠿
-          </button>
-          <span className="hue-chip relevance-tag-list__name" style={relevanceHueStyle(tag.hue)}>
-            {tagLabel(tag)}
-          </span>
-          <RowActions>
-            <button
-              type="button"
-              className="button"
-              aria-label={`Move ${tagLabel(tag)} up`}
-              disabled={index === 0}
-              onClick={() => onMove(index - 1)}
-            >
-              Move up
-            </button>
-            <button
-              type="button"
-              className="button"
-              aria-label={`Move ${tagLabel(tag)} down`}
-              disabled={index === count - 1}
-              onClick={() => onMove(index + 1)}
-            >
-              Move down
-            </button>
-            <button
-              ref={triggerRef.rename}
-              type="button"
-              className="button"
-              aria-label={`Rename ${tagLabel(tag)}`}
-              onClick={() => onSetMode({ kind: 'renaming', id: tag.id })}
-            >
-              Rename
-            </button>
-            <button
-              ref={triggerRef.colour}
-              type="button"
-              className="button"
-              aria-label={`Change the colour of ${tagLabel(tag)}`}
-              onClick={() => onSetMode({ kind: 'recolouring', id: tag.id })}
-            >
-              Colour
-            </button>
-            <button
-              ref={triggerRef.delete}
-              type="button"
-              className="button"
-              aria-label={`Delete ${tagLabel(tag)}`}
-              onClick={() => onSetMode({ kind: 'confirming-delete', id: tag.id })}
-            >
-              Delete
-            </button>
-          </RowActions>
-        </>
-      )
-
-    default:
-      return assertNever(mode)
+          />
+        ))}
+        <button type="button" className="button" onClick={() => setColouring(false)}>
+          Cancel
+        </button>
+      </div>
+    )
   }
-}
-
-/**
- * Its own component, not inline JSX in the row: the row's own subtree is swapped whole per
- * mode, and mounting/unmounting *this* component is what commits a draft still in flight when
- * renaming closes — see `useFieldDraft`. Modelled on `QuestForm`, for the same reason: a
- * dispatch per keystroke would copy `relevanceTags`, and that identity is what `PinLayer`'s hue
- * map is built from.
- */
-function RelevanceTagRenameForm({ tag, onDone }: { tag: RelevanceTag; onDone: () => void }): ReactElement {
-  const tagId = tag.id
-  const nameDraft = useFieldDraft(tag.name, (name) =>
-    dispatch({ kind: 'relevance-tag/renamed', tagId, name }),
-  )
 
   return (
-    <form
-      className="relevance-tag-list__form"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onDone()
-      }}
-    >
-      <input
-        className="relevance-tag-list__input"
-        value={nameDraft.value}
-        autoFocus
-        aria-label="Relevance tag name"
-        onChange={(event) => nameDraft.onChange(event.target.value)}
-        onBlur={nameDraft.flush}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') onDone()
-        }}
-      />
-      <button type="submit" className="button">
-        Save
+    <>
+      {/* Pointer-only: a keyboard user reorders with the Move buttons below instead, which
+          is why this carries no keydown handling of its own. */}
+      <button
+        type="button"
+        className="relevance-tag-list__handle"
+        aria-label={`Reorder ${tagLabel(tag)}`}
+        onPointerDown={onHandlePointerDown}
+        onPointerMove={onHandlePointerMove}
+        onPointerUp={onHandlePointerUp}
+        onPointerCancel={onHandlePointerCancel}
+      >
+        ⠿
       </button>
-    </form>
+      <span className="hue-chip relevance-tag-list__name" style={relevanceHueStyle(tag.hue)}>
+        {tagLabel(tag)}
+      </span>
+      <RowActions>
+        <button
+          type="button"
+          className="button"
+          aria-label={`Move ${tagLabel(tag)} up`}
+          disabled={index === 0}
+          onClick={() => onMove(index - 1)}
+        >
+          Move up
+        </button>
+        <button
+          type="button"
+          className="button"
+          aria-label={`Move ${tagLabel(tag)} down`}
+          disabled={index === count - 1}
+          onClick={() => onMove(index + 1)}
+        >
+          Move down
+        </button>
+        <button
+          ref={triggerRef.rename}
+          type="button"
+          className="button"
+          aria-label={`Rename ${tagLabel(tag)}`}
+          onClick={editable.openRename}
+        >
+          Rename
+        </button>
+        <button
+          ref={triggerRef.colour}
+          type="button"
+          className="button"
+          aria-label={`Change the colour of ${tagLabel(tag)}`}
+          onClick={() => setColouring(true)}
+        >
+          Colour
+        </button>
+        <button
+          ref={triggerRef.delete}
+          type="button"
+          className="button"
+          aria-label={`Delete ${tagLabel(tag)}`}
+          onClick={editable.openDelete}
+        >
+          Delete
+        </button>
+      </RowActions>
+    </>
   )
-}
-
-/** Which button opened the mode this row is in — exhaustive, so a new mode must name one. */
-function triggerOf(mode: RelevanceTagListMode): RowTrigger | null {
-  switch (mode.kind) {
-    case 'idle':
-      return null
-    case 'renaming':
-      return 'rename'
-    case 'recolouring':
-      return 'colour'
-    case 'confirming-delete':
-      return 'delete'
-    default:
-      return assertNever(mode)
-  }
 }
 
 /** A tag created but not yet named is nothing to click on — same fallback `questName` gives. */

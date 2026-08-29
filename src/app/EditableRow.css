@@ -1,0 +1,22 @@
+/* See EditableRow.tsx. The default look for a rename form or a delete confirmation; a caller
+   with a tighter space (PinLayer's canvas-space confirm, HeldNote's own block) passes its own
+   `className` and keeps its own rule instead. */
+.editable-row__form,
+.editable-row__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+}
+
+.editable-row__input {
+  flex: 1;
+  min-width: 6rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+}

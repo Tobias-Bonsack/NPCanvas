@@ -1,25 +1,14 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
+import { EditableRowDeleteConfirm, EditableRowRenameForm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { navigate } from '../app/route.ts'
 import { RowActions } from '../app/RowActions.tsx'
 import { selectZone } from '../app/select.ts'
-import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types.ts'
-import type { RowTrigger } from './row-focus.ts'
 import { useRowFocus } from './row-focus.ts'
 import { ZONE_HUES, zoneHueStyle } from './zone-style.ts'
-
-/**
- * Transient list UI — the rename draft, the open palette, the delete confirmation — is
- * component state, never the store. See CLAUDE.md § Store scope. One mode for the whole list
- * rather than one per row, because only one row can be mid-edit at a time.
- */
-type ZoneListMode =
-  | { kind: 'idle' }
-  | { kind: 'renaming'; id: ZoneId; draft: string }
-  | { kind: 'recolouring'; id: ZoneId }
-  | { kind: 'confirming-delete'; id: ZoneId }
 
 /**
  * Every zone in the project, grouped under the map it is drawn on — a zone's polygon is
@@ -39,8 +28,6 @@ export function ZoneList({
    */
   counts: ReadonlyMap<ZoneId, number>
 }): ReactElement {
-  const [mode, setMode] = useState<ZoneListMode>({ kind: 'idle' })
-
   // One pass instead of one filter per map: a scan per group is O(maps × zones), and this
   // list re-renders whenever the zone counts do, which is every frame of a zone drag.
   const byMap = useMemo(
@@ -55,12 +42,6 @@ export function ZoneList({
   function onFocus(zone: Zone): void {
     selectZone(zone.id)
     navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'zone', id: zone.id } })
-  }
-
-  function onRenameSubmit(id: ZoneId, draft: string): void {
-    const name = draft.trim()
-    if (name !== '') dispatch({ kind: 'zone/renamed', zoneId: id, name })
-    setMode({ kind: 'idle' })
   }
 
   return (
@@ -79,10 +60,7 @@ export function ZoneList({
             zones={byMap.get(map.id) ?? NO_ZONES}
             selectedId={selectedId}
             counts={counts}
-            mode={mode}
-            onSetMode={setMode}
             onFocus={onFocus}
-            onRenameSubmit={onRenameSubmit}
           />
         ))
       )}
@@ -107,19 +85,13 @@ function ZoneGroup({
   zones,
   selectedId,
   counts,
-  mode,
-  onSetMode,
   onFocus,
-  onRenameSubmit,
 }: {
   map: GameMap
   zones: readonly Zone[]
   selectedId: ZoneId | null
   counts: ReadonlyMap<ZoneId, number>
-  mode: ZoneListMode
-  onSetMode: (mode: ZoneListMode) => void
   onFocus: (zone: Zone) => void
-  onRenameSubmit: (id: ZoneId, draft: string) => void
 }): ReactElement | null {
   if (zones.length === 0) return null
   return (
@@ -132,11 +104,7 @@ function ZoneGroup({
               zone={zone}
               selected={zone.id === selectedId}
               count={counts.get(zone.id) ?? 0}
-              // Only the row the mode names is in that mode; every other row stays idle.
-              mode={'id' in mode && mode.id === zone.id ? mode : { kind: 'idle' }}
-              onSetMode={onSetMode}
               onFocus={() => onFocus(zone)}
-              onRenameSubmit={(draft) => onRenameSubmit(zone.id, draft)}
             />
           </li>
         ))}
@@ -145,179 +113,110 @@ function ZoneGroup({
   )
 }
 
-/** Exhaustive over `ZoneListMode`; the `ReactElement` return type rejects a silently added one. */
+/**
+ * One zone's row — rename and delete are both `EditableRow`'s. Colour is not: it is its own,
+ * untouched third mode (see the issue's non-goals), tracked locally beside `EditableRow`'s own
+ * state rather than folded into it.
+ */
 function ZoneRow({
   zone,
   selected,
   count,
-  mode,
-  onSetMode,
   onFocus,
-  onRenameSubmit,
 }: {
   zone: Zone
   selected: boolean
   /** Dialogues currently inside, recomputed from the geometry on every state change. */
   count: number
-  mode: ZoneListMode
-  onSetMode: (mode: ZoneListMode) => void
   onFocus: () => void
-  onRenameSubmit: (draft: string) => void
 }): ReactElement {
-  const triggerRef = useRowFocus(triggerOf(mode))
+  const editable = useEditableRow()
+  const [colouring, setColouring] = useState(false)
+  const triggerRef = useRowFocus(colouring ? 'colour' : editable.mode === 'idle' ? null : editable.mode)
 
-  switch (mode.kind) {
-    case 'renaming':
-      return (
-        <form
-          className="map-list__form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            onRenameSubmit(mode.draft)
-          }}
-        >
-          <input
-            className="map-list__input"
-            value={mode.draft}
-            autoFocus
-            aria-label="Zone name"
-            onChange={(event) =>
-              onSetMode({ kind: 'renaming', id: zone.id, draft: event.target.value })
-            }
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') onSetMode({ kind: 'idle' })
+  if (editable.mode === 'rename') {
+    return (
+      <EditableRowRenameForm
+        value={zone.name}
+        label="Zone name"
+        onCommit={(name) => {
+          const trimmed = name.trim()
+          if (trimmed !== '') dispatch({ kind: 'zone/renamed', zoneId: zone.id, name: trimmed })
+        }}
+        close={editable.close}
+        className="map-list__form"
+        inputClassName="map-list__input"
+      />
+    )
+  }
+
+  if (editable.mode === 'delete') {
+    return (
+      <EditableRowDeleteConfirm
+        // No cascade to warn about: deleting a zone takes nothing with it, because no
+        // dialogue ever stored a reference to it.
+        message={
+          <>
+            Delete <strong>{zone.name}</strong>? Its dialogues stay where they are.
+          </>
+        }
+        onConfirm={() => dispatch({ kind: 'zone/deleted', zoneId: zone.id })}
+        close={editable.close}
+        className="map-list__confirm"
+      />
+    )
+  }
+
+  if (colouring) {
+    return (
+      <div className="zone-list__palette" role="group" aria-label={`Colour of ${zone.name}`}>
+        {ZONE_HUES.map((hue) => (
+          <button
+            key={hue}
+            type="button"
+            className="zone-list__swatch"
+            style={zoneHueStyle(hue)}
+            aria-label={`Hue ${hue}`}
+            aria-pressed={hue === zone.hue}
+            onClick={() => {
+              dispatch({ kind: 'zone/hue-set', zoneId: zone.id, hue })
+              setColouring(false)
             }}
           />
-          <button type="submit" className="button">
-            Save
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'idle' })}
-          >
-            Cancel
-          </button>
-        </form>
-      )
-
-    case 'recolouring':
-      return (
-        <div className="zone-list__palette" role="group" aria-label={`Colour of ${zone.name}`}>
-          {ZONE_HUES.map((hue) => (
-            <button
-              key={hue}
-              type="button"
-              className="zone-list__swatch"
-              style={zoneHueStyle(hue)}
-              aria-label={`Hue ${hue}`}
-              aria-pressed={hue === zone.hue}
-              onClick={() => {
-                dispatch({ kind: 'zone/hue-set', zoneId: zone.id, hue })
-                onSetMode({ kind: 'idle' })
-              }}
-            />
-          ))}
-          <button
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'idle' })}
-          >
-            Cancel
-          </button>
-        </div>
-      )
-
-    case 'confirming-delete':
-      return (
-        <div className="map-list__confirm" role="alert">
-          {/* No cascade to warn about: deleting a zone takes nothing with it, because no
-              dialogue ever stored a reference to it. */}
-          <span>
-            Delete <strong>{zone.name}</strong>? Its dialogues stay where they are.
-          </span>
-          <button
-            type="button"
-            className="button button--danger"
-            onClick={() => {
-              dispatch({ kind: 'zone/deleted', zoneId: zone.id })
-              onSetMode({ kind: 'idle' })
-            }}
-          >
-            Delete
-          </button>
-          <button
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'idle' })}
-          >
-            Cancel
-          </button>
-        </div>
-      )
-
-    case 'idle':
-      return (
-        <>
-          <button
-            type="button"
-            className="zone-list__name"
-            style={zoneHueStyle(zone.hue)}
-            aria-current={selected ? 'true' : undefined}
-            title={`Jump the canvas to ${zone.name}`}
-            onClick={onFocus}
-          >
-            <span className="zone-list__label">{zone.name}</span>
-            <span className="zone-list__count" title={`${count} dialogue${count === 1 ? '' : 's'}`}>
-              {count}
-            </span>
-          </button>
-          <RowActions>
-            <button
-              ref={triggerRef.rename}
-              type="button"
-              className="button"
-              onClick={() => onSetMode({ kind: 'renaming', id: zone.id, draft: zone.name })}
-            >
-              Rename
-            </button>
-            <button
-              ref={triggerRef.colour}
-              type="button"
-              className="button"
-              onClick={() => onSetMode({ kind: 'recolouring', id: zone.id })}
-            >
-              Colour
-            </button>
-            <button
-              ref={triggerRef.delete}
-              type="button"
-              className="button"
-              onClick={() => onSetMode({ kind: 'confirming-delete', id: zone.id })}
-            >
-              Delete
-            </button>
-          </RowActions>
-        </>
-      )
-
-    default:
-      return assertNever(mode)
+        ))}
+        <button type="button" className="button" onClick={() => setColouring(false)}>
+          Cancel
+        </button>
+      </div>
+    )
   }
-}
 
-/** Which button opened the mode this row is in — exhaustive, so a new mode must name one. */
-function triggerOf(mode: ZoneListMode): RowTrigger | null {
-  switch (mode.kind) {
-    case 'idle':
-      return null
-    case 'renaming':
-      return 'rename'
-    case 'recolouring':
-      return 'colour'
-    case 'confirming-delete':
-      return 'delete'
-    default:
-      return assertNever(mode)
-  }
+  return (
+    <>
+      <button
+        type="button"
+        className="zone-list__name"
+        style={zoneHueStyle(zone.hue)}
+        aria-current={selected ? 'true' : undefined}
+        title={`Jump the canvas to ${zone.name}`}
+        onClick={onFocus}
+      >
+        <span className="zone-list__label">{zone.name}</span>
+        <span className="zone-list__count" title={`${count} dialogue${count === 1 ? '' : 's'}`}>
+          {count}
+        </span>
+      </button>
+      <RowActions>
+        <button ref={triggerRef.rename} type="button" className="button" onClick={editable.openRename}>
+          Rename
+        </button>
+        <button ref={triggerRef.colour} type="button" className="button" onClick={() => setColouring(true)}>
+          Colour
+        </button>
+        <button ref={triggerRef.delete} type="button" className="button" onClick={editable.openDelete}>
+          Delete
+        </button>
+      </RowActions>
+    </>
+  )
 }

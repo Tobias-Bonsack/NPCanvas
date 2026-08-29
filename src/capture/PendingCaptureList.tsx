@@ -1,5 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { toLocalDateTimeValue } from '../dialogue/local-datetime.ts'
 import { NpcNameInput } from '../dialogue/NpcNameInput.tsx'
 import { npcNamesIn, previousRecordFor } from '../dialogue/recency.ts'
@@ -13,12 +15,6 @@ import type { PendingCapture, PendingCaptureId, ProjectFile } from '../project/t
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { useWatchState } from './capture-watch.ts'
 import './PendingCaptureList.css'
-
-/**
- * Transient list UI — only the delete confirmation, since renaming and tagging dispatch
- * directly with no draft (see `CaptureCard`). See CLAUDE.md § Store scope.
- */
-type ListMode = { kind: 'idle' } | { kind: 'confirming-delete'; id: PendingCaptureId }
 
 /**
  * The triage queue, one capture at a time (#108). A session with several conversations waiting
@@ -45,7 +41,6 @@ export function PendingCaptureList({
   currentCaptureId: PendingCaptureId | null
   onSelect: (captureId: PendingCaptureId) => void
 }): ReactElement {
-  const [mode, setMode] = useState<ListMode>({ kind: 'idle' })
   // Shared with `DialogueForm`'s own suggestions — recently spoken names read the same list.
   const npcNames = npcNamesIn(project.dialogues)
   const captures = project.pendingCaptures
@@ -86,7 +81,6 @@ export function PendingCaptureList({
 
   async function onDeleteConfirmed(capture: PendingCapture): Promise<void> {
     dispatch({ kind: 'pending-capture/deleted', captureId: capture.id })
-    setMode({ kind: 'idle' })
     // Collected from the capture the caller already holds — the dispatch above is what makes
     // the document stop naming these files, so nothing after it could still list them.
     await discardMedia(capture.media)
@@ -100,6 +94,10 @@ export function PendingCaptureList({
         </p>
       ) : (
         <CaptureCard
+          // Keyed so the delete confirmation (`EditableRow`'s own local state) cannot survive a
+          // page to a different capture — without this, confirming "Delete" after paging away
+          // would delete whichever capture happened to be on screen when the key was pressed.
+          key={current.id}
           project={project}
           capture={current}
           captures={captures}
@@ -110,10 +108,7 @@ export function PendingCaptureList({
           recording={recordingCaptureId === current.id}
           onArm={() => onArm(current.id)}
           onSelect={onSelect}
-          mode={mode.kind === 'confirming-delete' && mode.id === current.id ? mode : { kind: 'idle' }}
-          onRequestDelete={() => setMode({ kind: 'confirming-delete', id: current.id })}
-          onCancelDelete={() => setMode({ kind: 'idle' })}
-          onDeleteConfirmed={() => void onDeleteConfirmed(current)}
+          onDeleteConfirmed={() => onDeleteConfirmed(current)}
         />
       )}
     </div>
@@ -131,9 +126,6 @@ function CaptureCard({
   recording,
   onArm,
   onSelect,
-  mode,
-  onRequestDelete,
-  onCancelDelete,
   onDeleteConfirmed,
 }: {
   project: ProjectFile
@@ -147,11 +139,9 @@ function CaptureCard({
   recording: boolean
   onArm: () => void
   onSelect: (captureId: PendingCaptureId) => void
-  mode: ListMode
-  onRequestDelete: () => void
-  onCancelDelete: () => void
   onDeleteConfirmed: () => void
 }): ReactElement {
+  const editable = useEditableRow()
   const firstMedium = capture.media[0] ?? null
   // The most recently recorded other capture — offered as a one-click carry-over, exactly the
   // way a freshly placed dialogue offers the previous line's tags. Gated on there being
@@ -267,18 +257,15 @@ function CaptureCard({
         >
           {armed ? 'Placing… click a map' : 'Place on map'}
         </button>
-        {mode.kind === 'confirming-delete' ? (
-          <span className="pending-capture-list__confirm" role="alert">
-            Delete this capture and its pictures?
-            <button type="button" className="button button--danger" onClick={onDeleteConfirmed}>
-              Delete
-            </button>
-            <button type="button" className="button" onClick={onCancelDelete}>
-              Cancel
-            </button>
-          </span>
+        {editable.mode === 'delete' ? (
+          <EditableRowDeleteConfirm
+            message="Delete this capture and its pictures?"
+            onConfirm={onDeleteConfirmed}
+            close={editable.close}
+            className="pending-capture-list__confirm"
+          />
         ) : (
-          <button type="button" className="button" onClick={onRequestDelete}>
+          <button type="button" className="button" onClick={editable.openDelete}>
             Delete
           </button>
         )}

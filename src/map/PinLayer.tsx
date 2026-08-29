@@ -1,10 +1,11 @@
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { navigate } from '../app/route.ts'
 import { selectDialogue } from '../app/select.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { relevanceHues, relevancePinBackground } from '../dialogue/relevance.ts'
-import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { useMediaUrl } from '../media/media-url-cache.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -37,9 +38,8 @@ type PinHandlers = {
   onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
-  onRequestDelete: (dialogue: Dialogue) => void
-  onCancelDelete: () => void
-  onConfirmDelete: (dialogue: Dialogue) => void
+  /** Runs once the pin's own `EditableRow` delete confirmation is accepted. */
+  onDelete: (dialogue: Dialogue) => void
 }
 
 /**
@@ -151,7 +151,6 @@ export const PinLayer = memo(function PinLayer({
   // a ref so a sub-threshold wobble costs no render at all.
   const drag = useRef<DragGesture<PinDragGesture> | null>(null)
   const [dragged, setDragged] = useState<PinDragPreview | null>(null)
-  const [pendingDelete, setPendingDelete] = useState<DialogueId | null>(null)
 
   // A ref rather than a dependency: `onPointerUp` is a stable `useCallback` with an empty
   // dependency list, which is what keeps `memo(Pin)` from reconciling on every render of this
@@ -162,10 +161,6 @@ export const PinLayer = memo(function PinLayer({
     onPinSelectedRef.current = onPinSelected
     onPinDragRef.current = onPinDrag
   })
-
-  // A confirmation belongs to the pin that was selected when it opened; leaving that pin
-  // must not leave a stray prompt hanging over the map.
-  useEffect(() => setPendingDelete(null), [selectedId])
 
   // Keyed on the dialogues alone, deliberately: `maps` is a fresh array on every frame of a
   // map drag, and bucketing against it would rebuild every group per frame because one map
@@ -248,15 +243,12 @@ export const PinLayer = memo(function PinLayer({
   }, [])
 
   // The pin comes back as an argument rather than being closed over, which is the whole reason
-  // these three can be stable at all.
-  const onRequestDelete = useCallback((dialogue: Dialogue) => setPendingDelete(dialogue.id), [])
-  const onCancelDelete = useCallback(() => setPendingDelete(null), [])
-  const onConfirmDelete = useCallback((dialogue: Dialogue) => {
+  // this can be stable at all.
+  const onDelete = useCallback((dialogue: Dialogue) => {
     void onDeleteConfirmed(dialogue)
   }, [])
 
   async function onDeleteConfirmed(dialogue: Dialogue): Promise<void> {
-    setPendingDelete(null)
     dispatch({ kind: 'dialogue/deleted', dialogueId: dialogue.id })
     navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
 
@@ -266,24 +258,8 @@ export const PinLayer = memo(function PinLayer({
   }
 
   const handlers = useMemo<PinHandlers>(
-    () => ({
-      onPointerDown,
-      onPointerMove,
-      onPointerUp,
-      onPointerCancel,
-      onRequestDelete,
-      onCancelDelete,
-      onConfirmDelete,
-    }),
-    [
-      onPointerDown,
-      onPointerMove,
-      onPointerUp,
-      onPointerCancel,
-      onRequestDelete,
-      onCancelDelete,
-      onConfirmDelete,
-    ],
+    () => ({ onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDelete }),
+    [onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onDelete],
   )
 
   return (
@@ -299,7 +275,6 @@ export const PinLayer = memo(function PinLayer({
           relevanceHueByTag={relevanceHueByTag}
           visibleRect={visibleRect}
           dragged={dragged}
-          pendingDelete={pendingDelete}
           suppressFocusId={suppressFocusId}
           handlers={handlers}
         />
@@ -322,7 +297,6 @@ const PinMapGroup = memo(function PinMapGroup({
   relevanceHueByTag,
   visibleRect,
   dragged,
-  pendingDelete,
   suppressFocusId,
   handlers,
 }: {
@@ -335,7 +309,6 @@ const PinMapGroup = memo(function PinMapGroup({
   relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   visibleRect: Rect | null
   dragged: PinDragPreview | null
-  pendingDelete: DialogueId | null
   suppressFocusId: DialogueId | null
   handlers: PinHandlers
 }): ReactElement {
@@ -375,7 +348,6 @@ const PinMapGroup = memo(function PinMapGroup({
           quests={questsByDialogue.get(dialogue.id) ?? NO_QUESTS}
           relevanceHueByTag={relevanceHueByTag}
           selected={dialogue.id === selectedId}
-          confirmingDelete={pendingDelete === dialogue.id}
           suppressFocus={dialogue.id === suppressFocusId}
           handlers={handlers}
         />
@@ -427,7 +399,6 @@ const Pin = memo(function Pin({
   quests,
   relevanceHueByTag,
   selected,
-  confirmingDelete,
   suppressFocus,
   handlers,
 }: {
@@ -442,7 +413,6 @@ const Pin = memo(function Pin({
   quests: readonly Quest[]
   relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   selected: boolean
-  confirmingDelete: boolean
   /** This pin was just placed, so its dialogue's own NPC field is claiming focus instead — see
    *  `MapScreen`'s `onDialoguePlaced`. */
   suppressFocus: boolean
@@ -451,6 +421,19 @@ const Pin = memo(function Pin({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const name = pinName(dialogue)
   const questsId = useId()
+  const editable = useEditableRow()
+
+  // A confirmation belongs to the pin that was selected when it opened; leaving that pin must
+  // not leave a stray prompt hanging over the map. `close` is stable, but the controller object
+  // wrapping it is a fresh literal every render, so it goes through a ref rather than the
+  // dependency list — the same pattern `onPinSelectedRef` above uses for the same reason.
+  const closeEditableRef = useRef(editable.close)
+  useEffect(() => {
+    closeEditableRef.current = editable.close
+  })
+  useEffect(() => {
+    if (!selected) closeEditableRef.current()
+  }, [selected])
 
   // Read inside the effect below without being one of its dependencies — see there for why.
   const suppressFocusRef = useRef(suppressFocus)
@@ -466,8 +449,9 @@ const Pin = memo(function Pin({
   // clears it one render after a placement (once the form has consumed it), and a dependency
   // list that included it would re-run this effect on that *second* render with the guard now
   // open — stealing focus right back from the field that just claimed it. Reading the ref
-  // instead means only a real transition of `selected`/`confirmingDelete` is ever a decision
-  // point; the suppression is only ever consulted at the moment selection actually happens.
+  // instead means only a real transition of `selected`/the delete confirmation is ever a
+  // decision point; the suppression is only ever consulted at the moment selection actually
+  // happens.
   //
   // `preventScroll` is load-bearing, not a nicety: the pin sits inside `.map-canvas`, which is
   // `overflow: hidden` and therefore still *scrollable*. Focusing a pin outside the visible
@@ -475,10 +459,10 @@ const Pin = memo(function Pin({
   // otherwise make the browser scroll the container, and every coordinate conversion after
   // that is off by the offset. See the scroll guard in `MapCanvas`.
   useEffect(() => {
-    if (selected && !confirmingDelete && !suppressFocusRef.current) {
+    if (selected && editable.mode !== 'delete' && !suppressFocusRef.current) {
       buttonRef.current?.focus({ preventScroll: true })
     }
-  }, [selected, confirmingDelete])
+  }, [selected, editable.mode])
 
   return (
     <div className="pin" data-dimmed={dimmed ? 'true' : undefined} style={pinStyle(position)}>
@@ -506,7 +490,7 @@ const Pin = memo(function Pin({
           if (event.key !== 'Delete' && event.key !== 'Backspace') return
           // Backspace is "go back" in a browser until something claims it.
           event.preventDefault()
-          handlers.onRequestDelete(dialogue)
+          editable.openDelete()
         }}
       >
         {/* The face is transparent, so the relevance bands behind it run the full width of
@@ -538,56 +522,21 @@ const Pin = memo(function Pin({
         )}
       </button>
 
-      {confirmingDelete && (
-        <PinDeleteConfirm
-          dialogue={dialogue}
-          onCancel={handlers.onCancelDelete}
-          onConfirm={handlers.onConfirmDelete}
+      {editable.mode === 'delete' && (
+        <EditableRowDeleteConfirm
+          message="Delete this dialogue?"
+          onConfirm={() => handlers.onDelete(dialogue)}
+          close={editable.close}
+          className="pin__confirm"
+          label={`Delete ${name}?`}
+          buttonClassName="pin__button"
+          dangerButtonClassName="pin__button pin__button--danger"
+          dataCanvasUi
         />
       )}
     </div>
   )
 })
-
-/**
- * Its own component, not inline JSX in `Pin`: `useAlertDialogFocus` is a hook, and hooks cannot
- * be called from inside the `confirmingDelete &&` branch of a function that also returns without
- * it — mounting and unmounting *this* component is what mount/unmount means to the hook.
- */
-function PinDeleteConfirm({
-  dialogue,
-  onCancel,
-  onConfirm,
-}: {
-  dialogue: Dialogue
-  onCancel: () => void
-  onConfirm: (dialogue: Dialogue) => void
-}): ReactElement {
-  const ref = useAlertDialogFocus(onCancel)
-  return (
-    <div
-      ref={ref}
-      className="pin__confirm"
-      role="alertdialog"
-      aria-modal="true"
-      aria-label={`Delete ${pinName(dialogue)}?`}
-      tabIndex={-1}
-      data-canvas-ui
-    >
-      <span>Delete this dialogue?</span>
-      <button
-        type="button"
-        className="pin__button pin__button--danger"
-        onClick={() => onConfirm(dialogue)}
-      >
-        Delete
-      </button>
-      <button type="button" className="pin__button" onClick={onCancel}>
-        Cancel
-      </button>
-    </div>
-  )
-}
 
 /**
  * A pennant on a pole, filled for the same reason `ContentGlyph` is: at this size a stroke

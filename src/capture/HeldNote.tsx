@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
-import { useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
+import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { useHeldFrames } from './capture-watch.ts'
 import './HeldNote.css'
 
@@ -33,8 +34,9 @@ export function HeldNote({
   discardDisabled: boolean
 }): ReactElement | null {
   const held = useHeldFrames()
-  /** The confirm step, local and transient — `CaptureBar`'s `confirming-delete` in miniature. */
-  const [confirming, setConfirming] = useState(false)
+  /** The confirm step is `EditableRow`'s own — this only supplies its wording, which stays
+   *  verbatim: discarding held frames is the one place the watcher loses data on purpose. */
+  const editable = useEditableRow()
   if (held.waiting === 0 && held.dropped === 0) return null
 
   return (
@@ -58,29 +60,22 @@ export function HeldNote({
         </Disclosure>
       )}
       {held.waiting > 0 &&
-        (confirming ? (
+        (editable.mode === 'delete' ? (
           /* Confirmed rather than done on the click: a replay is the only other way these frames
              leave the queue, and the pixels are gone for good — the game has long since advanced
              past the box they show. */
-          <div className="held-note__confirm">
-            <span>
-              Discard {held.waiting === 1 ? 'the waiting box' : `all ${held.waiting} waiting boxes`}?
-              Nothing is written, and the pictures cannot be captured again.
-            </span>
-            <button
-              type="button"
-              className="button button--danger"
-              onClick={() => {
-                setConfirming(false)
-                onDiscard()
-              }}
-            >
-              Discard them
-            </button>
-            <button type="button" className="button" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </div>
+          <EditableRowDeleteConfirm
+            message={
+              <>
+                Discard {held.waiting === 1 ? 'the waiting box' : `all ${held.waiting} waiting boxes`}?
+                Nothing is written, and the pictures cannot be captured again.
+              </>
+            }
+            confirmLabel="Discard them"
+            onConfirm={onDiscard}
+            close={editable.close}
+            className="held-note__confirm"
+          />
         ) : (
           <div className="held-note__actions">
             <button type="button" className="button" disabled={answerDisabled} onClick={onAnswer}>
@@ -91,7 +86,7 @@ export function HeldNote({
               className="button"
               disabled={discardDisabled}
               title="Throw the waiting boxes away. The captures they were read for keep whatever is already in them."
-              onClick={() => setConfirming(true)}
+              onClick={editable.openDelete}
             >
               Discard them
             </button>

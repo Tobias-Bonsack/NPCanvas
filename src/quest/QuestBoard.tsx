@@ -1,11 +1,12 @@
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import type { Route } from '../app/route.ts'
 import { formatRoute, navigate } from '../app/route.ts'
 import { RowActions } from '../app/RowActions.tsx'
 import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
-import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { DialogueRow, DialogueRowContent } from '../dialogue-row/DialogueRow.tsx'
 import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.ts'
 import { subsetByTimeAsc, subsetByTimeDesc } from '../dialogue/dialogue-order.ts'
@@ -39,7 +40,6 @@ export type QuestBoardMode =
   | { kind: 'editing'; id: QuestId }
   | { kind: 'recolouring'; id: QuestId }
   | { kind: 'attaching'; id: QuestId }
-  | { kind: 'confirming-delete'; id: QuestId }
 
 const STATUS_LABEL: Record<QuestStatus, string> = { open: 'Open', done: 'Done' }
 
@@ -206,6 +206,11 @@ function QuestCard({
   mode: QuestBoardMode
   onSetMode: (mode: QuestBoardMode) => void
 }): ReactElement {
+  // Delete is `EditableRow`'s own, local state — the rest of the card's modes (`editing`,
+  // `recolouring`, `attaching`) stay lifted into `QuestsViewState` because `?edit=<id>` has to
+  // reach them from outside the card; nothing ever needs to deep-link into a delete confirmation.
+  const editable = useEditableRow()
+
   // Chronological, because a quest is read as a sequence of what was heard when. ISO 8601
   // sorts lexicographically, so no Date is constructed per comparison.
   const linked = useMemo(() => {
@@ -266,21 +271,32 @@ function QuestCard({
             type="button"
             className="button"
             aria-label={`Delete ${name}`}
-            onClick={() => onSetMode({ kind: 'confirming-delete', id: quest.id })}
+            onClick={editable.openDelete}
           >
             Delete
           </button>
         </RowActions>
       </header>
 
-      <QuestCardMode
-        quest={quest}
-        mode={mode}
-        onSetMode={onSetMode}
-        dialogues={dialogues}
-        zonesById={zonesById}
-        zoneIndex={zoneIndex}
-      />
+      {editable.mode === 'delete' ? (
+        <EditableRowDeleteConfirm
+          // No cascade to warn about — a quest references dialogues, it never owns them.
+          message="Delete this quest? Its dialogues stay exactly where they are."
+          onConfirm={() => dispatch({ kind: 'quest/deleted', questId: quest.id })}
+          close={editable.close}
+          className="quest-card__confirm"
+          label={`Delete ${name}?`}
+        />
+      ) : (
+        <QuestCardMode
+          quest={quest}
+          mode={mode}
+          onSetMode={onSetMode}
+          dialogues={dialogues}
+          zonesById={zonesById}
+          zoneIndex={zoneIndex}
+        />
+      )}
 
       {linked.length === 0 ? (
         <p className="quest-card__empty">
@@ -391,62 +407,9 @@ function QuestCardMode({
         />
       )
 
-    case 'confirming-delete':
-      return (
-        <QuestDeleteConfirm
-          quest={quest}
-          onCancel={() => onSetMode({ kind: 'idle' })}
-          onConfirm={() => {
-            dispatch({ kind: 'quest/deleted', questId: quest.id })
-            onSetMode({ kind: 'idle' })
-          }}
-        />
-      )
-
     default:
       return assertNever(mode)
   }
-}
-
-/**
- * Its own component, not inline JSX in the `switch` above: `useAlertDialogFocus` is a hook, and
- * a `case` that only sometimes calls one breaks the rule that every render of a component calls
- * the same hooks in the same order. Mounting and unmounting this component is what "open" and
- * "closed" mean to the hook.
- */
-function QuestDeleteConfirm({
-  quest,
-  onCancel,
-  onConfirm,
-}: {
-  quest: Quest
-  onCancel: () => void
-  onConfirm: () => void
-}): ReactElement {
-  const ref = useAlertDialogFocus(onCancel)
-  return (
-    <div
-      ref={ref}
-      className="quest-card__confirm"
-      role="alertdialog"
-      aria-modal="true"
-      aria-label={`Delete ${questName(quest)}?`}
-      tabIndex={-1}
-    >
-      {/* No cascade to warn about — a quest references dialogues, it never owns them. */}
-      <span>Delete this quest? Its dialogues stay exactly where they are.</span>
-      <button
-        type="button"
-        className="button button--danger"
-        onClick={onConfirm}
-      >
-        Delete
-      </button>
-      <button type="button" className="button" onClick={onCancel}>
-        Cancel
-      </button>
-    </div>
-  )
 }
 
 /** How many matches a search shows before it stops listing and starts counting. */

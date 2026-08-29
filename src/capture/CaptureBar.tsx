@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
+import { EditableRowDeleteConfirm, EditableRowRenameForm } from '../app/EditableRow.tsx'
+import { useEditableRow } from '../app/use-editable-row.ts'
 import { assertNever } from '../assert-never.ts'
 import { dispatch } from '../project/store.ts'
 import type { CaptureProfile, Glyph, RecorderAction, RecorderBinding } from '../project/types.ts'
@@ -42,9 +44,6 @@ type CalibrationState =
   | { kind: 'open'; frame: FrozenFrame; profile: CaptureProfile | null }
   | { kind: 'failed'; message: string }
 
-/** The profile row's transient modes, one at a time — the same shape `MapList` uses. */
-type ProfileMode = { kind: 'idle' } | { kind: 'renaming'; draft: string } | { kind: 'confirming-delete' }
-
 /**
  * One read of the text box. The frame is kept beside the reading because learning a tile has to
  * transcribe *that* frame again — the emulator has moved on by then, and re-grabbing would read
@@ -82,10 +81,24 @@ export function CaptureBar({
    */
   const [cancelled, setCancelled] = useState(false)
   const [calibration, setCalibration] = useState<CalibrationState>({ kind: 'closed' })
-  const [mode, setMode] = useState<ProfileMode>({ kind: 'idle' })
+  const editableProfile = useEditableRow()
   const [read, setRead] = useState<ReadState>({ kind: 'idle' })
   /** Whether the alphabet is open for review. Transient UI, like every other flag in this bar. */
   const [showingGlyphs, setShowingGlyphs] = useState(false)
+
+  // A rename or delete confirmation belongs to the profile that was active when it opened;
+  // switching the active profile out from under it must not leave a stray form or prompt open.
+  // `close` is `useEditableRow`'s own stable `useCallback`, but the controller object wrapping
+  // it is a fresh literal every render, so it goes through a ref rather than the dependency
+  // list — the same pattern `PinLayer`'s `onPinSelectedRef` uses for the same reason.
+  const closeEditableProfileRef = useRef(editableProfile.close)
+  useEffect(() => {
+    closeEditableProfileRef.current = editableProfile.close
+  })
+  const activeProfileId = active?.id ?? null
+  useEffect(() => {
+    closeEditableProfileRef.current()
+  }, [activeProfileId])
 
   const gamepadConnected = useGamepadConnected()
   /** Which action's row is waiting for the next press, or `null` — at most one row at a time. */
@@ -189,17 +202,15 @@ export function CaptureBar({
     setRead({ kind: 'read', frame, reading: readTextBox(frame, profile, mergeGlyphs(glyphs, learned)) })
   }
 
-  function onRenameSubmit(profile: CaptureProfile, draft: string): void {
-    const name = draft.trim()
-    if (name !== '') dispatch({ kind: 'capture-profile/renamed', profileId: profile.id, name })
-    setMode({ kind: 'idle' })
+  function onRenameCommit(profile: CaptureProfile, name: string): void {
+    const trimmed = name.trim()
+    if (trimmed !== '') dispatch({ kind: 'capture-profile/renamed', profileId: profile.id, name: trimmed })
   }
 
   function onDeleteConfirmed(profile: CaptureProfile): void {
     dispatch({ kind: 'capture-profile/deleted', profileId: profile.id })
     // Falls back to whatever is left, which `useActiveCaptureProfile` resolves on the next render.
     setActiveCaptureProfileId(null)
-    setMode({ kind: 'idle' })
   }
 
   function connectionRow(): ReactElement {
@@ -241,52 +252,31 @@ export function CaptureBar({
   }
 
   function profileRow(): ReactElement {
-    if (mode.kind === 'renaming' && active !== null) {
+    if (editableProfile.mode === 'rename' && active !== null) {
       return (
-        <form
+        <EditableRowRenameForm
+          value={active.name}
+          label="Profile name"
+          onCommit={(name) => onRenameCommit(active, name)}
+          close={editableProfile.close}
           className="capture-bar__form"
-          onSubmit={(event) => {
-            event.preventDefault()
-            onRenameSubmit(active, mode.draft)
-          }}
-        >
-          <input
-            className="capture-bar__input"
-            value={mode.draft}
-            autoFocus
-            aria-label="Profile name"
-            onChange={(event) => setMode({ kind: 'renaming', draft: event.target.value })}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') setMode({ kind: 'idle' })
-            }}
-          />
-          <button type="submit" className="button">
-            Save
-          </button>
-          <button type="button" className="button" onClick={() => setMode({ kind: 'idle' })}>
-            Cancel
-          </button>
-        </form>
+          inputClassName="capture-bar__input"
+        />
       )
     }
 
-    if (mode.kind === 'confirming-delete' && active !== null) {
+    if (editableProfile.mode === 'delete' && active !== null) {
       return (
-        <div className="capture-bar__confirm" role="alert">
-          <span>
-            Delete <strong>{active.name}</strong>? The alphabet is the project's and stays.
-          </span>
-          <button
-            type="button"
-            className="button button--danger"
-            onClick={() => onDeleteConfirmed(active)}
-          >
-            Delete
-          </button>
-          <button type="button" className="button" onClick={() => setMode({ kind: 'idle' })}>
-            Cancel
-          </button>
-        </div>
+        <EditableRowDeleteConfirm
+          message={
+            <>
+              Delete <strong>{active.name}</strong>? The alphabet is the project's and stays.
+            </>
+          }
+          onConfirm={() => onDeleteConfirmed(active)}
+          close={editableProfile.close}
+          className="capture-bar__confirm"
+        />
       )
     }
 
@@ -330,18 +320,10 @@ export function CaptureBar({
             >
               Re-calibrate
             </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setMode({ kind: 'renaming', draft: active.name })}
-            >
+            <button type="button" className="button" onClick={editableProfile.openRename}>
               Rename
             </button>
-            <button
-              type="button"
-              className="button"
-              onClick={() => setMode({ kind: 'confirming-delete' })}
-            >
+            <button type="button" className="button" onClick={editableProfile.openDelete}>
               Delete
             </button>
           </>
