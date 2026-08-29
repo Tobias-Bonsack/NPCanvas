@@ -142,13 +142,12 @@ const POLL_MS = 100
 /**
  * How many identical readings make a box settled — see `box-settle.ts`.
  *
- * Six at 100 ms is exactly six tenths of a second of stillness: longer than the gap between two
- * characters of the typing animation, and shorter than anyone reads a line in. Kept in step with
- * `POLL_MS`: this constant is a *duration*, not a tick count, so a faster poll needs more of them
- * to mean the same thing — see `autosave-decision.ts`'s own "every 600 ms" for the other place
- * that duration is assumed.
+ * Three at 100 ms is three tenths of a second of stillness — half what it was before `POLL_MS`
+ * dropped from 200: kept at three ticks rather than doubled to six, so a box now has to hold
+ * still for less time before it settles. `autosave-decision.ts`'s "every 600 ms" reasoning about
+ * the watcher's own settle cadence no longer holds at this value; see the comment there.
  */
-const SETTLE_TICKS = 6
+const SETTLE_TICKS = 3
 
 /**
  * Frame grabs in a row that end the session. A captured window minimised to the tray stops

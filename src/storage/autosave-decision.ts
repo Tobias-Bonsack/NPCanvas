@@ -9,12 +9,12 @@ export const DEBOUNCE_MS = 800
  * The most a debounce may ever delay a write past the **first** unwritten edit.
  *
  * `DEBOUNCE_MS` alone assumes edits arrive in a burst that ends — the case it was tuned for. A
- * watcher recording is not a burst: it settles a box roughly every 600 ms for as long as the
- * conversation runs, and each box re-arms the 800 ms timer before it can fire, so the one
- * situation the app is *designed* to leave running unattended is the one situation in which
- * nothing reaches disk. Six or seven boxes of a scrolling conversation, still far less than a
- * lost minute — and far less than the whole conversation a crash or a discarded tab would cost
- * without a ceiling.
+ * watcher recording is not a burst: it settles a box roughly every 300 ms for as long as the
+ * conversation runs (`SETTLE_TICKS` × `POLL_MS` in `capture-watch.ts`), and each box re-arms the
+ * 800 ms timer before it can fire, so the one situation the app is *designed* to leave running
+ * unattended is the one situation in which nothing reaches disk. Sixteen or so boxes of a
+ * scrolling conversation, still far less than a lost minute — and far less than the whole
+ * conversation a crash or a discarded tab would cost without a ceiling.
  */
 export const MAX_UNSAVED_MS = 5000
 

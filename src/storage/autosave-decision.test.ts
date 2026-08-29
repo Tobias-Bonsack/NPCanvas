@@ -120,11 +120,11 @@ describe('nextDebounceMs', () => {
     expect(nextDebounceMs(0, MAX_UNSAVED_MS + 10_000)).toBe(0)
   })
 
-  it('caps a debounce re-armed every 600 ms so the write happens no later than MAX_UNSAVED_MS after the first edit', () => {
-    // A watcher settling a box every 600 ms re-arms the debounce on every one of these calls —
+  it('caps a debounce re-armed every 300 ms so the write happens no later than MAX_UNSAVED_MS after the first edit', () => {
+    // A watcher settling a box every 300 ms re-arms the debounce on every one of these calls —
     // `autosave.ts`'s `scheduleWrite` calls this again on every edit, always against the *first*
-    // edit of the streak. The loop below is that same re-arming, one 600 ms tick at a time.
-    const editIntervalMs = 600
+    // edit of the streak. The loop below is that same re-arming, one 300 ms tick at a time.
+    const editIntervalMs = 300
     for (let now = 0; now <= MAX_UNSAVED_MS + DEBOUNCE_MS; now += editIntervalMs) {
       const wait = nextDebounceMs(0, now)
       if (wait <= editIntervalMs) {
