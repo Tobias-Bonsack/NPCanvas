@@ -10,9 +10,9 @@ import { DialogueRow, DialogueRowContent } from '../dialogue-row/DialogueRow.tsx
 import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.ts'
 import { npcKey, npcLabel } from '../insights/filters.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
+import { dialogueSearchTexts } from '../project/derived.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
-import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 import type {
   Dialogue,
   DialogueId,
@@ -476,11 +476,12 @@ function DialoguePicker({
   const attached = useMemo(() => new Set(exclude), [exclude])
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase()
+    const searchTexts = dialogueSearchTexts(dialogues)
     const candidates = dialogues.filter((dialogue) => !attached.has(dialogue.id))
     const hits =
       needle === ''
         ? candidates
-        : candidates.filter((dialogue) => dialogueSearchText(dialogue).includes(needle))
+        : candidates.filter((dialogue) => (searchTexts.get(dialogue.id) ?? '').includes(needle))
     return [...hits].sort((a, b) => b.spokenAt.localeCompare(a.spokenAt))
   }, [dialogues, attached, query])
 

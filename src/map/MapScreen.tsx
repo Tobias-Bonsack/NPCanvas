@@ -8,8 +8,9 @@ import { CaptureRecorder } from '../capture/CaptureRecorder.tsx'
 import { PendingCaptureList } from '../capture/PendingCaptureList.tsx'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
+import { questIndexFor } from '../project/derived.ts'
 import { dispatch } from '../project/store.ts'
-import { dialoguesInAnyQuest, indexQuestsByDialogue } from '../quest/quest-index.ts'
+import { dialoguesInAnyQuest } from '../quest/quest-index.ts'
 import type {
   CanvasTool,
   DialogueId,
@@ -259,7 +260,7 @@ export function MapScreen({
   // Inverted once per document change, so a pin's flags are an O(1) lookup rather than a scan
   // of every quest's dialogueIds per pin. Memoized on `project.quests` alone, which is what
   // keeps it stable across pan frames and `PinLayer`'s memo intact.
-  const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
+  const questIndex = useMemo(() => questIndexFor(project.quests), [project.quests])
   const questLinked = useMemo(() => dialoguesInAnyQuest(questIndex), [questIndex])
 
   // Built once per document change, on the identity of `project.relevanceTags` alone — see

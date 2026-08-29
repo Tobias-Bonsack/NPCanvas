@@ -1,3 +1,4 @@
+import { searchTextOf } from '../project/derived.ts'
 import type {
   Dialogue,
   DialogueContentKind,
@@ -7,7 +8,6 @@ import type {
   ZoneId,
 } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
-import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 
 export type ContentKind = DialogueContentKind
 
@@ -111,7 +111,7 @@ export function applyFilter(
       if (to !== null && !Number.isNaN(to) && at > to) return false
     }
 
-    if (needle !== '' && !dialogueSearchText(dialogue).includes(needle)) return false
+    if (needle !== '' && !searchTextOf(dialogue, dialogues).includes(needle)) return false
 
     return true
   })

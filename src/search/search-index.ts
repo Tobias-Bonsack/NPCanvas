@@ -1,7 +1,7 @@
-import { npcKey, npcLabel } from '../insights/filters.ts'
+import { npcLabel } from '../insights/filters.ts'
 import { zoneLabel } from '../dialogue-row/dialogue-summary.ts'
+import { dialogueSearchTexts, npcLineCounts } from '../project/derived.ts'
 import type { Dialogue, ProjectFile, Quest, Zone } from '../project/types.ts'
-import { dialogueSearchText } from './dialogue-search-text.ts'
 
 /** One hit, still carrying the record it came from — the palette reads what it needs to render
  *  and to navigate from the record itself, rather than a second projection of the same fields. */
@@ -36,13 +36,15 @@ export function searchProject(project: ProjectFile, query: string): SearchOutcom
   const needle = query.trim().toLowerCase()
   if (needle === '') return EMPTY_OUTCOME
 
+  const searchTexts = dialogueSearchTexts(project.dialogues)
   const dialogues: SearchResult[] = project.dialogues
-    .filter((dialogue) => dialogueSearchText(dialogue).includes(needle))
+    .filter((dialogue) => (searchTexts.get(dialogue.id) ?? '').includes(needle))
     .map((dialogue) => ({ kind: 'dialogue', dialogue }))
 
-  const npcs: SearchResult[] = distinctNpcKeys(project.dialogues)
+  const lineCounts = npcLineCounts(project.dialogues)
+  const npcs: SearchResult[] = [...lineCounts.keys()]
     .filter((key) => npcLabel(key).toLowerCase().includes(needle))
-    .map((key) => ({ kind: 'npc', key, lineCount: lineCountOf(project.dialogues, key) }))
+    .map((key) => ({ kind: 'npc', key, lineCount: lineCounts.get(key) ?? 0 }))
 
   const quests: SearchResult[] = project.quests
     .filter((quest) => questLabel(quest).toLowerCase().includes(needle))
@@ -57,16 +59,6 @@ export function searchProject(project: ProjectFile, query: string): SearchOutcom
     results: all.slice(0, SEARCH_RESULT_LIMIT),
     hiddenCount: Math.max(0, all.length - SEARCH_RESULT_LIMIT),
   }
-}
-
-function distinctNpcKeys(dialogues: readonly Dialogue[]): string[] {
-  const keys = new Set<string>()
-  for (const dialogue of dialogues) keys.add(npcKey(dialogue))
-  return [...keys]
-}
-
-function lineCountOf(dialogues: readonly Dialogue[], key: string): number {
-  return dialogues.filter((dialogue) => npcKey(dialogue) === key).length
 }
 
 function questLabel(quest: Quest): string {
