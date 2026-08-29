@@ -4,11 +4,12 @@ import type {
   PointerEvent as ReactPointerEvent,
   ReactElement,
   ReactNode,
+  RefObject,
 } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { assertNever } from '../assert-never.ts'
 import { clearSelection, selectDialogue, selectMap, selectZone } from '../app/select.ts'
-import { newDialogueId, newZoneId } from '../project/ids.ts'
+import { newDialogueId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type {
   CanvasTool,
@@ -18,10 +19,8 @@ import type {
   MapId,
   PendingCaptureId,
   Point,
-  Polygon,
   Selection,
   Zone,
-  ZoneId,
 } from '../project/types.ts'
 import type { FocusTarget } from '../app/route.ts'
 import {
@@ -35,21 +34,25 @@ import {
   zoneAtCanvasPoint,
   zoneCanvasRect,
 } from './canvas-layout.ts'
-import type { DragGesture } from './drag-gesture.ts'
-import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Rect, Size } from './geometry.ts'
-import { inflate, rectBetween, rectToPolygon, translatePolygon } from './geometry.ts'
+import { inflate, translatePolygon } from './geometry.ts'
 import { MapImage } from './MapImage.tsx'
 import { mapGroupStyle } from './map-group-style.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
+import type { MapDragApi, MapDragPreview } from './use-map-drag.ts'
+import { useMapDrag } from './use-map-drag.ts'
+import type { PanGestureApi } from './use-pan-gesture.ts'
+import { usePanGesture } from './use-pan-gesture.ts'
+import type { ZoneDragPreview, ZoneToolApi } from './use-zone-tool.ts'
+import { minZoneSizeIn, useZoneTool } from './use-zone-tool.ts'
 import type { Viewport } from './viewport.ts'
 import { fitRectToContainer, screenToWorld, visibleWorldRect, zoomAt } from './viewport.ts'
 import { normalizeDelta, wheelZoomFactor } from './wheel-zoom.ts'
-import { nextZoneName } from './zone-name.ts'
-import type { ZoneHandle } from './zone-resize.ts'
-import { handleAtMapLocalPoint, resizePolygon, zoneHandlePoints } from './zone-resize.ts'
-import { nextZoneHue } from './zone-style.ts'
+import { resizePolygon, zoneHandlePoints } from './zone-resize.ts'
 import './MapCanvas.css'
+
+export type { MapDragPreview } from './use-map-drag.ts'
+export type { ZoneDragPreview } from './use-zone-tool.ts'
 
 /**
  * How long the view must be still before the visible rect is republished.
@@ -96,92 +99,6 @@ const NUDGE_STEP = 1
 const NUDGE_STEP_FAST = 10
 
 /**
- * A map being dragged, in canvas coordinates. It is a *preview*: `map/moved` is dispatched
- * once, on pointerup, so autosave sees one document change per drag rather than one per
- * frame — the same contract pin dragging follows.
- */
-export type MapDragPreview = { id: MapId; origin: Point }
-
-/**
- * A zone being dragged, in that zone's own map-local space. A preview for the same reason
- * `MapDragPreview` is: `zone/reshaped` lands once, on pointerup.
- */
-export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }
-
-/**
- * What a pan snapshots: the canvas point that was under the pointer when it went down. Every
- * move puts that point back under the pointer at the **live** scale — which is the invariant
- * `zoomAt` maintains as well, so a wheel notch mid-pan applies, stays applied, and the next
- * move continues from it rather than reverting to the scale the press started with.
- *
- * The delta is still measured against one snapshotted origin; the origin is a world point
- * rather than a whole viewport, which is what makes it survive a zoom.
- */
-type PanGesture = { grabbed: Point }
-
-/**
- * What the zone tool snapshots at pointerdown. `latest` mirrors what is on screen so the
- * commit does not depend on a state closure; the pointer bookkeeping around it belongs to
- * `DragGesture`.
- *
- * Neither variant carries a viewport: both convert the current pointer position through the
- * live one, so a zoom mid-gesture moves the draft with the cursor instead of detaching it.
- */
-type ZoneGesture =
-  | { kind: 'draw'; map: GameMap; from: Point; latest: Rect | null }
-  | {
-      kind: 'move'
-      target: Zone
-      map: GameMap
-      /** Where the press landed in the zone's own map-local space — see `PanGesture`. */
-      grabbed: Point
-      latest: Polygon | null
-    }
-  | {
-      kind: 'resize'
-      target: Zone
-      map: GameMap
-      /** Which grip of the bounding box the press took. */
-      handle: ZoneHandle
-      /** Where the press landed, so the polygon follows the pointer's travel, not the grip. */
-      grabbed: Point
-      latest: Polygon | null
-    }
-
-/** What a map drag snapshots. Same contract as `ZoneGesture`: a preview plus its commit value. */
-type MapDragGesture = {
-  id: MapId
-  from: Point
-  /**
-   * The canvas point under the pointer at pointerdown. The origin follows its live delta, so
-   * only the *viewport* scale is ever involved — the map's own scale sizes its contents, not
-   * its position, and folding it in would make the map lag the cursor.
-   */
-  grabbed: Point
-  latest: Point | null
-}
-
-/**
- * **Screen** pixels a zone drag must cover on both axes before it commits. Below this the
- * gesture was a click that wobbled, and a zone a few pixels across is a region nobody can
- * select, rename or see.
- *
- * Screen rather than map-local, because map-local is not a size anyone can judge: at 8× four
- * map pixels is a rectangle you can see and drag out, and at 5% it is a twitch.
- */
-const MIN_ZONE_SIZE = 8
-
-/**
- * **Screen** pixels around a resize grip that count as a press on it. Screen rather than
- * map-local for the reason `MIN_ZONE_SIZE` is: a fixed map-local radius would be untouchable
- * at 5% zoom and would swallow half the zone at 8x.
- *
- * A shade larger than the grip is drawn, so the grip is easier to hit than to see rather than
- * the other way round.
- */
-const ZONE_HANDLE_HIT_RADIUS = 9
-
-/**
  * Controls layered over the map — the HUD, a pin's delete confirmation — carry
  * `data-canvas-ui`, and a press starting inside one is that control's business, not a
  * canvas gesture.
@@ -198,100 +115,79 @@ function isCanvasChrome(target: EventTarget): boolean {
 }
 
 /**
- * The transform surface everything else sits on: DOM under one CSS transform, not
- * `<canvas>`. See CLAUDE.md § Domain and architecture decisions.
+ * Container-relative coordinates, which is the space every viewport transform expects.
  *
- * Every map in the project is on screen at once, each in its own group placed by `origin`
- * and sized by `scale`. The canvas transform is *canvas* space; a map's contents are
- * map-local and ride along inside its group.
- *
- * `Viewport` is component state, not store state — it is transient UI, and putting it in the
- * store would push a document-shaped update through autosave on every pointermove.
+ * Takes the container's client origin rather than measuring it: this runs on every wheel
+ * event and on every pointermove of a drag, and a `getBoundingClientRect()` there forces a
+ * layout flush per frame. Structural in its event, so a wheel event and a React pointer event
+ * both satisfy it.
  */
-export function MapCanvas({
+function anchorOf(event: { clientX: number; clientY: number }, origin: Point): Point {
+  return { x: event.clientX - origin.x, y: event.clientY - origin.y }
+}
+
+/**
+ * The rectangle the one-shot `focus` intent fits the viewport to — a map's own footprint, or
+ * the zone's, resolved through the map it is drawn on. `null` for a target that named a map or
+ * zone since deleted, which the caller treats as "nothing to jump to" rather than an error.
+ */
+function focusRect(
+  focus: FocusTarget,
+  maps: readonly GameMap[],
+  zones: readonly Zone[],
+): Rect | null {
+  if (focus.kind === 'map') {
+    const map = maps.find((candidate) => candidate.id === focus.id)
+    return map === undefined ? null : mapCanvasRect(map)
+  }
+  const zone = zones.find((candidate) => candidate.id === focus.id)
+  if (zone === undefined) return null
+  const map = maps.find((candidate) => candidate.id === zone.mapId)
+  return map === undefined ? null : zoneCanvasRect(map, zone)
+}
+
+type CanvasViewportApi = {
+  container: Size
+  viewport: Viewport
+  /** The viewport every in-flight gesture computes against — see the gesture hooks. */
+  viewportRef: { current: Viewport }
+  containerOrigin: { current: Point }
+  applyViewport: (next: Viewport) => void
+  fitToMaps: () => void
+  zoomByFactor: (factor: number) => void
+  zoomToOne: () => void
+  panBy: (direction: Point, step: number) => void
+}
+
+/**
+ * The viewport machinery every gesture reads and none of them owns: the container's measured
+ * size, the live `Viewport`, fit-to-maps, the wheel's zoom/pan, and the settle timer that
+ * republishes both the viewport and the visible rect once a gesture stops rather than every
+ * frame of it — see CLAUDE.md § "World-space layers must stay viewport-independent". Kept as a
+ * hook local to this file rather than a fourth exported one: nothing here is a pointer gesture
+ * a session would go looking for beside the pan, the zone tool, or the map drag.
+ */
+function useCanvasViewport({
+  containerRef,
   maps,
   zones,
-  dialogues,
-  selection,
-  tool,
-  selectedMapId,
   focus,
   onFocusApplied,
-  onMapDrag,
-  onZoneDrag,
-  onVisibleRectChange,
-  onDialoguePlaced,
-  armedCaptureId,
   initialViewport,
   onViewportChange,
-  children,
+  onVisibleRectChange,
 }: {
-  /** Already carrying any in-progress drag preview — see `MapScreen`. */
+  containerRef: RefObject<HTMLDivElement | null>
   maps: readonly GameMap[]
-  /**
-   * Not for rendering — `ZoneLayer` does that — but for hit-testing: a zone's clickable area
-   * is its geometry, tested here, rather than a filled SVG polygon that would swallow every
-   * pan starting inside it.
-   */
   zones: readonly Zone[]
-  /** For the same reason `zones` is here: nudging the selected pin needs its live position. */
-  dialogues: readonly Dialogue[]
-  /** What the keyboard nudges — only a dialogue or a zone has a map-local position to nudge. */
-  selection: Selection
-  tool: CanvasTool
-  selectedMapId: MapId | null
-  /** A map or a zone to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
   focus: FocusTarget | null
   onFocusApplied: () => void
-  /**
-   * Reports the live drag position upwards, because the pin layer is a sibling and its maps
-   * must move with the image in the same frame. `null` ends the drag.
-   */
-  onMapDrag: (preview: MapDragPreview | null) => void
-  /** The same contract as `onMapDrag`, for a zone being moved. `null` ends the drag. */
-  onZoneDrag: (preview: ZoneDragPreview | null) => void
-  /**
-   * The canvas-space rectangle on screen, republished once the view settles rather than per
-   * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
-   */
-  onVisibleRectChange: (rect: Rect) => void
-  /**
-   * Fires once a placement lands, so `MapScreen` can move focus into the new dialogue's NPC
-   * field instead of onto its pin, offer the previous line's relevance tags, and return the
-   * tool to `inspect` — see #45. The pin's own focus-follow effect is suppressed for this same
-   * id, which is what keeps the two paths from fighting over focus in the same commit.
-   */
-  onDialoguePlaced: (dialogueId: DialogueId) => void
-  /**
-   * A pending capture armed for placement from `PendingCaptureList`, or `null`. When set, a
-   * `place-dialogue` click dispatches `pending-capture/placed` instead of building an empty
-   * `Dialogue` — the same click, the same hit-test, the same map resolution; only what gets
-   * dispatched differs. `MapScreen` clears it whenever the tool leaves `place-dialogue`, which is
-   * what `onDialoguePlaced`'s own tool reset already does after a successful placement.
-   */
-  armedCaptureId: PendingCaptureId | null
-  /**
-   * The last viewport this canvas settled on, persisted one level up so a switch away and back
-   * lands where the user left it — see CLAUDE.md's view-state note. `null` on a project's very
-   * first visit, which is what the fit-on-mount effect below treats as "nothing to restore".
-   * Read only at mount: this component owns the live value from then on and reports back
-   * through `onViewportChange`, so a value pushed from outside after mount is never round-tripped
-   * back down into a fresh `useState` initializer.
-   */
   initialViewport: Viewport | null
-  /** Published once the view settles — see `SETTLE_MS` — never per frame of a gesture. */
   onViewportChange: (viewport: Viewport) => void
-  /** Rendered inside the world element, so children position in canvas coordinates. */
-  children?: ReactNode
-}): ReactElement {
-  const containerRef = useRef<HTMLDivElement>(null)
+  onVisibleRectChange: (rect: Rect) => void
+}): CanvasViewportApi {
   const [container, setContainer] = useState<Size>({ width: 0, height: 0 })
   const [viewport, setViewport] = useState<Viewport>(() => initialViewport ?? EMPTY_VIEWPORT)
-  /**
-   * The viewport every in-flight gesture computes against — the one on screen *now*, not the
-   * one at pointerdown, because the wheel keeps zooming while a gesture is held. State drives
-   * the render; this drives the handlers, and `applyViewport` is the only writer of either.
-   */
   const viewportRef = useRef<Viewport>(viewport)
   /**
    * The container's position in client coordinates, cached because it only changes when the
@@ -300,52 +196,11 @@ export function MapCanvas({
    * being restyled per frame.
    */
   const containerOrigin = useRef<Point>({ x: 0, y: 0 })
-  // Drives `will-change` on the world element for the duration of a gesture that repaints
-  // the world every frame — a pan, a map drag, a zone drag — and for no longer. See the comment
-  // on `.map-canvas[data-panning]`. Two renders per gesture, not one per frame.
-  //
-  // The map drag needs saying explicitly: it `stopPropagation()`s so the canvas underneath does
-  // not also start panning, which means the container's own pointerdown never runs and the
-  // promotion would otherwise be off during the one gesture that repaints the most.
-  const [panning, setPanning] = useState(false)
-  // A gesture that refused to commit, saying why. Nonced rather than compared by text, so the
-  // same rejection twice restarts the timer instead of expiring on the first one's clock.
-  const [notice, setNotice] = useState<{ nonce: number; text: string } | null>(null)
-  const nextNotice = useRef(0)
-  // Once per change, not once per pan frame: this component re-renders on every pointermove
-  // of a pan, and the scan is over every map in the project.
-  const selectedMap = useMemo(
-    () => maps.find((map) => map.id === selectedMapId) ?? null,
-    [maps, selectedMapId],
-  )
-
-  // The zone whose resize grips are on screen, with the map they are expressed on. Memoized
-  // for the reason `selectedMap` is — this runs on every frame of a pan — and carrying the
-  // map because every grip coordinate is map-local and needs it to reach the screen. The
-  // zone is taken from `zones`, so a drag preview moves the grips with the shape.
-  const selectedZone = useMemo(() => {
-    if (selection.kind !== 'zone') return null
-    const zone = zones.find((candidate) => candidate.id === selection.id)
-    if (zone === undefined) return null
-    const map = maps.find((candidate) => candidate.id === zone.mapId)
-    return map === undefined ? null : { zone, map }
-  }, [selection, zones, maps])
 
   const applyViewport = useCallback((next: Viewport): void => {
     viewportRef.current = next
     setViewport(next)
   }, [])
-
-  function showNotice(text: string): void {
-    nextNotice.current += 1
-    setNotice({ nonce: nextNotice.current, text })
-  }
-
-  useEffect(() => {
-    if (notice === null) return
-    const timer = setTimeout(() => setNotice(null), NOTICE_MS)
-    return () => clearTimeout(timer)
-  }, [notice])
 
   useEffect(() => {
     const element = containerRef.current
@@ -360,7 +215,7 @@ export function MapCanvas({
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [])
+  }, [containerRef])
 
   /**
    * The container must never hold a scroll offset. `overflow: hidden` hides overflow but the
@@ -384,7 +239,7 @@ export function MapCanvas({
     }
     element.addEventListener('scroll', onScroll)
     return () => element.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [containerRef])
 
   /**
    * The same guards as the fit-on-mount effect below: fitting against a container that has
@@ -423,7 +278,7 @@ export function MapCanvas({
     if (container.width === 0 || container.height === 0) return
     const rect = focusRect(focus, maps, zones)
     if (rect !== null) {
-      // Suppresses the fit-on-mount below: arriving at #/canvas?focus=<target> should land on
+      // Suppresses the fit-on-mount above: arriving at #/canvas?focus=<target> should land on
       // it, not fit everything and then jump.
       fitted.current = true
       applyViewport(fitRectToContainer(rect, container))
@@ -481,396 +336,7 @@ export function MapCanvas({
     element.addEventListener('wheel', onWheel, { passive: false })
 
     return () => element.removeEventListener('wheel', onWheel)
-  }, [applyViewport])
-
-  const pan = useRef<DragGesture<PanGesture> | null>(null)
-
-  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (event.button !== 0) return
-    if (isCanvasChrome(event.target)) return
-    // A press arriving while the canvas already owns a pointer is ignored rather than
-    // replacing the gesture in flight; `beginDrag` guards each ref, this guards the pair.
-    if (pan.current !== null || zone.current !== null) return
-    // The zone tool claims a press that landed on a map; one on bare canvas falls through to
-    // a pan, so the canvas is still navigable without switching tools.
-    if (tool.kind === 'draw-zone' && beginZoneGesture(event)) return
-    beginDrag(pan, event, {
-      grabbed: screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current)),
-    })
-  }
-
-  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
-    if (zone.current !== null) {
-      onZonePointerMove(event)
-      return
-    }
-    const move = moveDrag(pan, event)
-    if (move === null) return
-    // Guarded on the transition: setting it every move would re-render on every frame, which
-    // is exactly what the layer promotion exists to avoid.
-    if (move.started) setPanning(true)
-    // The scale is the live one, never the snapshotted one: writing the snapshot back is what
-    // used to revert a wheel zoom to the pre-gesture scale one frame after it applied.
-    const { scale } = viewportRef.current
-    const anchor = anchorOf(event, containerOrigin.current)
-    applyViewport({
-      x: move.data.grabbed.x - anchor.x / scale,
-      y: move.data.grabbed.y - anchor.y / scale,
-      scale,
-    })
-  }
-
-  function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
-    // `pointerup` carries the button that was *released*. Without this gate, releasing the
-    // right button during a held left-press would run the click path — a mouse reports one
-    // pointerId for every button, so the id guard cannot tell them apart.
-    if (event.button !== 0) return
-    if (zone.current !== null) {
-      onZonePointerUp(event)
-      return
-    }
-    const end = commitDrag(pan, event)
-    // Runs on every exit path from here, this pointer's or another's, and states exactly what
-    // it means: a pan is in flight. `data-panning` — and the `will-change` it drives — can
-    // therefore neither be left stuck on nor be dropped out from under a live pan.
-    setPanning(pan.current !== null)
-    if (end === null || end.moved) return
-
-    // The current viewport, not the one the press started against: a wheel notch between
-    // pointerdown and pointerup would otherwise place the pin at the pre-zoom world point,
-    // hundreds of map pixels from the cursor at 8×.
-    onCanvasClick(anchorOf(event, containerOrigin.current), viewportRef.current)
-  }
-
-  /**
-   * A cancel is the platform saying the gesture did not happen — an OS takeover, a touch
-   * promoted to a browser gesture, a pen leaving range. Separate from `onPointerUp` because it
-   * must dispatch **nothing**: every preview is dropped and the document stays as it was.
-   */
-  function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
-    // Guarded on the return value, because a cancel for a pointer that never owned a gesture
-    // must leave the one in flight — and its preview — exactly as it is.
-    if (cancelDrag(pan, event)) setPanning(false)
-    if (cancelDrag(zone, event)) {
-      setDraft(null)
-      onZoneDrag(null)
-      setPanning(false)
-    }
-  }
-
-  /**
-   * The zone tool's gesture, which is two gestures wearing one tool: a press inside an
-   * existing zone moves it, a press anywhere else on a map drags out a new rectangle. Both
-   * snapshot the point they grabbed and convert the pointer through the live viewport, so the
-   * rectangle on screen and the zone that gets committed are the same rectangle even if the
-   * canvas was zoomed halfway through drawing it.
-   */
-  const zone = useRef<DragGesture<ZoneGesture> | null>(null)
-  // The rectangle being dragged out, redrawn every frame. It is `MapCanvas`'s own state, not
-  // a prop to the memo'd `ZoneLayer`, which must stay free of anything that changes per frame.
-  const [draft, setDraft] = useState<{ mapId: MapId; rect: Rect } | null>(null)
-
-  /** True when the zone tool took the press; false leaves it to the pan. */
-  function beginZoneGesture(event: ReactPointerEvent<HTMLDivElement>): boolean {
-    const canvasPoint = screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current))
-
-    // Tested before the map is: a grip sitting on the very edge of a zone that was dragged
-    // past the map's border is still a grip, and asking `mapAtCanvasPoint` first would hand
-    // that press to the pan. It is also tested before the zone under the cursor, because
-    // every grip of a zone lies on or inside its own bounding box.
-    const grip = handleAtCanvasPoint(canvasPoint)
-    if (grip !== null) {
-      return beginDrag(zone, event, {
-        kind: 'resize',
-        target: grip.zone,
-        map: grip.map,
-        handle: grip.handle,
-        grabbed: canvasToMapLocal(grip.map, canvasPoint),
-        latest: null,
-      })
-    }
-
-    const map = mapAtCanvasPoint(maps, canvasPoint)
-    if (map === null) return false
-
-    // `zoneAtCanvasPoint` consults only the topmost map at the point, so a hit is always a
-    // zone of `map` and the two share one map-local space.
-    const target = zoneAtCanvasPoint(maps, zones, canvasPoint)
-    const local = canvasToMapLocal(map, canvasPoint)
-    if (target !== null) {
-      return beginDrag(zone, event, { kind: 'move', target, map, grabbed: local, latest: null })
-    }
-
-    return beginDrag(zone, event, { kind: 'draw', map, from: local, latest: null })
-  }
-
-  function onZonePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
-    // Drawing goes through the same threshold as every other gesture, so the draft rectangle
-    // appears once the press is a drag rather than flashing under a click that wobbled.
-    const move = moveDrag(zone, event)
-    if (move === null) return
-    // Guarded on the transition, as the pan is: both variants redraw the world every frame,
-    // the draft rectangle as much as the zone being moved.
-    if (move.started) setPanning(true)
-    const gesture = move.data
-    // Both variants want the pointer in the gesture's map-local space, through the viewport
-    // as it is now — a delta divided by a scale snapshotted at pointerdown would jump the
-    // moment the wheel changed that scale.
-    const local = canvasToMapLocal(
-      gesture.map,
-      screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current)),
-    )
-
-    if (gesture.kind === 'draw') {
-      const rect = rectBetween(gesture.from, local)
-      gesture.latest = rect
-      setDraft({ mapId: gesture.map.id, rect })
-      return
-    }
-
-    const travel: Point = { x: local.x - gesture.grabbed.x, y: local.y - gesture.grabbed.y }
-    // Both reshape the same zone from the polygon it had at pointerdown, never from the
-    // previous frame's: accumulating frame by frame would compound the floor `resizePolygon`
-    // clamps at, so a drag that overshot the minimum and came back would not come back.
-    const polygon =
-      gesture.kind === 'move'
-        ? translatePolygon(gesture.target.polygon, travel)
-        : resizePolygon(
-            gesture.target.polygon,
-            gesture.handle,
-            travel,
-            minZoneSizeIn(gesture.map),
-          )
-    gesture.latest = polygon
-    onZoneDrag({ id: gesture.target.id, polygon })
-  }
-
-  function onZonePointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
-    const end = commitDrag(zone, event)
-    if (end === null) return
-    setPanning(false)
-    const gesture = end.data
-
-    if (gesture.kind !== 'draw') {
-      const final = gesture.latest
-      onZoneDrag(null)
-      if (!end.moved || final === null) {
-        // A press that never moved is how a zone is picked up *and* how it is selected.
-        selectZone(gesture.target.id)
-        return
-      }
-      // One action for both, because a zone is its polygon however that polygon was arrived
-      // at — see the reducer.
-      dispatch({ kind: 'zone/reshaped', zoneId: gesture.target.id, polygon: final })
-      return
-    }
-
-    const rect = gesture.latest
-    setDraft(null)
-    // A click leaves no trace, and says nothing: it was never a rectangle.
-    if (rect === null) return
-
-    // Screen pixels per map-local pixel, which is what turns the drawn rectangle into the
-    // size the user actually saw.
-    const screenScale = viewportRef.current.scale * gesture.map.scale
-    if (rect.width * screenScale < MIN_ZONE_SIZE || rect.height * screenScale < MIN_ZONE_SIZE) {
-      // Said rather than silently dropped: the draft rectangle was on screen a frame ago, so
-      // its disappearance needs a reason.
-      showNotice(`Too small to be a zone — drag out at least ${MIN_ZONE_SIZE} pixels each way.`)
-      return
-    }
-
-    const created: Zone = {
-      id: newZoneId(),
-      mapId: gesture.map.id,
-      name: nextZoneName(zones, gesture.map.id),
-      polygon: rectToPolygon(rect),
-      hue: nextZoneHue(zones, gesture.map.id),
-    }
-    dispatch({ kind: 'zone/added', zone: created })
-    selectZone(created.id)
-  }
-
-  /**
-   * The grip of the selected zone under a canvas point, or `null`. Only the selected zone has
-   * grips — they are drawn for it alone, and a hit test that answered for zones nobody can see
-   * grips on would resize a shape the user never aimed at.
-   */
-  function handleAtCanvasPoint(
-    canvasPoint: Point,
-  ): { zone: Zone; map: GameMap; handle: ZoneHandle } | null {
-    if (selectedZone === null) return null
-    const { zone: target, map } = selectedZone
-    const handle = handleAtMapLocalPoint(
-      target.polygon,
-      canvasToMapLocal(map, canvasPoint),
-      ZONE_HANDLE_HIT_RADIUS / screenScaleOf(map),
-    )
-    return handle === null ? null : { zone: target, map, handle }
-  }
-
-  /** Screen pixels per map-local pixel: the viewport's zoom and the map's own scale, live. */
-  function screenScaleOf(map: GameMap): number {
-    return viewportRef.current.scale * map.scale
-  }
-
-  /**
-   * The smallest a zone may be squeezed to, in that map's own pixels. Expressed through the
-   * live screen scale so it is the same rejection `MIN_ZONE_SIZE` makes when a zone is drawn:
-   * a region has to stay big enough to see, select and rename.
-   */
-  function minZoneSizeIn(map: GameMap): number {
-    return MIN_ZONE_SIZE / screenScaleOf(map)
-  }
-
-  // The map drag mirrors the pan above: the bookkeeping lives in a ref so a sub-threshold
-  // wobble costs no render, and the canvas point grabbed at pointerdown is what the origin
-  // trails — so zooming mid-gesture moves the map with the cursor rather than jumping it.
-  const mapDrag = useRef<DragGesture<MapDragGesture> | null>(null)
-
-  // The four below are `useCallback`s because `MapImage` is memoized and they are its props:
-  // a fresh arrow per render would re-run `useMediaUrl` and rebuild `mapGroupStyle` for every
-  // map on every frame of a pan, which is exactly what the memo is there to prevent.
-  const onMapPointerDown = useCallback(function onMapPointerDown(
-    event: ReactPointerEvent<HTMLDivElement>,
-    map: GameMap,
-  ): void {
-    if (event.button !== 0 || tool.kind !== 'move-map') return
-    // Without this the canvas underneath would start panning at the same time.
-    event.stopPropagation()
-    const began = beginDrag(mapDrag, event, {
-      id: map.id,
-      from: map.origin,
-      // Container-relative even though the press landed on the map: `anchorOf` measures from
-      // the cached container origin, so it does not care which element took the event.
-      grabbed: screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current)),
-      latest: null,
-    })
-    if (!began) return
-    selectMap(map.id)
-  }, [tool])
-
-  const onMapPointerMove = useCallback(function onMapPointerMove(
-    event: ReactPointerEvent<HTMLDivElement>,
-  ): void {
-    const move = moveDrag(mapDrag, event)
-    if (move === null) return
-    // Guarded on the transition, as the pan is: a press that only selects a map must not
-    // promote a layer, and setting it every move would re-render on every frame.
-    if (move.started) setPanning(true)
-
-    const at = screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current))
-    const origin: Point = {
-      x: move.data.from.x + at.x - move.data.grabbed.x,
-      y: move.data.from.y + at.y - move.data.grabbed.y,
-    }
-    move.data.latest = origin
-    onMapDrag({ id: move.data.id, origin })
-  }, [onMapDrag])
-
-  const onMapPointerUp = useCallback(function onMapPointerUp(
-    event: ReactPointerEvent<HTMLDivElement>,
-  ): void {
-    if (event.button !== 0) return
-    const end = commitDrag(mapDrag, event)
-    if (end === null) return
-    event.stopPropagation()
-
-    const final = end.data.latest
-    onMapDrag(null)
-    setPanning(false)
-    if (end.moved && final !== null) {
-      dispatch({ kind: 'map/moved', mapId: end.data.id, origin: final })
-    }
-  }, [onMapDrag])
-
-  /** Drops the preview and dispatches nothing — see `onPointerCancel`. */
-  const onMapPointerCancel = useCallback(function onMapPointerCancel(
-    event: ReactPointerEvent<HTMLDivElement>,
-  ): void {
-    if (cancelDrag(mapDrag, event)) {
-      onMapDrag(null)
-      setPanning(false)
-    }
-  }, [onMapDrag])
-
-  /** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures above. */
-  function onCanvasClick(anchor: Point, at: Viewport): void {
-    switch (tool.kind) {
-      case 'move-map':
-        // A click on bare canvas is how a selection is dismissed.
-        clearSelection()
-        return
-
-      // Pins stop propagation, so a click reaching here missed every pin: what is left under
-      // the cursor is a zone, the map underneath it, or bare canvas. A map hit is what makes
-      // `MapScaleControl` reachable without switching to `move-map`.
-      case 'inspect': {
-        const canvasPoint = screenToWorld(at, anchor)
-        const hitZone = zoneAtCanvasPoint(maps, zones, canvasPoint)
-        if (hitZone !== null) {
-          selectZone(hitZone.id)
-        } else {
-          const hitMap = mapAtCanvasPoint(maps, canvasPoint)
-          if (hitMap === null) clearSelection()
-          else selectMap(hitMap.id)
-        }
-        return
-      }
-
-      case 'place-dialogue': {
-        const canvasPoint = screenToWorld(at, anchor)
-        const map = mapAtCanvasPoint(maps, canvasPoint)
-        // A Dialogue requires a real mapId, so a click on bare canvas places nothing rather
-        // than inventing an association — said here rather than left silent, since the draft
-        // rectangle case a few lines up already sets the precedent for a rejected gesture. A
-        // capture armed for placement is not lost on a miss either: it stays armed for the
-        // next click, exactly like this notice already lets a blank placement be retried.
-        if (map === null) {
-          showNotice('No map there — place a dialogue on top of a map.')
-          return
-        }
-
-        // Arming a capture from `PendingCaptureList` turns this same click into a placement
-        // instead of a blank dialogue — no second tool, no second hit-test. Everything above
-        // this line already resolved the map and the point either way.
-        if (armedCaptureId !== null) {
-          const dialogueId = newDialogueId()
-          dispatch({
-            kind: 'pending-capture/placed',
-            captureId: armedCaptureId,
-            dialogueId,
-            mapId: map.id,
-            position: canvasToMapLocal(map, canvasPoint),
-          })
-          selectDialogue(dialogueId)
-          onDialoguePlaced(dialogueId)
-          return
-        }
-
-        const dialogue: Dialogue = {
-          id: newDialogueId(),
-          mapId: map.id,
-          npcName: '',
-          position: canvasToMapLocal(map, canvasPoint),
-          text: '',
-          media: [],
-          spokenAt: new Date().toISOString(),
-          relevance: [],
-        }
-        dispatch({ kind: 'dialogue/added', dialogue })
-        selectDialogue(dialogue.id)
-        onDialoguePlaced(dialogue.id)
-        return
-      }
-
-      case 'draw-zone':
-        return
-
-      default:
-        return assertNever(tool)
-    }
-  }
+  }, [containerRef, applyViewport])
 
   function zoomByFactor(factor: number): void {
     if (container.width === 0 || container.height === 0) return
@@ -892,49 +358,232 @@ export function MapCanvas({
     })
   }
 
-  /** Only a dialogue or a zone has a map-local position — a selected map is not nudged. */
-  function nudgeSelection(direction: Point, step: number): void {
-    const dx = direction.x * step
-    const dy = direction.y * step
-    if (selection.kind === 'dialogue') {
-      const dialogue = dialogues.find((candidate) => candidate.id === selection.id)
-      if (dialogue === undefined) return
-      dispatch({
-        kind: 'dialogue/moved',
-        dialogueId: dialogue.id,
-        position: { x: dialogue.position.x + dx, y: dialogue.position.y + dy },
-      })
+  return {
+    container,
+    viewport,
+    viewportRef,
+    containerOrigin,
+    applyViewport,
+    fitToMaps,
+    zoomByFactor,
+    zoomToOne,
+    panBy,
+  }
+}
+
+type MapCanvasProps = {
+  /** Already carrying any in-progress drag preview — see `MapScreen`. */
+  maps: readonly GameMap[]
+  /**
+   * Not for rendering — `ZoneLayer` does that — but for hit-testing: a zone's clickable area
+   * is its geometry, tested here, rather than a filled SVG polygon that would swallow every
+   * pan starting inside it.
+   */
+  zones: readonly Zone[]
+  /** For the same reason `zones` is here: nudging the selected pin needs its live position. */
+  dialogues: readonly Dialogue[]
+  /** What the keyboard nudges — only a dialogue or a zone has a map-local position to nudge. */
+  selection: Selection
+  tool: CanvasTool
+  selectedMapId: MapId | null
+  /** A map or a zone to jump the viewport to, once. Cleared through `onFocusApplied` immediately. */
+  focus: FocusTarget | null
+  onFocusApplied: () => void
+  /**
+   * Reports the live drag position upwards, because the pin layer is a sibling and its maps
+   * must move with the image in the same frame. `null` ends the drag.
+   */
+  onMapDrag: (preview: MapDragPreview | null) => void
+  /** The same contract as `onMapDrag`, for a zone being moved. `null` ends the drag. */
+  onZoneDrag: (preview: ZoneDragPreview | null) => void
+  /**
+   * The canvas-space rectangle on screen, republished once the view settles rather than per
+   * frame — see `SETTLE_MS`. Must be stable, because an effect depends on it.
+   */
+  onVisibleRectChange: (rect: Rect) => void
+  /**
+   * Fires once a placement lands, so `MapScreen` can move focus into the new dialogue's NPC
+   * field instead of onto its pin, offer the previous line's relevance tags, and return the
+   * tool to `inspect` — see #45. The pin's own focus-follow effect is suppressed for this same
+   * id, which is what keeps the two paths from fighting over focus in the same commit.
+   */
+  onDialoguePlaced: (dialogueId: DialogueId) => void
+  /**
+   * A pending capture armed for placement from `PendingCaptureList`, or `null`. When set, a
+   * `place-dialogue` click dispatches `pending-capture/placed` instead of building an empty
+   * `Dialogue` — the same click, the same hit-test, the same map resolution; only what gets
+   * dispatched differs. `MapScreen` clears it whenever the tool leaves `place-dialogue`, which is
+   * what `onDialoguePlaced`'s own tool reset already does after a successful placement.
+   */
+  armedCaptureId: PendingCaptureId | null
+  /**
+   * The last viewport this canvas settled on, persisted one level up so a switch away and back
+   * lands where the user left it — see CLAUDE.md's view-state note. `null` on a project's very
+   * first visit, which is what the fit-on-mount effect treats as "nothing to restore".
+   * Read only at mount: this component owns the live value from then on and reports back
+   * through `onViewportChange`, so a value pushed from outside after mount is never round-tripped
+   * back down into a fresh `useState` initializer.
+   */
+  initialViewport: Viewport | null
+  /** Published once the view settles — see `SETTLE_MS` — never per frame of a gesture. */
+  onViewportChange: (viewport: Viewport) => void
+  /** Rendered inside the world element, so children position in canvas coordinates. */
+  children?: ReactNode
+}
+
+/**
+ * The transform surface everything else sits on: DOM under one CSS transform, not
+ * `<canvas>`. See CLAUDE.md § Domain and architecture decisions.
+ *
+ * Every map in the project is on screen at once, each in its own group placed by `origin`
+ * and sized by `scale`. The canvas transform is *canvas* space; a map's contents are
+ * map-local and ride along inside its group.
+ *
+ * `Viewport` is component state, not store state — it is transient UI, and putting it in the
+ * store would push a document-shaped update through autosave on every pointermove.
+ *
+ * The three gestures the canvas offers — pan, the zone tool, and dragging a map — are each
+ * their own hook (`use-pan-gesture.ts`, `use-zone-tool.ts`, `use-map-drag.ts`): this component
+ * arbitrates which one a press belongs to and owns what is common to all of them (the
+ * viewport, the settle timer, the notice banner), but none of a gesture's own bookkeeping.
+ */
+export function MapCanvas({
+  maps,
+  zones,
+  dialogues,
+  selection,
+  tool,
+  selectedMapId,
+  focus,
+  onFocusApplied,
+  onMapDrag,
+  onZoneDrag,
+  onVisibleRectChange,
+  onDialoguePlaced,
+  armedCaptureId,
+  initialViewport,
+  onViewportChange,
+  children,
+}: MapCanvasProps): ReactElement {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { viewport, viewportRef, containerOrigin, applyViewport, fitToMaps, zoomByFactor, zoomToOne, panBy } =
+    useCanvasViewport({
+      containerRef,
+      maps,
+      zones,
+      focus,
+      onFocusApplied,
+      initialViewport,
+      onViewportChange,
+      onVisibleRectChange,
+    })
+  // Drives `will-change` on the world element for the duration of a gesture that repaints
+  // the world every frame — a pan, a map drag, a zone drag — and for no longer. See the comment
+  // on `.map-canvas[data-panning]`. Two renders per gesture, not one per frame.
+  //
+  // The map drag needs saying explicitly: it `stopPropagation()`s so the canvas underneath does
+  // not also start panning, which means the container's own pointerdown never runs and the
+  // promotion would otherwise be off during the one gesture that repaints the most.
+  const [panning, setPanning] = useState(false)
+  // A gesture that refused to commit, saying why. Nonced rather than compared by text, so the
+  // same rejection twice restarts the timer instead of expiring on the first one's clock.
+  const [notice, setNotice] = useState<{ nonce: number; text: string } | null>(null)
+  const nextNotice = useRef(0)
+  // Once per change, not once per pan frame: this component re-renders on every pointermove
+  // of a pan, and the scan is over every map in the project.
+  const selectedMap = useMemo(
+    () => maps.find((map) => map.id === selectedMapId) ?? null,
+    [maps, selectedMapId],
+  )
+
+  // The zone whose resize grips are on screen, with the map they are expressed on. Memoized
+  // for the reason `selectedMap` is — this runs on every frame of a pan — and carrying the
+  // map because every grip coordinate is map-local and needs it to reach the screen. The
+  // zone is taken from `zones`, so a drag preview moves the grips with the shape.
+  const selectedZone = useMemo(() => {
+    if (selection.kind !== 'zone') return null
+    const zone = zones.find((candidate) => candidate.id === selection.id)
+    if (zone === undefined) return null
+    const map = maps.find((candidate) => candidate.id === zone.mapId)
+    return map === undefined ? null : { zone, map }
+  }, [selection, zones, maps])
+
+  function showNotice(text: string): void {
+    nextNotice.current += 1
+    setNotice({ nonce: nextNotice.current, text })
+  }
+
+  useEffect(() => {
+    if (notice === null) return
+    const timer = setTimeout(() => setNotice(null), NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [notice])
+
+  const pan: PanGestureApi = usePanGesture({ viewportRef, applyViewport, setPanning })
+  const zoneTool: ZoneToolApi = useZoneTool({
+    maps,
+    zones,
+    selectedZone,
+    viewportRef,
+    setPanning,
+    onZoneDrag,
+    showNotice,
+  })
+  const mapDrag: MapDragApi = useMapDrag({ tool, viewportRef, containerOrigin, setPanning, onMapDrag })
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    if (event.button !== 0) return
+    if (isCanvasChrome(event.target)) return
+    // A press arriving while the canvas already owns a pointer is ignored rather than
+    // replacing the gesture in flight; `beginDrag` guards each ref, this guards the pair.
+    if (pan.ref.current !== null || zoneTool.ref.current !== null) return
+    const anchor = anchorOf(event, containerOrigin.current)
+    // The zone tool claims a press that landed on a map; one on bare canvas falls through to
+    // a pan, so the canvas is still navigable without switching tools.
+    if (tool.kind === 'draw-zone' && zoneTool.begin(event, anchor)) return
+    pan.begin(event, anchor)
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    const anchor = anchorOf(event, containerOrigin.current)
+    if (zoneTool.ref.current !== null) {
+      zoneTool.move(event, anchor)
       return
     }
-    if (selection.kind === 'zone') {
-      const target = zones.find((candidate) => candidate.id === selection.id)
-      if (target === undefined) return
-      dispatch({
-        kind: 'zone/reshaped',
-        zoneId: target.id,
-        polygon: translatePolygon(target.polygon, { x: dx, y: dy }),
-      })
+    pan.move(event, anchor)
+  }
+
+  function onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void {
+    // `pointerup` carries the button that was *released*. Without this gate, releasing the
+    // right button during a held left-press would run the click path — a mouse reports one
+    // pointerId for every button, so the id guard cannot tell them apart.
+    if (event.button !== 0) return
+    if (zoneTool.ref.current !== null) {
+      zoneTool.end(event)
+      return
     }
+    const end = pan.end(event)
+    if (end === null || end.moved) return
+
+    // The current viewport, not the one the press started against: a wheel notch between
+    // pointerdown and pointerup would otherwise place the pin at the pre-zoom world point,
+    // hundreds of map pixels from the cursor at 8×.
+    onCanvasClick(anchorOf(event, containerOrigin.current), viewportRef.current)
   }
 
   /**
-   * The keyboard's half of resizing: one axis per press, through the same grips and the same
-   * floor the pointer drags through, so a stretch nobody can do with a mouse cannot be done
-   * with the arrows either.
+   * A cancel is the platform saying the gesture did not happen — an OS takeover, a touch
+   * promoted to a browser gesture, a pen leaving range. Neither gesture dispatches anything on
+   * cancel: every preview is dropped and the document stays as it was.
    */
-  function resizeSelectedZone(direction: Point, step: number): void {
-    if (selectedZone === null) return
-    const { zone: target, map } = selectedZone
-    dispatch({
-      kind: 'zone/reshaped',
-      zoneId: target.id,
-      polygon: resizePolygon(
-        target.polygon,
-        direction.x === 0 ? 's' : 'e',
-        { x: direction.x * step, y: direction.y * step },
-        minZoneSizeIn(map),
-      ),
-    })
+  function onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
+    pan.cancel(event)
+    zoneTool.cancel(event)
+  }
+
+  /** Everything a click needs to resolve, so `handleCanvasClick` can live at module scope. */
+  function onCanvasClick(anchor: Point, at: Viewport): void {
+    handleCanvasClick(anchor, at, { maps, zones, tool, armedCaptureId, onDialoguePlaced, showNotice })
   }
 
   /**
@@ -942,60 +591,21 @@ export function MapCanvas({
    * this container, so a text field anywhere else in the app — `DialoguePanel`'s line, a
    * sidebar rename input — is never a descendant and never sees it. `isTextFieldFocused` is
    * kept as a second guard anyway, for a text field a future canvas overlay adds inside this
-   * subtree, and because every new shortcut this issue adds must honour it uniformly.
+   * subtree, and because every new shortcut this issue adds must honour it uniformly. The body
+   * lives at module scope (`handleCanvasKeyDown`) for the same reason `handleCanvasClick` does.
    */
   function onCanvasKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    if (isTextFieldFocused()) return
-
-    switch (event.key) {
-      case 'Escape':
-        clearSelection()
-        return
-
-      case '+':
-      case '=':
-        event.preventDefault()
-        zoomByFactor(SCALE_STEP)
-        return
-
-      case '-':
-        event.preventDefault()
-        zoomByFactor(1 / SCALE_STEP)
-        return
-
-      case '0':
-        event.preventDefault()
-        zoomToOne()
-        return
-
-      case 'f':
-      case 'F':
-        event.preventDefault()
-        fitToMaps()
-        return
-
-      case 'ArrowUp':
-      case 'ArrowDown':
-      case 'ArrowLeft':
-      case 'ArrowRight': {
-        event.preventDefault()
-        const direction = arrowDelta(event.key)
-        // Ctrl is what turns a nudge into a stretch, and only a zone has a size to stretch.
-        // The east and south edges are the ones that move, so the shape follows the arrow:
-        // right and down grow it, left and up shrink it.
-        if (event.ctrlKey && selection.kind === 'zone') {
-          resizeSelectedZone(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP)
-        } else if (selection.kind === 'dialogue' || selection.kind === 'zone') {
-          nudgeSelection(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP)
-        } else {
-          panBy(direction, event.shiftKey ? PAN_STEP * PAN_STEP_FAST : PAN_STEP)
-        }
-        return
-      }
-
-      default:
-        return
-    }
+    handleCanvasKeyDown(event, {
+      selection,
+      dialogues,
+      zones,
+      selectedZone,
+      viewport: viewportRef.current,
+      zoomByFactor,
+      zoomToOne,
+      fitToMaps,
+      panBy,
+    })
   }
 
   return (
@@ -1026,17 +636,17 @@ export function MapCanvas({
             selected={map.id === selectedMapId}
             // Attached only under move-map, so pressing a map is inert under every other
             // tool and the press falls through to the canvas as a pan.
-            onPointerDown={tool.kind === 'move-map' ? onMapPointerDown : null}
-            onPointerMove={onMapPointerMove}
-            onPointerUp={onMapPointerUp}
-            onPointerCancel={onMapPointerCancel}
+            onPointerDown={tool.kind === 'move-map' ? mapDrag.onPointerDown : null}
+            onPointerMove={mapDrag.onPointerMove}
+            onPointerUp={mapDrag.onPointerUp}
+            onPointerCancel={mapDrag.onPointerCancel}
             // Screen pixels per map pixel. A boolean rather than the number, so `MapImage`'s
             // memo breaks on the 1:1 crossing rather than on every frame of a zoom.
             crisp={viewport.scale * map.scale >= 1}
           />
         ))}
         {children}
-        <ZoneDraft draft={draft} maps={maps} />
+        <ZoneDraft draft={zoneTool.draft} maps={maps} />
         {/* Only under the zone tool, and only for the selected zone: grips that were always
             on screen would advertise a gesture every other tool refuses. */}
         {tool.kind === 'draw-zone' && selectedZone !== null && (
@@ -1129,8 +739,8 @@ function ZoneDraft({
  * follows, and the reason neither lives in the memo'd `ZoneLayer`.
  *
  * They take the pointer only to carry a resize cursor: which grip a press actually claims is
- * decided geometrically in `handleAtCanvasPoint`, the way every other canvas hit test is. A
- * press here still bubbles to the canvas, which owns the gesture.
+ * decided geometrically in `handleAtCanvasPoint` (see `use-zone-tool.ts`), the way every other
+ * canvas hit test is. A press here still bubbles to the canvas, which owns the gesture.
  */
 function ZoneHandles({ zone, map }: { zone: Zone; map: GameMap }): ReactElement {
   return (
@@ -1145,38 +755,6 @@ function ZoneHandles({ zone, map }: { zone: Zone; map: GameMap }): ReactElement 
       ))}
     </div>
   )
-}
-
-/**
- * Container-relative coordinates, which is the space every viewport transform expects.
- *
- * Takes the container's client origin rather than measuring it: this runs on every wheel
- * event and on every pointermove of a drag, and a `getBoundingClientRect()` there forces a
- * layout flush per frame. Structural in its event, so a wheel event and a React pointer event
- * both satisfy it.
- */
-function anchorOf(event: { clientX: number; clientY: number }, origin: Point): Point {
-  return { x: event.clientX - origin.x, y: event.clientY - origin.y }
-}
-
-/**
- * The rectangle the one-shot `focus` intent fits the viewport to — a map's own footprint, or
- * the zone's, resolved through the map it is drawn on. `null` for a target that named a map or
- * zone since deleted, which the caller treats as "nothing to jump to" rather than an error.
- */
-function focusRect(
-  focus: FocusTarget,
-  maps: readonly GameMap[],
-  zones: readonly Zone[],
-): Rect | null {
-  if (focus.kind === 'map') {
-    const map = maps.find((candidate) => candidate.id === focus.id)
-    return map === undefined ? null : mapCanvasRect(map)
-  }
-  const zone = zones.find((candidate) => candidate.id === focus.id)
-  if (zone === undefined) return null
-  const map = maps.find((candidate) => candidate.id === zone.mapId)
-  return map === undefined ? null : zoneCanvasRect(map, zone)
 }
 
 /** A unit vector for the arrow key pressed, or the zero vector for anything else. */
@@ -1195,6 +773,235 @@ function arrowDelta(key: string): Point {
   }
 }
 
+/** Exhaustive over `CanvasTool`. `draw-zone` handles its own pointer gestures in `useZoneTool`. */
+function handleCanvasClick(
+  anchor: Point,
+  at: Viewport,
+  {
+    maps,
+    zones,
+    tool,
+    armedCaptureId,
+    onDialoguePlaced,
+    showNotice,
+  }: {
+    maps: readonly GameMap[]
+    zones: readonly Zone[]
+    tool: CanvasTool
+    armedCaptureId: PendingCaptureId | null
+    onDialoguePlaced: (dialogueId: DialogueId) => void
+    showNotice: (text: string) => void
+  },
+): void {
+  switch (tool.kind) {
+    case 'move-map':
+      // A click on bare canvas is how a selection is dismissed.
+      clearSelection()
+      return
+
+    // Pins stop propagation, so a click reaching here missed every pin: what is left under
+    // the cursor is a zone, the map underneath it, or bare canvas. A map hit is what makes
+    // `MapScaleControl` reachable without switching to `move-map`.
+    case 'inspect': {
+      const canvasPoint = screenToWorld(at, anchor)
+      const hitZone = zoneAtCanvasPoint(maps, zones, canvasPoint)
+      if (hitZone !== null) {
+        selectZone(hitZone.id)
+      } else {
+        const hitMap = mapAtCanvasPoint(maps, canvasPoint)
+        if (hitMap === null) clearSelection()
+        else selectMap(hitMap.id)
+      }
+      return
+    }
+
+    case 'place-dialogue': {
+      const canvasPoint = screenToWorld(at, anchor)
+      const map = mapAtCanvasPoint(maps, canvasPoint)
+      // A Dialogue requires a real mapId, so a click on bare canvas places nothing rather
+      // than inventing an association — said here rather than left silent, since the draft
+      // rectangle case a few lines up already sets the precedent for a rejected gesture. A
+      // capture armed for placement is not lost on a miss either: it stays armed for the
+      // next click, exactly like this notice already lets a blank placement be retried.
+      if (map === null) {
+        showNotice('No map there — place a dialogue on top of a map.')
+        return
+      }
+
+      // Arming a capture from `PendingCaptureList` turns this same click into a placement
+      // instead of a blank dialogue — no second tool, no second hit-test. Everything above
+      // this line already resolved the map and the point either way.
+      if (armedCaptureId !== null) {
+        const dialogueId = newDialogueId()
+        dispatch({
+          kind: 'pending-capture/placed',
+          captureId: armedCaptureId,
+          dialogueId,
+          mapId: map.id,
+          position: canvasToMapLocal(map, canvasPoint),
+        })
+        selectDialogue(dialogueId)
+        onDialoguePlaced(dialogueId)
+        return
+      }
+
+      const dialogue: Dialogue = {
+        id: newDialogueId(),
+        mapId: map.id,
+        npcName: '',
+        position: canvasToMapLocal(map, canvasPoint),
+        text: '',
+        media: [],
+        spokenAt: new Date().toISOString(),
+        relevance: [],
+      }
+      dispatch({ kind: 'dialogue/added', dialogue })
+      selectDialogue(dialogue.id)
+      onDialoguePlaced(dialogue.id)
+      return
+    }
+
+    case 'draw-zone':
+      return
+
+    default:
+      return assertNever(tool)
+  }
+}
+
+/** Only a dialogue or a zone has a map-local position — a selected map is not nudged. */
+function nudgeSelection(
+  direction: Point,
+  step: number,
+  selection: Selection,
+  dialogues: readonly Dialogue[],
+  zones: readonly Zone[],
+): void {
+  const dx = direction.x * step
+  const dy = direction.y * step
+  if (selection.kind === 'dialogue') {
+    const dialogue = dialogues.find((candidate) => candidate.id === selection.id)
+    if (dialogue === undefined) return
+    dispatch({
+      kind: 'dialogue/moved',
+      dialogueId: dialogue.id,
+      position: { x: dialogue.position.x + dx, y: dialogue.position.y + dy },
+    })
+    return
+  }
+  if (selection.kind === 'zone') {
+    const target = zones.find((candidate) => candidate.id === selection.id)
+    if (target === undefined) return
+    dispatch({
+      kind: 'zone/reshaped',
+      zoneId: target.id,
+      polygon: translatePolygon(target.polygon, { x: dx, y: dy }),
+    })
+  }
+}
+
+/**
+ * The keyboard's half of resizing: one axis per press, through the same grips and the same
+ * floor the pointer drags through, so a stretch nobody can do with a mouse cannot be done
+ * with the arrows either.
+ */
+function resizeSelectedZone(
+  direction: Point,
+  step: number,
+  selectedZone: { zone: Zone; map: GameMap } | null,
+  viewport: Viewport,
+): void {
+  if (selectedZone === null) return
+  const { zone: target, map } = selectedZone
+  dispatch({
+    kind: 'zone/reshaped',
+    zoneId: target.id,
+    polygon: resizePolygon(
+      target.polygon,
+      direction.x === 0 ? 's' : 'e',
+      { x: direction.x * step, y: direction.y * step },
+      minZoneSizeIn(viewport, map),
+    ),
+  })
+}
+
+/** The body of `onCanvasKeyDown`, at module scope for the same reason `handleCanvasClick` is. */
+function handleCanvasKeyDown(
+  event: ReactKeyboardEvent<HTMLDivElement>,
+  {
+    selection,
+    dialogues,
+    zones,
+    selectedZone,
+    viewport,
+    zoomByFactor,
+    zoomToOne,
+    fitToMaps,
+    panBy,
+  }: {
+    selection: Selection
+    dialogues: readonly Dialogue[]
+    zones: readonly Zone[]
+    selectedZone: { zone: Zone; map: GameMap } | null
+    viewport: Viewport
+    zoomByFactor: (factor: number) => void
+    zoomToOne: () => void
+    fitToMaps: () => void
+    panBy: (direction: Point, step: number) => void
+  },
+): void {
+  if (isTextFieldFocused()) return
+
+  switch (event.key) {
+    case 'Escape':
+      clearSelection()
+      return
+
+    case '+':
+    case '=':
+      event.preventDefault()
+      zoomByFactor(SCALE_STEP)
+      return
+
+    case '-':
+      event.preventDefault()
+      zoomByFactor(1 / SCALE_STEP)
+      return
+
+    case '0':
+      event.preventDefault()
+      zoomToOne()
+      return
+
+    case 'f':
+    case 'F':
+      event.preventDefault()
+      fitToMaps()
+      return
+
+    case 'ArrowUp':
+    case 'ArrowDown':
+    case 'ArrowLeft':
+    case 'ArrowRight': {
+      event.preventDefault()
+      const direction = arrowDelta(event.key)
+      // Ctrl is what turns a nudge into a stretch, and only a zone has a size to stretch.
+      // The east and south edges are the ones that move, so the shape follows the arrow:
+      // right and down grow it, left and up shrink it.
+      if (event.ctrlKey && selection.kind === 'zone') {
+        resizeSelectedZone(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP, selectedZone, viewport)
+      } else if (selection.kind === 'dialogue' || selection.kind === 'zone') {
+        nudgeSelection(direction, event.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP, selection, dialogues, zones)
+      } else {
+        panBy(direction, event.shiftKey ? PAN_STEP * PAN_STEP_FAST : PAN_STEP)
+      }
+      return
+    }
+
+    default:
+      return
+  }
+}
 
 /**
  * `--map-zoom` is written here, once per frame, so that pins can counter-scale in CSS
@@ -1259,4 +1066,3 @@ function MapScaleControl({ map }: { map: GameMap }): ReactElement {
     </div>
   )
 }
-
