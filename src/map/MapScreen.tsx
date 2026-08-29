@@ -327,7 +327,7 @@ export function MapScreen({
           <ToolPicker tool={tool} onChange={setTool} />
           <button
             type="button"
-            className="quest-filter"
+            className="quest-filter button"
             aria-pressed={questFilter}
             disabled={questLinked.size === 0}
             title={
@@ -344,7 +344,7 @@ export function MapScreen({
               touching which of them are dimmed. */}
           <button
             type="button"
-            className="trail-toggle"
+            className="trail-toggle button"
             aria-pressed={trail}
             disabled={project.dialogues.length < 2}
             title={
@@ -542,7 +542,7 @@ function ToolPicker({
           }}
           type="button"
           role="radio"
-          className="tool-picker__button"
+          className="tool-picker__button segmented-button"
           aria-checked={entry.tool.kind === tool.kind}
           tabIndex={entry.tool.kind === tool.kind ? 0 : -1}
           title={`${entry.hint} (${entry.key.toUpperCase()})`}

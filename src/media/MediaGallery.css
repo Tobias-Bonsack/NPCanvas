@@ -15,11 +15,7 @@
 /* The thumbnail strip is the only pointer path to a frame now (#98 removed the Previous/Next
    pair the strip and the arrow keys had made redundant); this is only ever the status of where
    paging — by either of those — landed. */
-.media-gallery__count {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* The one thing in here that scrolls, and it scrolls *inside itself* — twelve frames of one
    line must not widen the column. */
@@ -30,27 +26,7 @@
   padding-bottom: var(--space-1);
 }
 
-.media-gallery__thumb {
-  flex: none;
-  display: block;
-  width: 4rem;
-  padding: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  cursor: pointer;
-}
-
-.media-gallery__thumb:hover {
-  background: var(--surface-3);
-}
-
-/* The frame being shown, marked on the strip rather than only in the counter — the strip is
-   how a reader jumps, so it has to say where they are. */
-.media-gallery__thumb[aria-current='true'] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
+/* `.strip-thumb` (index.css) supplies the rest. */
 
 .media-gallery__thumb-media {
   display: block;

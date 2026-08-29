@@ -17,13 +17,7 @@
   width: 100%;
 }
 
-.media-view__text {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .media-view__notice {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }

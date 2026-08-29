@@ -169,9 +169,9 @@ export function SearchPalette({
         />
 
         {query.trim() === '' ? (
-          <p className="search-palette__empty">Start typing to search the project.</p>
+          <p className="search-palette__empty hint-text">Start typing to search the project.</p>
         ) : results.length === 0 ? (
-          <p className="search-palette__empty">Nothing matches that.</p>
+          <p className="search-palette__empty hint-text">Nothing matches that.</p>
         ) : (
           <ul id="search-palette-results" className="search-palette__results" role="listbox">
             {results.map((result, index) => (
@@ -186,7 +186,7 @@ export function SearchPalette({
                   onPointerEnter={() => setActiveIndex(index)}
                   onClick={() => pick(result)}
                 >
-                  <span className="search-palette__kind">{KIND_LABEL[result.kind]}</span>
+                  <span className="search-palette__kind micro-label">{KIND_LABEL[result.kind]}</span>
                   <ResultLabel result={result} />
                 </button>
               </li>
@@ -195,7 +195,7 @@ export function SearchPalette({
         )}
 
         {outcome.hiddenCount > 0 && (
-          <p className="search-palette__more">…and {outcome.hiddenCount} more. Narrow the search.</p>
+          <p className="search-palette__more hint-text">…and {outcome.hiddenCount} more. Narrow the search.</p>
         )}
       </div>
     </div>
@@ -208,7 +208,7 @@ function ResultLabel({ result }: { result: SearchResult }): ReactElement {
       return (
         <span className="search-palette__label">
           <span className="search-palette__primary">{npcNameOf(result.dialogue.npcName)}</span>
-          <span className="search-palette__secondary">
+          <span className="search-palette__secondary hint-text">
             {dialogueSnippet(result.dialogue)} · {formatSpokenAt(result.dialogue.spokenAt)}
           </span>
         </span>
@@ -217,7 +217,7 @@ function ResultLabel({ result }: { result: SearchResult }): ReactElement {
       return (
         <span className="search-palette__label">
           <span className="search-palette__primary">{npcLabel(result.key)}</span>
-          <span className="search-palette__secondary">
+          <span className="search-palette__secondary hint-text">
             {result.lineCount} {result.lineCount === 1 ? 'line' : 'lines'}
           </span>
         </span>
@@ -226,7 +226,7 @@ function ResultLabel({ result }: { result: SearchResult }): ReactElement {
       return (
         <span className="search-palette__label">
           <span className="search-palette__primary">{questLabel(result.quest)}</span>
-          <span className="search-palette__secondary">
+          <span className="search-palette__secondary hint-text">
             {result.quest.status === 'done' ? 'Done' : 'Open'}
           </span>
         </span>

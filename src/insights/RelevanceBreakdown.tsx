@@ -64,7 +64,7 @@ export function RelevanceBreakdown({
   }
 
   return (
-    <section className="insights__panel" aria-label="Relevance breakdown">
+    <section className="insights__panel card" aria-label="Relevance breakdown">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Relevance</h2>
         <Disclosure>
@@ -137,9 +137,9 @@ function BreakdownChart({
 
   return (
     <figure className="insights__chart">
-      <figcaption className="insights__chart-title">{title}</figcaption>
+      <figcaption className="insights__chart-title micro-label">{title}</figcaption>
       {rows.length === 0 ? (
-        <p className="insights__empty">No dialogues to break down.</p>
+        <p className="insights__empty hint-text">No dialogues to break down.</p>
       ) : (
         <svg
           ref={svgRef}

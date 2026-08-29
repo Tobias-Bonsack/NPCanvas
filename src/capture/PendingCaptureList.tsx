@@ -89,7 +89,7 @@ export function PendingCaptureList({
   return (
     <div className="pending-capture-list" onKeyDown={onKeyDown}>
       {current === null ? (
-        <p className="pending-capture-list__empty">
+        <p className="pending-capture-list__empty hint-text">
           Nothing waiting. Press New capture or Extend last to record a conversation.
         </p>
       ) : (
@@ -155,7 +155,7 @@ function CaptureCard({
 
   return (
     <div
-      className="pending-capture-list__row"
+      className="pending-capture-list__row card"
       data-armed={armed ? 'true' : undefined}
       data-recording={recording ? 'true' : undefined}
     >
@@ -169,10 +169,10 @@ function CaptureCard({
       <p className="pending-capture-list__line">
         {capture.text.trim() === '' ? 'No line yet' : capture.text}
       </p>
-      <p className="pending-capture-list__spoken-at">{toLocalDateTimeValue(capture.spokenAt)}</p>
+      <p className="pending-capture-list__spoken-at hint-text">{toLocalDateTimeValue(capture.spokenAt)}</p>
 
       {paged && (
-        <p className="pending-capture-list__count" role="status">
+        <p className="pending-capture-list__count hint-text" role="status">
           Capture {index + 1} of {captures.length}
         </p>
       )}
@@ -183,7 +183,7 @@ function CaptureCard({
             <button
               key={candidate.id}
               type="button"
-              className="pending-capture-list__thumb"
+              className="pending-capture-list__thumb strip-thumb"
               aria-current={candidate.id === capture.id ? 'true' : undefined}
               aria-label={`Capture ${position + 1}`}
               onClick={() => onSelect(candidate.id)}

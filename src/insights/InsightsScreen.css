@@ -26,18 +26,16 @@
   font-size: var(--text-2xl);
 }
 
+/* `.hint-text` (index.css) supplies margin/colour; the size is a step up. */
 .insights__count {
-  margin: 0;
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
+/* `.hint-text` (index.css) supplies margin/colour; the size is a step up. */
 .insights__empty {
-  margin: 0;
   max-width: 34rem;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .insights__empty a {
@@ -51,14 +49,12 @@
 
 /* ---- filter bar ---- */
 
+/* The `.card` base (index.css) supplies the border/radius/surface; this is only the layout. */
 .filter-bar {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
-  background: var(--surface-1);
 }
 
 .filter-bar__row {
@@ -75,39 +71,34 @@
   border-top: 1px solid var(--border);
 }
 
+/* `.text-input` (index.css) supplies the rest; the background sits a level darker since this
+   field lives inside the already-raised `.filter-bar` card. */
 .filter-bar__search {
   flex: 1;
   min-width: 12rem;
-  font: inherit;
-  font-size: var(--text-sm);
-  color: var(--text);
   background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-2);
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment. */
 .filter-bar__date {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
+/* `.text-input` (index.css) supplies the rest; the size is a step down, the background sits a
+   level darker for the reason `.filter-bar__search`'s does, and the date inputs reset the
+   transform/tracking the wrapping `.micro-label` puts on `.filter-bar__date`. */
 .filter-bar__date input,
 .filter-bar__select {
-  font: inherit;
   font-size: var(--text-xs);
+  background: var(--surface-0);
+  padding: var(--space-1) var(--space-2);
+}
+
+.filter-bar__date input {
   letter-spacing: 0;
   text-transform: none;
-  color: var(--text);
-  background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
 }
 
 .filter-bar__select:disabled {
@@ -128,8 +119,9 @@
   flex-wrap: wrap;
 }
 
-/* Unpressed chips are outlines of their own hue, pressed ones are filled: the state has to be
-   readable without comparing two chips, since only one may be on screen at a time. */
+/* `.hue-chip` (index.css) supplies the padding and pill radius. Unpressed chips are outlines of
+   their own hue, pressed ones are filled: the state has to be readable without comparing two
+   chips, since only one may be on screen at a time. */
 .filter-bar__tag,
 .filter-bar__kind {
   font: inherit;
@@ -137,8 +129,6 @@
   color: var(--text);
   background: none;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-round);
-  padding: 0 var(--space-2);
   cursor: pointer;
 }
 
@@ -159,6 +149,8 @@
   font-weight: 600;
 }
 
+/* `.hue-chip` (index.css) supplies the padding, pill radius, and the zone/quest/relevance fill
+   recipe for whichever `--*-hue` custom property `style` publishes. */
 .filter-bar__active {
   display: inline-flex;
   align-items: center;
@@ -168,14 +160,7 @@
   color: var(--text);
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-round);
-  padding: 0 var(--space-2);
   cursor: pointer;
-}
-
-.filter-bar__active[style*='--zone-hue'] {
-  border-color: hsl(var(--zone-hue) var(--hue-chip-border));
-  background: hsl(var(--zone-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }
 
 .filter-bar__remove {
@@ -189,14 +174,12 @@
 
 /* ---- panels and charts ---- */
 
+/* The `.card` base (index.css) supplies the border/radius/surface; this is only the layout. */
 .insights__panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
-  background: var(--surface-1);
 }
 
 .insights__panel-head {
@@ -211,24 +194,20 @@
   font-size: var(--text-lg);
 }
 
+/* `.hint-text` (index.css) supplies margin/size/colour. */
 .insights__panel-note {
-  margin: 0;
   flex: 1;
   min-width: 14rem;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
+/* `.hint-text` (index.css) supplies margin/size/colour. */
 .insights__legend {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-  margin: 0;
   padding: 0;
   list-style: none;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
 .insights__legend-item {
@@ -257,13 +236,6 @@
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
-}
-
-.insights__chart-title {
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 /* height:auto with a viewBox keeps the aspect ratio, so the rows never letterbox. */
@@ -325,35 +297,11 @@
   margin-left: auto;
 }
 
+/* The `.segmented-button` base (index.css) supplies the shape and states; only the size differs
+   here. */
 .grain-picker__button {
-  font: inherit;
   font-size: var(--text-2xs);
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
   padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.grain-picker__button:first-child {
-  border-radius: var(--radius-2) 0 0 var(--radius-2);
-}
-
-.grain-picker__button:last-child {
-  border-radius: 0 var(--radius-2) var(--radius-2) 0;
-}
-
-.grain-picker__button[aria-checked='true'] {
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.grain-picker__button:focus-visible {
-  position: relative;
-  z-index: 1;
-  outline: var(--focus-ring);
-  outline-offset: -2px;
 }
 
 .timeline__svg {
@@ -405,15 +353,11 @@
   gap: var(--space-2);
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment. */
 .timeline__detail-title {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0;
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 /* ---- one dialogue row ---- */
@@ -509,10 +453,9 @@
   white-space: nowrap;
 }
 
+/* `.hint-text` (index.css) supplies the size/colour. */
 .npc-dossier__count {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
 /* Composition, not magnitude: every NPC's bar is full width, so the shapes compare. */
@@ -656,10 +599,9 @@
   white-space: pre-wrap;
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .npc-line__empty {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 /* Pushed right, so the line's own content starts at a predictable left edge. */

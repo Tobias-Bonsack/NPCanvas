@@ -94,7 +94,7 @@ export function DialogueForm({
         </label>
         <input
           id={`${fieldId}-spoken-at`}
-          className="dialogue-form__input"
+          className="dialogue-form__input text-input"
           type="datetime-local"
           value={toLocalDateTimeValue(dialogue.spokenAt)}
           onChange={(event) => {
@@ -137,7 +137,7 @@ export function DialogueForm({
         </label>
         <textarea
           id={`${fieldId}-text`}
-          className="dialogue-form__textarea"
+          className="dialogue-form__textarea text-input"
           value={textDraft.value}
           rows={8}
           placeholder="The line, as you heard it"

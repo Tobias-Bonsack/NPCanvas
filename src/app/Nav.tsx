@@ -84,7 +84,7 @@ function HistoryControls({ history }: { history: History }): ReactElement {
     <div className="nav__history">
       <button
         type="button"
-        className="nav__history-button"
+        className="nav__history-button button"
         disabled={history.undo.length === 0}
         onClick={() => dispatch({ kind: 'history/undo' })}
         aria-label="Undo"
@@ -94,7 +94,7 @@ function HistoryControls({ history }: { history: History }): ReactElement {
       </button>
       <button
         type="button"
-        className="nav__history-button"
+        className="nav__history-button button"
         disabled={history.redo.length === 0}
         onClick={() => dispatch({ kind: 'history/redo' })}
         aria-label="Redo"
@@ -126,7 +126,7 @@ function ProjectSwitch({ directoryName }: { directoryName: string }): ReactEleme
   return (
     <button
       type="button"
-      className="nav__project"
+      className="nav__project button"
       onClick={() => void onSwitch()}
       title={`Open a different project folder — ${directoryName} is connected`}
     >
@@ -149,21 +149,21 @@ function SaveIndicator({ save, onReview }: { save: SaveState; onReview: () => vo
   switch (save.kind) {
     case 'saved':
       return (
-        <p className="nav__save" data-state="saved">
+        <p className="nav__save hint-text" data-state="saved">
           Saved {TIME_FORMAT.format(new Date(save.at))}
         </p>
       )
 
     case 'pending':
       return (
-        <p className="nav__save" data-state="pending">
+        <p className="nav__save hint-text" data-state="pending">
           Unsaved changes
         </p>
       )
 
     case 'saving':
       return (
-        <p className="nav__save" data-state="saving">
+        <p className="nav__save hint-text" data-state="saving">
           Saving…
         </p>
       )
@@ -172,8 +172,8 @@ function SaveIndicator({ save, onReview }: { save: SaveState; onReview: () => vo
       // The reason and the action live in the banner, which is where they fit; this stays the
       // persistent marker, and clicking it brings the banner back after a dismissal.
       return (
-        <p className="nav__save" data-state="failed">
-          <button type="button" className="nav__save-review" onClick={onReview}>
+        <p className="nav__save hint-text" data-state="failed">
+          <button type="button" className="nav__save-review button" onClick={onReview}>
             Save failed
           </button>
         </p>

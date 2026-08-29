@@ -36,12 +36,12 @@ export function QuestForm({ quest, onDone }: { quest: Quest; onDone: () => void 
       }}
     >
       <div className="quest-form__field">
-        <label className="quest-form__label" htmlFor={`${fieldId}-name`}>
+        <label className="quest-form__label micro-label" htmlFor={`${fieldId}-name`}>
           Quest
         </label>
         <input
           id={`${fieldId}-name`}
-          className="quest-form__input"
+          className="quest-form__input text-input"
           value={nameDraft.value}
           autoFocus
           placeholder="What are you chasing?"
@@ -54,12 +54,12 @@ export function QuestForm({ quest, onDone }: { quest: Quest; onDone: () => void 
       </div>
 
       <div className="quest-form__field">
-        <label className="quest-form__label" htmlFor={`${fieldId}-note`}>
+        <label className="quest-form__label micro-label" htmlFor={`${fieldId}-note`}>
           Note
         </label>
         <textarea
           id={`${fieldId}-note`}
-          className="quest-form__textarea"
+          className="quest-form__textarea text-input"
           value={noteDraft.value}
           rows={3}
           placeholder="What you know so far, and what you still need"

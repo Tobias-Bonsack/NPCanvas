@@ -1,15 +1,12 @@
-/* Its own section on the settings screen (#91) — the same card recipe `insights__panel` uses for
-   the relevance tag list above it, now that this is a standalone section rather than a
-   rule-separated subsection of the dialogue panel column it used to sit in. */
+/* Its own section on the settings screen (#91) — the same `.card` (index.css) recipe
+   `insights__panel` uses for the relevance tag list above it, now that this is a standalone
+   section rather than a rule-separated subsection of the dialogue panel column it used to sit in. */
 .capture-bar {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
-  background: var(--surface-1);
 }
 
 .capture-bar__row {
@@ -27,31 +24,19 @@
   justify-content: flex-start;
 }
 
-/* The primary action of the section, so it wears the accent the media picker wears. */
+/* The primary action of the section, so it wears the accent the media picker wears — the
+   `.button--primary` base (index.css) supplies that and the disabled state; only the size and
+   the borderless edge differ. */
 .capture-bar__connect {
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--accent-contrast);
-  background: var(--accent);
   border: none;
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
 }
 
-.capture-bar__connect:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-/* The row holds a picker plus up to four actions, so it wraps rather than compressing them. */
+/* The row holds a picker plus up to four actions, so it wraps rather than compressing them.
+   `.text-input` (index.css) supplies the rest. */
 .capture-bar__select {
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
   max-width: 12rem;
 }
@@ -66,15 +51,11 @@
   font-size: var(--text-2xs);
 }
 
+/* `.text-input` (index.css) supplies the rest. */
 .capture-bar__input {
   flex: 1;
   min-width: 6rem;
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
 }
 
@@ -123,18 +104,8 @@
   min-width: 6rem;
 }
 
-.capture-bar__hint,
-.capture-bar__note,
-.capture-bar__error {
-  margin: 0;
-  font-size: var(--text-2xs);
-}
-
-.capture-bar__hint,
-.capture-bar__note {
-  color: var(--text-muted);
-}
-
+/* `.hint-text` (index.css) supplies margin/size/colour for all three; only the error overrides
+   the colour. */
 .capture-bar__error {
   color: var(--danger);
 }

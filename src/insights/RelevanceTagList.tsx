@@ -124,7 +124,7 @@ export function RelevanceTagList({
     <section className="insights__panel relevance-tag-list" aria-label="Relevance tags">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Relevance tags</h2>
-        <p className="insights__panel-note">
+        <p className="insights__panel-note hint-text">
           The vocabulary every chip, band and chart segment draws from. Delete one and every line
           carrying it simply goes untagged — nothing else about those lines changes.
         </p>
@@ -134,7 +134,7 @@ export function RelevanceTagList({
       </header>
 
       {relevanceTags.length === 0 ? (
-        <p className="insights__empty">No relevance tags left. Add one to start classifying lines.</p>
+        <p className="insights__empty hint-text">No relevance tags left. Add one to start classifying lines.</p>
       ) : (
         <ul className="relevance-tag-list__items">
           {orderedTags.map((tag) => {
@@ -215,8 +215,6 @@ function RelevanceTagRow({
           if (trimmed !== '') dispatch({ kind: 'relevance-tag/renamed', tagId: tag.id, name: trimmed })
         }}
         close={editable.close}
-        className="relevance-tag-list__form"
-        inputClassName="relevance-tag-list__input"
       />
     )
   }
@@ -232,7 +230,6 @@ function RelevanceTagRow({
         }
         onConfirm={() => dispatch({ kind: 'relevance-tag/deleted', tagId: tag.id })}
         close={editable.close}
-        className="relevance-tag-list__confirm"
       />
     )
   }

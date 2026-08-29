@@ -50,14 +50,14 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
         <div className="error-boundary__actions">
           <button
             type="button"
-            className="error-boundary__button"
+            className="error-boundary__button button--primary"
             onClick={() => void this.chooseProjectFolder()}
           >
             Choose project folder
           </button>
           <button
             type="button"
-            className="error-boundary__button error-boundary__button--quiet"
+            className="error-boundary__button error-boundary__button--quiet button--primary"
             onClick={() => window.location.reload()}
           >
             Reload

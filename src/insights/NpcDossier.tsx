@@ -78,10 +78,10 @@ export function NpcDossier({
   const selected = profiles.find((profile) => profile.key === selectedKey) ?? profiles[0] ?? null
 
   return (
-    <section className="insights__panel" aria-label="NPC dossier">
+    <section className="insights__panel card" aria-label="NPC dossier">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Who said it</h2>
-        <p className="insights__panel-note">NPCs by line count.</p>
+        <p className="insights__panel-note hint-text">NPCs by line count.</p>
         <Disclosure>
           <p>
             Renaming one here renames every line they said — and merges them into an NPC of that
@@ -93,7 +93,7 @@ export function NpcDossier({
       <SegmentLegend tags={relevanceTags} />
 
       {profiles.length === 0 ? (
-        <p className="insights__empty">Nobody has said anything in this selection.</p>
+        <p className="insights__empty hint-text">Nobody has said anything in this selection.</p>
       ) : (
         <div className="npc-dossier">
           <svg className="npc-dossier__defs" aria-hidden="true">
@@ -110,7 +110,7 @@ export function NpcDossier({
                   onClick={() => onSelectedKeyChange(profile.key)}
                 >
                   <span className="npc-dossier__name">{profile.label}</span>
-                  <span className="npc-dossier__count">{profile.dialogues.length}</span>
+                  <span className="npc-dossier__count hint-text">{profile.dialogues.length}</span>
                   <SegmentBar
                     counts={profile.tally.counts}
                     tags={relevanceTags}
@@ -196,7 +196,7 @@ function Dossier({
       <section className="npc-dossier__section" aria-label="Zones encountered in">
         <h4 className="micro-label">Encountered in</h4>
         {profile.zones.length === 0 ? (
-          <p className="insights__empty">Never inside a zone.</p>
+          <p className="insights__empty hint-text">Never inside a zone.</p>
         ) : (
           <ul className="npc-dossier__chips">
             {profile.zones.map((zone) => (
@@ -211,7 +211,7 @@ function Dossier({
       <section className="npc-dossier__section" aria-label="Quests">
         <h4 className="micro-label">Quests</h4>
         {profile.quests.length === 0 ? (
-          <p className="insights__empty">None of their lines belong to a quest yet.</p>
+          <p className="insights__empty hint-text">None of their lines belong to a quest yet.</p>
         ) : (
           <ul className="npc-dossier__chips">
             {profile.quests.map((quest) => (
@@ -301,7 +301,7 @@ function NpcLine({
         onSelect={setCurrentMediaId}
       />
       {said === '' && dialogue.media.length === 0 && (
-        <p className="npc-line__empty">No text yet</p>
+        <p className="npc-line__empty hint-text">No text yet</p>
       )}
     </article>
   )

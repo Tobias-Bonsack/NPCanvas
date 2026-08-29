@@ -31,11 +31,7 @@
   color: var(--text);
 }
 
-.capture-recorder__watch-paused {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* What answering or discarding the held queue did, when it went wrong. */
 .capture-recorder__held-error {
@@ -52,16 +48,14 @@
   gap: var(--space-2);
 }
 
-/* Outlined rather than filled while it is off, so a filled toggle only ever means "recording". */
+/* Outlined rather than filled while it is off, so a filled toggle only ever means "recording".
+   Builds on the shared `.button` treatment (index.css) — only the border weight, sizing and
+   nowrap wrapping differ. */
 .capture-recorder__watch-toggle {
-  font: inherit;
   font-size: var(--text-xs);
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2);
+  border-color: var(--border-strong);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
   white-space: nowrap;
   transition:
     color var(--duration-fast) var(--ease-standard),
@@ -70,15 +64,10 @@
     opacity var(--duration-fast) var(--ease-standard);
 }
 
-.capture-recorder__watch-toggle:hover:not(:disabled) {
-  background: var(--surface-3);
-}
-
 .capture-recorder__watch-toggle:disabled {
   color: var(--text-muted);
   border-color: var(--border);
   opacity: 0.6;
-  cursor: default;
 }
 
 /* Filled while it runs: a loop writing into the document unattended must be impossible to

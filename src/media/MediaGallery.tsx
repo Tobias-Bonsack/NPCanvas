@@ -64,7 +64,7 @@ export function MediaGallery({
         // frame change needs to be told the count moved. The thumbnail strip below and the
         // arrow keys are the only ways to page — see MediaGallery.css for why a third
         // (Previous/Next buttons) was one too many.
-        <p className="media-gallery__count" role="status">
+        <p className="media-gallery__count hint-text" role="status">
           Picture {index + 1} of {media.length}
         </p>
       )}
@@ -75,7 +75,7 @@ export function MediaGallery({
             <button
               key={medium.id}
               type="button"
-              className="media-gallery__thumb"
+              className="media-gallery__thumb strip-thumb"
               aria-current={medium.id === current.id ? 'true' : undefined}
               aria-label={`Picture ${position + 1}`}
               onClick={() => onSelect(medium.id)}

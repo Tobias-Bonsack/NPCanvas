@@ -27,7 +27,7 @@ export function CanvasLegend({
   relevanceTags: readonly RelevanceTag[]
 }): ReactElement {
   return (
-    <div className="canvas-legend">
+    <div className="canvas-legend hint-text">
       <ul className="canvas-legend__group" aria-label="Pin content kinds">
         {DIALOGUE_CONTENT_KINDS.map((kind) => (
           <li key={kind} className="canvas-legend__item">
@@ -44,7 +44,7 @@ export function CanvasLegend({
           with the tool picker for the same band — see #95. `<ul>` inside `<details>` keeps its
           list semantics either way, open or closed. */}
       <details className="canvas-legend__details">
-        <summary className="canvas-legend__summary">Relevance colours</summary>
+        <summary className="canvas-legend__summary disclosure-summary">Relevance colours</summary>
         <ul className="canvas-legend__group" aria-label="Pin relevance colours">
           {relevanceTags.map((tag) => (
             <li key={tag.id} className="canvas-legend__item">

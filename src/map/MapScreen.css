@@ -97,13 +97,7 @@
   gap: var(--space-3);
 }
 
-.map-list__heading {
-  margin: 0;
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-}
+/* `.micro-label` (index.css) supplies the uppercase treatment. */
 
 .map-list__items {
   margin: 0;
@@ -142,25 +136,9 @@
   background: var(--surface-2);
 }
 
-.map-list__form,
-.map-list__confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-  font-size: var(--text-sm);
-}
-
-.map-list__input {
-  flex: 1;
-  min-width: 6rem;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-}
+/* The rename form and delete confirm use `EditableRow`'s default classes here (no override) —
+   `.editable-row__form`/`.editable-row__confirm`/`.editable-row__input` (EditableRow.css) were
+   byte-identical to what used to be declared here under this feature's own names. */
 
 /* ---- zone list ---- */
 
@@ -175,10 +153,9 @@
   border-top: 1px solid var(--border);
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .zone-list__empty {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .zone-list__map {
@@ -224,11 +201,10 @@
 
 /* Pushed to the right edge of the row, and given the ellipsis budget the name gives up: a
    count of two characters must never be the thing that gets truncated. */
+/* `.hint-text` (index.css) supplies the size/colour. */
 .zone-list__count {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
 /* The name is what shortens when the row is too narrow, never the count. */
@@ -266,39 +242,11 @@
   gap: 1px;
 }
 
+/* The `.segmented-button` base (index.css) supplies the shape and states; only the size differs
+   here. */
 .tool-picker__button {
-  font: inherit;
   font-size: var(--text-sm);
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard);
-}
-
-.tool-picker__button:first-child {
-  border-radius: var(--radius-2) 0 0 var(--radius-2);
-}
-
-.tool-picker__button:last-child {
-  border-radius: 0 var(--radius-2) var(--radius-2) 0;
-}
-
-.tool-picker__button[aria-checked='true'] {
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.tool-picker__button:focus-visible {
-  position: relative;
-  z-index: 1;
-  outline: var(--focus-ring);
-  outline-offset: -2px;
 }
 
 /* The one-letter shortcut, printed on the button itself so it needs no separate legend. */
@@ -324,41 +272,30 @@
 
 /* ---- canvas toggles ---- */
 
-/* One shape for every on/off control in the canvas bar; only the pressed colour differs, and it
-   is always the colour of what the toggle puts on the canvas — the toggle and its effect are
-   visibly the same subject, rather than every one of them reading as --accent. */
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is one shape for
+   every on/off control in the canvas bar, only the pressed colour differing, and it is always
+   the colour of what the toggle puts on the canvas — the toggle and its effect are visibly the
+   same subject, rather than every one of them reading as --accent. The text stays full-strength
+   rather than the base's muted-until-hover, and the fade is a touch lighter when disabled. */
 .quest-filter,
 .trail-toggle {
-  font: inherit;
   font-size: var(--text-sm);
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    opacity var(--duration-fast) var(--ease-standard);
 }
 
-/* Excludes the pressed state explicitly: `:hover:not(:disabled)` outweighs the attribute
-   selector below on specificity, so without this a toggle loses its colour the moment the
-   pointer that just pressed it is still resting on it — which is always. */
-.quest-filter:not(:disabled):not([aria-pressed='true']):hover,
-.trail-toggle:not(:disabled):not([aria-pressed='true']):hover {
-  background: var(--surface-3);
-}
-
-.quest-filter[aria-pressed='true'] {
+/* `:hover` reasserts the pressed fill against the base rule's own hover background
+   (`.button:hover:not(:disabled)`, index.css), which otherwise outranks this on specificity and
+   would revert a pressed toggle to the unpressed hover colour while the pointer rests on it. */
+.quest-filter[aria-pressed='true'],
+.quest-filter[aria-pressed='true']:hover {
   color: var(--ink-on-hue);
   background: var(--quest);
   border-color: var(--quest);
 }
 
-.trail-toggle[aria-pressed='true'] {
+.trail-toggle[aria-pressed='true'],
+.trail-toggle[aria-pressed='true']:hover {
   color: var(--ink-on-hue);
   background: var(--trail);
   border-color: var(--trail);
@@ -367,7 +304,6 @@
 .quest-filter:disabled,
 .trail-toggle:disabled {
   opacity: 0.45;
-  cursor: default;
 }
 
 /* ---- import ---- */

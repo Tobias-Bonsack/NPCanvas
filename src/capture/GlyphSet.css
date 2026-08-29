@@ -1,16 +1,8 @@
-/* An overlay for the same reason the learner is one: tiles have to be large enough to judge, and
-   the dialogue panel is a narrow column. */
 .glyph-set {
-  position: fixed;
-  inset: 0;
   z-index: 21;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  background: rgb(0 0 0 / 0.65);
 }
 
+/* `.card` (index.css) supplies the border/radius/surface. */
 .glyph-set__panel {
   display: flex;
   flex-direction: column;
@@ -18,9 +10,6 @@
   width: min(680px, 100%);
   max-height: 100%;
   padding: var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
 }
 
 .glyph-set__header {
@@ -34,12 +23,7 @@
   font-size: var(--text-md);
 }
 
-.glyph-set__hint,
-.glyph-set__empty {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* A grid rather than the learner's column: an alphabet is sixty-odd entries, and a column of them
    would be a scroll from A to Z rather than something the eye can sweep for the wrong one. The
@@ -56,24 +40,10 @@
   list-style: none;
 }
 
-.glyph-set__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-}
-
+/* `.glyph-tile-frame` (index.css) supplies the box; only the size differs. */
 .glyph-set__tile {
-  flex: none;
   width: 2.5rem;
   height: 2.5rem;
-  fill: var(--text);
-  background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
 }
 
 /* Monospace and wide enough for the multi-character tiles a Gen 1 font packs, such as `'s`. */
@@ -85,24 +55,24 @@
   overflow-wrap: anywhere;
 }
 
+/* `.hint-text` (index.css) supplies the colour; the size stays an explicit override here since
+   `.glyph-set__char`'s own size (defined after `.hint-text` in the cascade) would otherwise win
+   the tie. */
 .glyph-set__char--none {
   font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
+/* The `.button` base (index.css) supplies the rest; only the size and background differ. */
 .glyph-set__forget {
   flex: none;
-  font: inherit;
   font-size: var(--text-2xs);
-  color: var(--text-muted);
   background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
-  cursor: pointer;
 }
 
-.glyph-set__forget:hover {
+/* `:not(:disabled)` matches the base rule's own specificity, which is what lets this colour win
+   over the base's hover colour rather than being silently outranked by it. */
+.glyph-set__forget:hover:not(:disabled) {
   color: var(--danger);
   border-color: var(--danger);
 }
@@ -113,13 +83,8 @@
   gap: var(--space-2);
 }
 
+/* The `.button--primary` base (index.css) supplies the rest; only the size differs. */
 .glyph-set__button {
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
 }

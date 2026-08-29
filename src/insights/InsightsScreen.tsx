@@ -65,7 +65,7 @@ export function InsightsScreen({
     <section className="insights">
       <header className="insights__bar">
         <h1 className="insights__title">Insights</h1>
-        <p className="insights__count">
+        <p className="insights__count hint-text">
           {dialogues.length} of {project.dialogues.length}{' '}
           {project.dialogues.length === 1 ? 'dialogue' : 'dialogues'}
           {isEmptyFilter(filter) ? '' : ' match the filter'}
@@ -75,7 +75,7 @@ export function InsightsScreen({
       {project.dialogues.length === 0 ? (
         // The full FilterBar over zero dialogues is a large control surface with nothing to
         // control — see #45 — so it waits for the first dialogue along with everything else here.
-        <p className="insights__empty">
+        <p className="insights__empty hint-text">
           Nothing logged yet. Pin a dialogue on the{' '}
           <a href={formatRoute({ kind: 'canvas', dialogueId: null, focus: null })}>canvas</a> and
           it will show up here — by relevance, by where it was heard, and by who said it.

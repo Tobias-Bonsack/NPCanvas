@@ -35,11 +35,10 @@
   outline: none;
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .search-palette__empty {
-  margin: 0;
   padding: var(--space-4);
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .search-palette__results {
@@ -68,12 +67,11 @@
   background: var(--surface-3);
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment; only the tighter tracking and
+   the fixed column width differ here. */
 .search-palette__kind {
   flex: none;
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted);
   width: 4.5rem;
 }
 
@@ -90,18 +88,16 @@
   white-space: nowrap;
 }
 
+/* `.hint-text` (index.css) supplies the size/colour — the redundant `margin: 0` is harmless on
+   this `<span>`, which has no margin to reset. */
 .search-palette__secondary {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
 }
 
+/* `.hint-text` (index.css) supplies the margin/size/colour. */
 .search-palette__more {
-  margin: 0;
   padding: var(--space-2) var(--space-4);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
   border-top: 1px solid var(--border);
 }

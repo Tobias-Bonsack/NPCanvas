@@ -218,13 +218,13 @@ export function CaptureBar({
       case 'idle':
       case 'failed':
         return (
-          <button type="button" className="capture-bar__connect" onClick={() => void connect()}>
+          <button type="button" className="capture-bar__connect button--primary" onClick={() => void connect()}>
             {source.kind === 'failed' ? 'Try connecting again' : 'Connect a screen or window'}
           </button>
         )
       case 'requesting':
         return (
-          <button type="button" className="capture-bar__connect" disabled>
+          <button type="button" className="capture-bar__connect button--primary" disabled>
             Choose a source in the picker…
           </button>
         )
@@ -260,7 +260,7 @@ export function CaptureBar({
           onCommit={(name) => onRenameCommit(active, name)}
           close={editableProfile.close}
           className="capture-bar__form"
-          inputClassName="capture-bar__input"
+          inputClassName="capture-bar__input text-input"
         />
       )
     }
@@ -284,7 +284,7 @@ export function CaptureBar({
       <>
         {profiles.length > 0 && (
           <select
-            className="capture-bar__select"
+            className="capture-bar__select text-input"
             aria-label="Active capture profile"
             value={active === null ? '' : active.id}
             onChange={(event) =>
@@ -333,22 +333,22 @@ export function CaptureBar({
   }
 
   return (
-    <section className="capture-bar" aria-label="Screen capture">
+    <section className="capture-bar card" aria-label="Screen capture">
       <h3 className="micro-label">Capture source</h3>
       <div className="capture-bar__row">{connectionRow()}</div>
       <Disclosure>
-        <p className="capture-bar__hint">
+        <p className="capture-bar__hint hint-text">
           A capture connection cannot be stored the way the project folder can, so it ends with
           the page — after a reload, connect once more.
         </p>
       </Disclosure>
       {cancelled && (
-        <p className="capture-bar__note" role="status">
+        <p className="capture-bar__note hint-text" role="status">
           Cancelled. Nothing is being captured.
         </p>
       )}
       {source.kind === 'failed' && (
-        <p className="capture-bar__error" role="alert">
+        <p className="capture-bar__error hint-text" role="alert">
           {source.message}
         </p>
       )}
@@ -357,7 +357,7 @@ export function CaptureBar({
       <div className="capture-bar__row capture-bar__row--actions">{profileRow()}</div>
       {profiles.length === 0 && (
         <Disclosure>
-          <p className="capture-bar__hint">
+          <p className="capture-bar__hint hint-text">
             A profile outlines the console screen inside the captured frame and the text box
             inside that. Drawn once, every capture afterwards is a single click.
           </p>
@@ -382,14 +382,14 @@ export function CaptureBar({
           {/* Says what this is *not*, because there are now two buttons that read the same box:
               this one is the calibration check, and Capture the screen is the one that writes. */}
           <Disclosure>
-            <p className="capture-bar__hint">
+            <p className="capture-bar__hint hint-text">
               A trial read. It shows what the box says and learns whatever tiles are new, but
               writes nothing to this dialogue — Capture the screen, above, is what attaches and
               appends.
             </p>
           </Disclosure>
           {read.kind === 'failed' && (
-            <p className="capture-bar__error" role="alert">
+            <p className="capture-bar__error hint-text" role="alert">
               {read.message}
             </p>
           )}
@@ -414,7 +414,7 @@ export function CaptureBar({
         </span>
       </div>
       <Disclosure>
-        <p className="capture-bar__hint">
+        <p className="capture-bar__hint hint-text">
           One alphabet for the whole project — every profile reads with it, so a second profile
           aimed at another box on the same console starts out already able to read.
         </p>
@@ -436,13 +436,13 @@ export function CaptureBar({
           />
         ))
       ) : (
-        <p className="capture-bar__note" role="status">
+        <p className="capture-bar__note hint-text" role="status">
           No controller is connected. Chrome only reports one once a button on it has been
           pressed, so press one now if it is already plugged in.
         </p>
       )}
       <Disclosure>
-        <p className="capture-bar__hint">
+        <p className="capture-bar__hint hint-text">
           A controller button reaches the app only while this page has focus — it does not make
           the trigger global, only reachable without letting go of the controller. The New capture
           and Extend last buttons in the canvas sidebar's Captures region always work, bound or not.
@@ -450,7 +450,7 @@ export function CaptureBar({
       </Disclosure>
 
       {calibration.kind === 'failed' && (
-        <p className="capture-bar__error" role="alert">
+        <p className="capture-bar__error hint-text" role="alert">
           {calibration.message}
         </p>
       )}
@@ -508,7 +508,7 @@ function RecorderBindingRow({
       </span>
       {listening ? (
         <>
-          <span className="capture-bar__note" role="status">
+          <span className="capture-bar__note hint-text" role="status">
             Press the button to bind…
           </span>
           <button type="button" className="button" onClick={onCancelListen}>
@@ -551,7 +551,7 @@ function MismatchWarning({
   if (source.kind !== 'live' || profile === null) return null
   if (profileApplies(profile, source.frameWidth, source.frameHeight)) return null
   return (
-    <p className="capture-bar__error" role="alert">
+    <p className="capture-bar__error hint-text" role="alert">
       {profile.name} was calibrated against a {profile.frameWidth} × {profile.frameHeight} frame,
       but this source is {source.frameWidth} × {source.frameHeight}. Re-calibrate it before
       capturing.

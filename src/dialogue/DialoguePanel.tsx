@@ -218,7 +218,7 @@ export function DialoguePanel({
         </header>
         {/* The map association is not editable — a dialogue belongs to the map it was pinned
             onto, and moving it between maps would strand its map-local position. */}
-        <p className="dialogue-panel__map">on {map === null ? 'an unknown map' : map.name}</p>
+        <p className="dialogue-panel__map hint-text">on {map === null ? 'an unknown map' : map.name}</p>
 
         {/* Not editable, and not stored: where a dialogue happened is decided by where its pin
             sits, so moving either the pin or the zone changes this line with no write here. */}
@@ -432,7 +432,7 @@ function DialogueMediaSection({
             one, once the source and the profile are set up below. */}
         <button
           type="button"
-          className="dialogue-media__capture"
+          className="dialogue-media__capture button"
           disabled={blocker !== null || busy}
           title={
             blocker ??
@@ -462,7 +462,7 @@ function DialogueMediaSection({
         }}
       />
       <Disclosure>
-        <p className="dialogue-media__hint">
+        <p className="dialogue-media__hint hint-text">
           …or drop files anywhere on this panel. They are added in the order they are dropped.
         </p>
       </Disclosure>
@@ -471,28 +471,28 @@ function DialogueMediaSection({
           is missing. This is the short, actionable half — where to go fix it — now that the
           rig itself lives on the settings screen rather than right below this button. */}
       {blocker !== null && (
-        <p className="dialogue-media__hint" role="status">
+        <p className="dialogue-media__hint hint-text" role="status">
           <a href={formatRoute({ kind: 'settings' })}>Finish capture setup in Settings</a>
         </p>
       )}
       {captureState.kind === 'done' && (
-        <p className="dialogue-media__capture-note" role="status">
+        <p className="dialogue-media__capture-note hint-text" role="status">
           {captureState.message}
         </p>
       )}
       {captureState.kind === 'failed' && (
-        <p className="dialogue-media__error" role="alert">
+        <p className="dialogue-media__error hint-text" role="alert">
           {captureState.message}
         </p>
       )}
 
       {importState.kind === 'warned' && (
-        <p className="dialogue-media__warning" role="status">
+        <p className="dialogue-media__warning hint-text" role="status">
           {importState.message}
         </p>
       )}
       {importState.kind === 'failed' && (
-        <p className="dialogue-media__error" role="alert">
+        <p className="dialogue-media__error hint-text" role="alert">
           {importState.message}
         </p>
       )}
@@ -565,7 +565,7 @@ function MergeIntoThisLine({
         </button>
       </div>
       <Disclosure>
-        <p className="dialogue-merge__hint">
+        <p className="dialogue-merge__hint hint-text">
           The other line is appended to this one, its pictures after this one's, and its pin
           disappears. This line keeps its own place and name; the earlier of the two times is kept.
           Any quest that named the other line names this one afterwards. One undo puts it back.

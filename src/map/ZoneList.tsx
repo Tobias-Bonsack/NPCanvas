@@ -46,9 +46,9 @@ export function ZoneList({
 
   return (
     <div className="zone-list">
-      <h2 className="map-list__heading">Zones</h2>
+      <h2 className="map-list__heading micro-label">Zones</h2>
       {project.zones.length === 0 ? (
-        <p className="zone-list__empty">
+        <p className="zone-list__empty hint-text">
           Pick <strong>Draw zone</strong> and drag a rectangle on a map. Every dialogue pinned
           inside it counts as having happened there.
         </p>
@@ -144,8 +144,6 @@ function ZoneRow({
           if (trimmed !== '') dispatch({ kind: 'zone/renamed', zoneId: zone.id, name: trimmed })
         }}
         close={editable.close}
-        className="map-list__form"
-        inputClassName="map-list__input"
       />
     )
   }
@@ -162,7 +160,6 @@ function ZoneRow({
         }
         onConfirm={() => dispatch({ kind: 'zone/deleted', zoneId: zone.id })}
         close={editable.close}
-        className="map-list__confirm"
       />
     )
   }
@@ -202,7 +199,7 @@ function ZoneRow({
         onClick={onFocus}
       >
         <span className="zone-list__label">{zone.name}</span>
-        <span className="zone-list__count" title={`${count} dialogue${count === 1 ? '' : 's'}`}>
+        <span className="zone-list__count hint-text" title={`${count} dialogue${count === 1 ? '' : 's'}`}>
           {count}
         </span>
       </button>

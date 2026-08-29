@@ -59,13 +59,13 @@ export function GlyphLearner({
   const complete = entries.every((entry) => entry.notText || entry.char.trim() !== '')
 
   return (
-    <div className="glyph-learner" role="dialog" aria-modal="true" aria-label="Learn the console's alphabet">
-      <div className="glyph-learner__panel">
+    <div className="glyph-learner overlay-backdrop" role="dialog" aria-modal="true" aria-label="Learn the console's alphabet">
+      <div className="glyph-learner__panel card">
         <header className="glyph-learner__header">
           <h2 className="glyph-learner__title">
             {tiles.length === 1 ? 'One tile is not in the alphabet yet' : `${tiles.length} tiles are not in the alphabet yet`}
           </h2>
-          <p className="glyph-learner__hint">
+          <p className="glyph-learner__hint hint-text">
             Type what each one says. A tile that is not a character — the blinking continuation
             arrow — is marked not text, and is dropped from every transcript afterwards.
           </p>
@@ -73,18 +73,18 @@ export function GlyphLearner({
 
         <ol className="glyph-learner__list">
           {tiles.map((tile, index) => (
-            <li key={tile.bits} className="glyph-learner__item">
-              <GlyphTile bits={tile.bits} className="glyph-learner__tile" label="Unrecognised tile" />
+            <li key={tile.bits} className="glyph-learner__item glyph-row">
+              <GlyphTile bits={tile.bits} className="glyph-learner__tile glyph-tile-frame" label="Unrecognised tile" />
               <div className="glyph-learner__fields">
                 <p className="glyph-learner__context">
                   {tile.context}
-                  <span className="glyph-learner__position">
+                  <span className="glyph-learner__position hint-text">
                     line {tile.row + 1}, tile {tile.column + 1}
                   </span>
                 </p>
                 <div className="glyph-learner__answer">
                   <input
-                    className="glyph-learner__input"
+                    className="glyph-learner__input text-input"
                     aria-label={`Character at line ${tile.row + 1}, tile ${tile.column + 1}`}
                     // Not one character: a Gen 1 font packs `'d` and `'s` into single tiles, and
                     // a one-character field would make them impossible to enter.
@@ -111,19 +111,19 @@ export function GlyphLearner({
         <footer className="glyph-learner__footer">
           <button
             type="button"
-            className="glyph-learner__button glyph-learner__button--cancel"
+            className="glyph-learner__button glyph-learner__button--cancel button"
             onClick={onCancel}
           >
             {cancelLabel}
           </button>
           {keepPicture !== undefined && (
-            <button type="button" className="glyph-learner__button" onClick={keepPicture.onKeep}>
+            <button type="button" className="glyph-learner__button button" onClick={keepPicture.onKeep}>
               {keepPicture.label}
             </button>
           )}
           <button
             type="button"
-            className="glyph-learner__button glyph-learner__button--primary"
+            className="glyph-learner__button glyph-learner__button--primary button"
             disabled={!complete}
             onClick={() =>
               onConfirm(

@@ -31,10 +31,10 @@ export function GlyphSet({
 }): ReactElement {
   const ref = useAlertDialogFocus(onClose)
   return (
-    <div className="glyph-set">
+    <div className="glyph-set overlay-backdrop">
       <div
         ref={ref}
-        className="glyph-set__panel"
+        className="glyph-set__panel card"
         role="dialog"
         aria-modal="true"
         aria-label="The alphabet this project has learned"
@@ -44,7 +44,7 @@ export function GlyphSet({
           <h2 className="glyph-set__title">
             {glyphs.length === 1 ? 'One glyph learned' : `${glyphs.length} glyphs learned`}
           </h2>
-          <p className="glyph-set__hint">
+          <p className="glyph-set__hint hint-text">
             One alphabet for the whole project — every capture profile reads with it. Forgetting a
             glyph puts its tile back in front of the learner the next time it is on screen, and undo
             brings it back.
@@ -52,24 +52,28 @@ export function GlyphSet({
         </header>
 
         {glyphs.length === 0 ? (
-          <p className="glyph-set__empty">
+          <p className="glyph-set__empty hint-text">
             Nothing learned yet. Read a text box and name the tiles it asks about.
           </p>
         ) : (
           <ul className="glyph-set__list">
             {sortForReading(glyphs).map((glyph) => (
-              <li key={glyph.bits} className="glyph-set__item">
+              <li key={glyph.bits} className="glyph-set__item glyph-row">
                 <GlyphTile
                   bits={glyph.bits}
-                  className="glyph-set__tile"
+                  className="glyph-set__tile glyph-tile-frame"
                   label={glyph.char === '' ? 'A tile that is not text' : `The tile read as ${glyph.char}`}
                 />
-                <span className={glyph.char === '' ? 'glyph-set__char glyph-set__char--none' : 'glyph-set__char'}>
+                <span
+                  className={
+                    glyph.char === '' ? 'glyph-set__char glyph-set__char--none hint-text' : 'glyph-set__char'
+                  }
+                >
                   {glyph.char === '' ? 'not text' : glyph.char}
                 </span>
                 <button
                   type="button"
-                  className="glyph-set__forget"
+                  className="glyph-set__forget button"
                   aria-label={
                     glyph.char === ''
                       ? 'Forget the tile marked not text'
@@ -85,7 +89,7 @@ export function GlyphSet({
         )}
 
         <footer className="glyph-set__footer">
-          <button type="button" className="glyph-set__button" onClick={onClose}>
+          <button type="button" className="glyph-set__button button--primary" onClick={onClose}>
             Done
           </button>
         </footer>

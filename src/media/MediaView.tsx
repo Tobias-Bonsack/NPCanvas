@@ -38,18 +38,18 @@ export function MediaView({
 
   switch (url.kind) {
     case 'loading':
-      return <p className="media-view__notice">Loading {media.file.fileName}…</p>
+      return <p className="media-view__notice hint-text">Loading {media.file.fileName}…</p>
 
     case 'missing':
       return (
-        <p className="media-view__notice" role="alert">
+        <p className="media-view__notice hint-text" role="alert">
           {media.file.fileName} is no longer in the project’s media folder.
         </p>
       )
 
     case 'failed':
       return (
-        <p className="media-view__notice" role="alert">
+        <p className="media-view__notice hint-text" role="alert">
           {media.file.fileName} could not be read: {url.message}
         </p>
       )

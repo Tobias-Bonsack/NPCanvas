@@ -53,7 +53,7 @@ export function DialogueQuestLinks({
       <h3 className="micro-label">Quests</h3>
 
       {linked.length === 0 ? (
-        <p className="dialogue-quests__empty">In no quest yet.</p>
+        <p className="dialogue-quests__empty hint-text">In no quest yet.</p>
       ) : (
         <ul className="dialogue-quests__list">
           {linked.map((quest) => (
@@ -161,7 +161,7 @@ function QuestPicker({
     >
       <div className="dialogue-quests__bar">
         <input
-          className="dialogue-quests__input"
+          className="dialogue-quests__input text-input"
           type="search"
           value={query}
           autoFocus
@@ -175,7 +175,7 @@ function QuestPicker({
       </div>
 
       {matches.length === 0 ? (
-        <p className="dialogue-quests__empty">No quest matches that.</p>
+        <p className="dialogue-quests__empty hint-text">No quest matches that.</p>
       ) : (
         <ul className="dialogue-quests__list">
           {matches.map((quest) => (

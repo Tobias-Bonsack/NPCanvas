@@ -102,32 +102,9 @@
   font-size: var(--text-md);
 }
 
-.dialogue-panel__button {
-  font: inherit;
-  font-size: var(--text-2xs);
-  align-self: flex-start;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.dialogue-panel__button:hover:not(:disabled) {
-  color: var(--text);
-  background: var(--surface-3);
-}
-
-.dialogue-panel__button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .dialogue-panel__map {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .dialogue-panel__location {
@@ -137,20 +114,6 @@
   gap: var(--space-1);
   flex-wrap: wrap;
   font-size: var(--text-xs);
-}
-
-/* Coloured to match the zone on the canvas, so the panel and the map name the same region
-   without the reader having to compare two words. */
-.dialogue-panel__zone {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-round);
-  border: 1px solid hsl(var(--zone-hue) 75% 62%);
-  background: hsl(var(--zone-hue) 70% 55% / 0.18);
-}
-
-/* Zones are ordered most specific first, so everything after the first is broader context. */
-.dialogue-panel__zone:not(:first-child) {
-  opacity: 0.7;
 }
 
 .dialogue-panel__nowhere {
@@ -203,46 +166,30 @@
   outline-offset: 2px;
 }
 
-/* Outlined rather than filled: the import is the primary way in until a source is connected,
-   and two solid accent blocks side by side would say nothing about which to press first. */
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is outlined in
+   the accent colour rather than filled — the import is the primary way in until a source is
+   connected, and two solid accent blocks side by side would say nothing about which to press
+   first — and the text stays full-strength rather than muted-until-hover. */
 .dialogue-media__capture {
-  font: inherit;
   font-size: var(--text-xs);
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-2);
+  border-color: var(--accent);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-}
-
-.dialogue-media__capture:hover:not(:disabled) {
-  background: var(--surface-3);
 }
 
 .dialogue-media__capture:disabled {
   color: var(--text-muted);
   border-color: var(--border);
   opacity: 0.6;
-  cursor: default;
 }
 
-.dialogue-media__hint,
-.dialogue-media__warning,
-.dialogue-media__error,
-.dialogue-media__capture-note {
-  margin: 0;
-  font-size: var(--text-2xs);
-}
+/* `.hint-text` (index.css) supplies margin/size/colour for all four; only the two that are not
+   muted override the colour. */
 
 /* What the last capture did. Not muted like a hint: it is the only confirmation that a press
    which changed nothing visible — the same frame twice — was understood. */
 .dialogue-media__capture-note {
   color: var(--text);
-}
-
-.dialogue-media__hint {
-  color: var(--text-muted);
 }
 
 .dialogue-media__hint a {
@@ -283,8 +230,4 @@
   min-width: 0;
 }
 
-.dialogue-merge__hint {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */

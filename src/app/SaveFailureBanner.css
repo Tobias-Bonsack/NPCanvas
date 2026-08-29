@@ -25,41 +25,28 @@
   color: var(--danger);
 }
 
+/* `.hint-text` (index.css) supplies the colour; the size is a step up. */
 .save-banner__message {
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
+/* The `.button--primary` base (index.css) supplies the rest; the size is a step down from the
+   base, the border stays transparent, and the hover brightens a touch more. */
 .save-banner__action {
-  font: inherit;
   font-size: var(--text-xs);
   margin-left: auto;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-2);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  cursor: pointer;
+  border-color: transparent;
   white-space: nowrap;
 }
 
-.save-banner__action:hover {
+.save-banner__action:hover:not(:disabled) {
   filter: brightness(1.1);
 }
 
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is only the
+   larger glyph size and the transparent resting background. */
 .save-banner__dismiss {
-  font: inherit;
   font-size: 1.125rem;
   line-height: 1;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.save-banner__dismiss:hover {
-  background: var(--surface-3);
-  color: var(--text);
 }

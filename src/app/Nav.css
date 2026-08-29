@@ -44,46 +44,28 @@
   margin-left: auto;
 }
 
+/* Builds on the shared `.button` treatment (index.css) — only the size and the always-on text
+   colour (rather than the base's muted-until-hover) differ. */
 .nav__history-button {
   padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  background: var(--surface-2);
-  font: inherit;
   font-size: var(--text-xs);
   color: var(--text);
-  cursor: pointer;
-}
-
-.nav__history-button:hover:not(:disabled) {
-  background: var(--surface-3);
 }
 
 .nav__history-button:disabled {
   color: var(--text-muted);
-  cursor: default;
-  opacity: 0.5;
 }
 
 /* No `margin-left: auto` of its own — `.nav__history` is the first item that claims the free
    space, and a second auto margin here would split that space instead of sitting flush after
    it. */
+/* Builds on the shared `.button` treatment (index.css) — same box, always-on text colour. */
 .nav__project {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  background: var(--surface-2);
-  font: inherit;
   font-size: var(--text-xs);
   color: var(--text);
-  cursor: pointer;
-}
-
-.nav__project:hover {
-  background: var(--surface-3);
 }
 
 /* The folder can be named anything; a long one must not push the nav's own items around. */
@@ -104,27 +86,27 @@
   align-items: center;
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .nav__save {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
+/* Builds on the shared `.button` treatment (index.css) — outlined in the danger colour and
+   flatter (radius-1) rather than filled, and the danger colour survives hover. */
 .nav__save-review {
-  font: inherit;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--danger);
+  border-color: var(--danger);
   border-radius: var(--radius-1);
   background: transparent;
   color: var(--danger);
-  cursor: pointer;
 }
 
-.nav__save-review:hover {
-  background: var(--surface-3);
+/* `:not(:disabled)` matches the base rule's own specificity (index.css), so this colour is not
+   silently outranked by the base's own hover colour. */
+.nav__save-review:hover:not(:disabled) {
+  color: var(--danger);
 }
 
 .nav__link[aria-current='page'] {

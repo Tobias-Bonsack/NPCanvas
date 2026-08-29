@@ -22,14 +22,14 @@ export function RepairNotice({
     <div className="repair-notice" role="status">
       <div className="repair-notice__text">
         <strong className="repair-notice__title">This project opened with repairs</strong>
-        <span className="repair-notice__message">
+        <span className="repair-notice__message hint-text">
           {describeRepairs(repairs)} They pointed at records the folder no longer holds, so they
           could not be shown. The repair reaches data.json with your next change.
         </span>
       </div>
       <button
         type="button"
-        className="repair-notice__dismiss"
+        className="repair-notice__dismiss button"
         onClick={onDismiss}
         aria-label="Dismiss this notice"
       >

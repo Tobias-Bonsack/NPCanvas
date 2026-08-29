@@ -94,7 +94,7 @@ export function SegmentLegend({ tags }: { tags: readonly RelevanceTag[] }): Reac
   const labels = segmentLabel(tags)
   const colors = segmentColor(tags)
   return (
-    <ul className="insights__legend">
+    <ul className="insights__legend hint-text">
       {segmentKeys(tags).map((segment, index) => (
         <li key={segment} className="insights__legend-item">
           <svg className="insights__legend-swatch" viewBox="0 0 12 12" aria-hidden="true">

@@ -37,28 +37,21 @@
   min-inline-size: 0;
 }
 
+/* The `.text-input` base (index.css) supplies color/background/border/radius/padding; this panel
+   was always sized at the ambient 1rem (`--text-md`), one step up from the base's own
+   `--text-sm`, so that stays an explicit override rather than falling through to the base size. */
 .dialogue-form__input,
 .dialogue-form__textarea {
-  font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-2);
+  font-size: var(--text-md);
   /* Without it a long value or a wide datetime control pushes the whole sidebar wider. */
   min-width: 0;
 }
 
 .dialogue-form__textarea {
   flex: none;
+  min-height: auto;
   resize: vertical;
   line-height: 1.5;
-}
-
-.dialogue-form__input:focus-visible,
-.dialogue-form__textarea:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: 1px;
 }
 
 /* ---- relevance ---- */

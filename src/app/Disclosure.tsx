@@ -10,7 +10,7 @@ import './Disclosure.css'
 export function Disclosure({ children }: { children: ReactNode }): ReactElement {
   return (
     <details className="disclosure">
-      <summary className="disclosure__summary">More</summary>
+      <summary className="disclosure__summary disclosure-summary">More</summary>
       <div className="disclosure__body">{children}</div>
     </details>
   )

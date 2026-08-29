@@ -665,7 +665,7 @@ export function MapCanvas({
         <div className="map-canvas__zoom-group" role="group" aria-label="Canvas zoom">
           <button
             type="button"
-            className="map-canvas__reset"
+            className="map-canvas__reset button"
             aria-label="Zoom out"
             title="Zoom out (−)"
             onClick={() => zoomByFactor(1 / SCALE_STEP)}
@@ -674,7 +674,7 @@ export function MapCanvas({
           </button>
           <button
             type="button"
-            className="map-canvas__reset map-canvas__zoom"
+            className="map-canvas__reset map-canvas__zoom button"
             title="Zoom to 100% (0)"
             onClick={zoomToOne}
           >
@@ -682,7 +682,7 @@ export function MapCanvas({
           </button>
           <button
             type="button"
-            className="map-canvas__reset"
+            className="map-canvas__reset button"
             aria-label="Zoom in"
             title="Zoom in (+)"
             onClick={() => zoomByFactor(SCALE_STEP)}
@@ -691,7 +691,7 @@ export function MapCanvas({
           </button>
           <button
             type="button"
-            className="map-canvas__reset"
+            className="map-canvas__reset button"
             title="Fit every map (F)"
             onClick={fitToMaps}
           >
@@ -1046,7 +1046,7 @@ function MapScaleControl({ map }: { map: GameMap }): ReactElement {
     <div className="map-canvas__scale" role="group" aria-label={`Scale of ${map.name}`}>
       <button
         type="button"
-        className="map-canvas__reset"
+        className="map-canvas__reset button"
         aria-label={`Shrink ${map.name}`}
         disabled={clampMapScale(map.scale) <= MIN_MAP_SCALE}
         onClick={() => rescale(1 / SCALE_STEP)}
@@ -1056,7 +1056,7 @@ function MapScaleControl({ map }: { map: GameMap }): ReactElement {
       <span className="map-canvas__zoom">{Math.round(map.scale * 100)}%</span>
       <button
         type="button"
-        className="map-canvas__reset"
+        className="map-canvas__reset button"
         aria-label={`Enlarge ${map.name}`}
         disabled={clampMapScale(map.scale) >= MAX_MAP_SCALE}
         onClick={() => rescale(SCALE_STEP)}

@@ -35,17 +35,16 @@
   flex-wrap: wrap;
 }
 
+/* The `.button--primary` base (index.css) supplies the rest; the size stays at the page's own
+   ambient scale rather than the base's own `--text-sm`, the border stays transparent rather
+   than accent-coloured (so the "quiet" variant below only has a colour to swap, not a border to
+   add), and the hover brightens a touch more than the base's own hover. */
 .error-boundary__button {
-  font: inherit;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-2);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  cursor: pointer;
+  font-size: var(--text-md);
+  border-color: transparent;
 }
 
-.error-boundary__button:hover {
+.error-boundary__button:hover:not(:disabled) {
   filter: brightness(1.1);
 }
 

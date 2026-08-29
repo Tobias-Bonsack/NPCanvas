@@ -18,11 +18,7 @@
   color: var(--text);
 }
 
-.held-note__hint {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* Both rows inside the block: the two controls side by side, and the confirm that replaces them.
    Mirrors `.capture-bar__confirm`, which asks the same kind of question. */

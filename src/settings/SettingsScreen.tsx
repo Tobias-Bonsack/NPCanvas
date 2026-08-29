@@ -91,14 +91,14 @@ export function SettingsScreen({ project }: { project: ProjectFile }): ReactElem
         bindings={project.recorderBindings}
       />
 
-      <section className="settings__section" aria-labelledby="settings-shortcuts-heading">
+      <section className="settings__section card" aria-labelledby="settings-shortcuts-heading">
         <h2 id="settings-shortcuts-heading" className="settings__section-title">
           Keyboard shortcuts
         </h2>
         <div className="settings__shortcut-groups">
           {SHORTCUT_GROUPS.map((group) => (
             <div key={group.title} className="settings__shortcut-group">
-              <h3 className="settings__shortcut-group-title">{group.title}</h3>
+              <h3 className="settings__shortcut-group-title micro-label">{group.title}</h3>
               <dl className="settings__shortcut-list">
                 {group.shortcuts.map((shortcut) => (
                   <div key={shortcut.does} className="settings__shortcut-row">

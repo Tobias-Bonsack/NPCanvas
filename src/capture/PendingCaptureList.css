@@ -11,20 +11,19 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .pending-capture-list__empty {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
+/* The `.card` base (index.css) supplies the border/surface; the radius is flatter than the base
+   here, to match the sidebar's other rows. */
 .pending-capture-list__row {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2);
-  border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  background: var(--surface-1);
 }
 
 /* Filled while a click on the canvas will place this one — impossible to lose track of which
@@ -68,19 +67,11 @@
   overflow: hidden;
 }
 
-.pending-capture-list__spoken-at {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* A status, not a label: paging is what changes it, and a reader who cannot see the picture
    change needs to be told the count moved — mirrors `.media-gallery__count`. */
-.pending-capture-list__count {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* The one thing in here that scrolls, and it scrolls *inside itself* — a dozen captures must
    not widen the sidebar column. */
@@ -91,27 +82,7 @@
   padding-bottom: var(--space-1);
 }
 
-.pending-capture-list__thumb {
-  flex: none;
-  display: block;
-  width: 4rem;
-  padding: 2px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  cursor: pointer;
-}
-
-.pending-capture-list__thumb:hover {
-  background: var(--surface-3);
-}
-
-/* The capture being shown, marked on the strip rather than only in the counter — the strip is
-   how a reader jumps, so it has to say where they are. */
-.pending-capture-list__thumb[aria-current='true'] {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
+/* `.strip-thumb` (index.css) supplies the rest. */
 
 .pending-capture-list__thumb-media {
   display: block;

@@ -44,20 +44,20 @@ function FailedBanner({
     <div className="save-banner" role="alert">
       <div className="save-banner__text">
         <strong className="save-banner__title">Your changes are not saved</strong>
-        <span className="save-banner__message">{save.message}</span>
+        <span className="save-banner__message hint-text">{save.message}</span>
       </div>
       {/* Straight off the click, no await before `retrySave`: a re-grant is a
           `requestPermission` call and it only prompts while the user gesture is still live. */}
       <button
         type="button"
-        className="save-banner__action"
+        className="save-banner__action button--primary"
         onClick={() => void retrySave(save.failure)}
       >
         {save.failure === 'permission' ? 'Grant folder access' : 'Try saving again'}
       </button>
       <button
         type="button"
-        className="save-banner__dismiss"
+        className="save-banner__dismiss button"
         onClick={onDismiss}
         aria-label="Dismiss this warning"
       >

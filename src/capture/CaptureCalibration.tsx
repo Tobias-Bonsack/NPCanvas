@@ -176,13 +176,13 @@ export function CaptureCalibration({
   const saveable = name.trim() !== '' && screenRect !== null && textRect !== null
 
   return (
-    <div className="capture-calibration" role="dialog" aria-modal="true" aria-label="Calibrate a capture profile">
-      <div className="capture-calibration__panel">
+    <div className="capture-calibration overlay-backdrop" role="dialog" aria-modal="true" aria-label="Calibrate a capture profile">
+      <div className="capture-calibration__panel card">
         <header className="capture-calibration__header">
           <h2 className="capture-calibration__title">
             {profile === null ? 'New capture profile' : `Re-calibrate ${profile.name}`}
           </h2>
-          <p className="capture-calibration__step">{STEP_HINTS[step]}</p>
+          <p className="capture-calibration__step hint-text">{STEP_HINTS[step]}</p>
         </header>
 
         <div className="capture-calibration__viewport">
@@ -234,7 +234,7 @@ export function CaptureCalibration({
 
         <div className="capture-calibration__controls">
           <fieldset className="capture-calibration__group">
-            <legend className="capture-calibration__legend">Measure</legend>
+            <legend className="capture-calibration__legend micro-label">Measure</legend>
             <button
               type="button"
               className="button capture-calibration__toggle capture-calibration__toggle--action"
@@ -245,7 +245,7 @@ export function CaptureCalibration({
           </fieldset>
 
           <fieldset className="capture-calibration__group">
-            <legend className="capture-calibration__legend">Step</legend>
+            <legend className="capture-calibration__legend micro-label">Step</legend>
             <button
               type="button"
               className="button capture-calibration__toggle"
@@ -266,7 +266,7 @@ export function CaptureCalibration({
           </fieldset>
 
           <fieldset className="capture-calibration__group">
-            <legend className="capture-calibration__legend">Zoom</legend>
+            <legend className="capture-calibration__legend micro-label">Zoom</legend>
             {ZOOMS.map((option) => (
               <button
                 key={String(option)}
@@ -280,10 +280,10 @@ export function CaptureCalibration({
             ))}
           </fieldset>
 
-          <label className="capture-calibration__field">
+          <label className="capture-calibration__field micro-label">
             Profile name
             <input
-              className="capture-calibration__input"
+              className="capture-calibration__input text-input"
               value={name}
               autoFocus
               placeholder="Pokémon Red"
@@ -312,7 +312,7 @@ export function CaptureCalibration({
             makes the tile grid drift across the screen. So the rect is nudged, not redrawn. */}
         {screenRect !== null && (
           <div className="capture-calibration__controls">
-            <p className="capture-calibration__legend capture-calibration__legend--row">
+            <p className="capture-calibration__legend capture-calibration__legend--row micro-label">
               Screen rect, frame px
             </p>
             <NumberField
@@ -373,12 +373,12 @@ export function CaptureCalibration({
             <span>{textRect === null ? 'Text box not drawn' : describeTextRect(textRect)}</span>
           </p>
           <div className="capture-calibration__actions">
-            <button type="button" className="capture-calibration__button" onClick={onCancel}>
+            <button type="button" className="capture-calibration__button button" onClick={onCancel}>
               Cancel
             </button>
             <button
               type="button"
-              className="capture-calibration__button capture-calibration__button--primary"
+              className="capture-calibration__button capture-calibration__button--primary button"
               disabled={!saveable}
               onClick={() => {
                 if (screenRect === null || textRect === null) return
@@ -465,10 +465,10 @@ function NumberField({
   onChange: (value: number) => void
 }): ReactElement {
   return (
-    <label className="capture-calibration__field capture-calibration__field--narrow">
+    <label className="capture-calibration__field capture-calibration__field--narrow micro-label">
       {label}
       <input
-        className="capture-calibration__input"
+        className="capture-calibration__input text-input"
         type="number"
         min={min}
         step={step}

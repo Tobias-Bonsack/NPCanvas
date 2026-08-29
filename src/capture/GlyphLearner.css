@@ -1,16 +1,8 @@
-/* An overlay for the same reason calibration is one: the tiles have to be large enough to read,
-   and the dialogue panel is a narrow column. */
 .glyph-learner {
-  position: fixed;
-  inset: 0;
   z-index: 21;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  background: rgb(0 0 0 / 0.65);
 }
 
+/* `.card` (index.css) supplies the border/radius/surface. */
 .glyph-learner__panel {
   display: flex;
   flex-direction: column;
@@ -18,9 +10,6 @@
   width: min(560px, 100%);
   max-height: 100%;
   padding: var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
 }
 
 .glyph-learner__header {
@@ -34,11 +23,7 @@
   font-size: var(--text-md);
 }
 
-.glyph-learner__hint {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 /* The list is what scrolls — a box with twenty new characters in it must not push the footer off
    screen, because confirming is the only thing that transcribes. */
@@ -54,24 +39,15 @@
   list-style: none;
 }
 
+/* `.glyph-row` (index.css) supplies the box; the gap is wider here. */
 .glyph-learner__item {
-  display: flex;
-  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
 }
 
+/* `.glyph-tile-frame` (index.css) supplies the box; only the size differs. */
 .glyph-learner__tile {
-  flex: none;
   width: 3.5rem;
   height: 3.5rem;
-  fill: var(--text);
-  background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
 }
 
 .glyph-learner__fields {
@@ -94,11 +70,7 @@
   white-space: pre-wrap;
 }
 
-.glyph-learner__position {
-  font-family: inherit;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* `.hint-text` (index.css) supplies the rest. */
 
 .glyph-learner__answer {
   display: flex;
@@ -106,15 +78,12 @@
   gap: var(--space-3);
 }
 
+/* `.text-input` (index.css) supplies the rest. */
 .glyph-learner__input {
   width: 5rem;
-  font: inherit;
   font-size: var(--text-md);
   text-align: center;
-  color: var(--text);
   background: var(--surface-0);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
 }
 
@@ -136,25 +105,23 @@
   gap: var(--space-2);
 }
 
+/* The `.button` base (index.css) supplies the rest; only the size and the disabled cursor
+   differ. */
 .glyph-learner__button {
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
 }
 
-.glyph-learner__button--primary {
+/* `:hover` reasserts the accent fill against the base rule's own hover colours
+   (`.button:hover:not(:disabled)`, index.css), which otherwise outrank this on specificity. */
+.glyph-learner__button--primary,
+.glyph-learner__button--primary:hover:not(:disabled) {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
 
 .glyph-learner__button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }
 

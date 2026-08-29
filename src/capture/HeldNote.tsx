@@ -53,7 +53,7 @@ export function HeldNote({
           appended at the end of the capture it belongs to. */}
       {held.waiting > 1 && (
         <Disclosure>
-          <p className="held-note__hint">
+          <p className="held-note__hint hint-text">
             The boxes after the one it could not read are waiting with it, so the capture keeps its
             order.
           </p>

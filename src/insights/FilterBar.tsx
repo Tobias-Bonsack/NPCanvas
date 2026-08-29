@@ -62,16 +62,17 @@ export function FilterBar({
     <section className="filter-bar" aria-label="Filter dialogues">
       <div className="filter-bar__row">
         <input
-          className="filter-bar__search"
+          className="filter-bar__search text-input"
           type="search"
           value={filter.text}
           placeholder="Search NPC names and what was said"
           aria-label="Search dialogues"
           onChange={(event) => onChange({ ...filter, text: event.target.value })}
         />
-        <label className="filter-bar__date">
+        <label className="filter-bar__date micro-label">
           From
           <input
+            className="text-input"
             type="date"
             value={toDateInputValue(filter.from)}
             // Caps the picker at "To" — the browser refuses to open on a later date, though a
@@ -83,9 +84,10 @@ export function FilterBar({
             }
           />
         </label>
-        <label className="filter-bar__date">
+        <label className="filter-bar__date micro-label">
           To
           <input
+            className="text-input"
             type="date"
             value={toDateInputValue(filter.to)}
             min={toDateInputValue(filter.from)}
@@ -116,7 +118,7 @@ export function FilterBar({
             <button
               key={tag.id}
               type="button"
-              className="filter-bar__tag"
+              className="filter-bar__tag hue-chip"
               style={relevanceHueStyle(tag.hue)}
               aria-pressed={filter.relevance.includes(tag.id)}
               onClick={() =>
@@ -136,7 +138,7 @@ export function FilterBar({
             <button
               key={kind}
               type="button"
-              className="filter-bar__kind"
+              className="filter-bar__kind hue-chip"
               aria-pressed={filter.contentKinds.includes(kind)}
               onClick={() =>
                 onChange({
@@ -242,7 +244,7 @@ function AddSelect<T>({
 }): ReactElement {
   return (
     <select
-      className="filter-bar__select"
+      className="filter-bar__select text-input"
       value=""
       aria-label={`Add ${label.toLowerCase()} filter`}
       disabled={options.length === 0}
@@ -275,7 +277,7 @@ function ActiveChip({
   onRemove: () => void
 }): ReactElement {
   return (
-    <button type="button" className="filter-bar__active" style={style} onClick={onRemove}>
+    <button type="button" className="filter-bar__active hue-chip" style={style} onClick={onRemove}>
       {label}
       <span className="filter-bar__remove" aria-hidden="true">
         ×

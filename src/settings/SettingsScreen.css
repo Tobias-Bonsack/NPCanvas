@@ -24,14 +24,13 @@
   font-size: var(--text-2xl);
 }
 
+/* `.card` (index.css) supplies the border/surface; the radius is flatter than the base here. */
 .settings__section {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid var(--border);
   border-radius: var(--radius-2);
-  background: var(--surface-1);
 }
 
 .settings__section-title {
@@ -45,12 +44,11 @@
   gap: var(--space-4);
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment; the tracking is tighter and the
+   margin holds space for the list below it. */
 .settings__shortcut-group-title {
   margin: 0 0 var(--space-2);
-  font-size: var(--text-2xs);
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
 }
 
 .settings__shortcut-list {
@@ -142,25 +140,9 @@
   white-space: nowrap;
 }
 
-.relevance-tag-list__form,
-.relevance-tag-list__confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-  font-size: var(--text-sm);
-}
-
-.relevance-tag-list__input {
-  flex: 1;
-  min-width: 6rem;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-}
+/* The rename form and delete confirm use `EditableRow`'s default classes here (no override) —
+   `.editable-row__form`/`.editable-row__confirm`/`.editable-row__input` (EditableRow.css) were
+   byte-identical to what used to be declared here under this feature's own names. */
 
 .relevance-tag-list__palette {
   display: flex;

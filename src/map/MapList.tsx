@@ -35,7 +35,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
 
   return (
     <div className="map-list">
-      <h2 className="map-list__heading">Maps</h2>
+      <h2 className="map-list__heading micro-label">Maps</h2>
       <ul className="map-list__items">
         {project.maps.map((map) => (
           <li key={map.id} className="map-list__item row-actions-host">
@@ -81,8 +81,6 @@ function MapRow({
           if (trimmed !== '') dispatch({ kind: 'map/renamed', mapId: map.id, name: trimmed })
         }}
         close={editable.close}
-        className="map-list__form"
-        inputClassName="map-list__input"
       />
     )
   }
@@ -100,7 +98,6 @@ function MapRow({
         }
         onConfirm={onDeleteConfirmed}
         close={editable.close}
-        className="map-list__confirm"
       />
     )
   }

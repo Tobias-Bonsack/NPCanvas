@@ -144,13 +144,13 @@ export function CaptureRecorder(): ReactElement {
 
   return (
     <div className="capture-recorder">
-      <h2 className="map-list__heading">Captures</h2>
+      <h2 className="map-list__heading micro-label">Captures</h2>
       <div className="capture-recorder__watch">
         <WatcherStatus watch={watch} pendingCaptures={pendingCaptures} />
         <div className="capture-recorder__triggers">
           <button
             type="button"
-            className="capture-recorder__watch-toggle"
+            className="capture-recorder__watch-toggle button"
             data-watching={watching ? 'true' : undefined}
             aria-pressed={watching}
             disabled={blocker !== null && !watching}
@@ -166,7 +166,7 @@ export function CaptureRecorder(): ReactElement {
           </button>
           <button
             type="button"
-            className="capture-recorder__watch-toggle"
+            className="capture-recorder__watch-toggle button"
             data-watching={watching ? 'true' : undefined}
             aria-pressed={watching}
             disabled={blocker !== null && !watching}
@@ -247,7 +247,7 @@ function WatcherStatus({
         {watchSummary(watch, watchTarget(watch, pendingCaptures))}
       </p>
       {watch.paused !== null && (
-        <p className="capture-recorder__watch-paused" role="status">
+        <p className="capture-recorder__watch-paused hint-text" role="status">
           {watch.paused}
         </p>
       )}

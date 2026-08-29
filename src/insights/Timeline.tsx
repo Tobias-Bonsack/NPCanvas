@@ -128,7 +128,7 @@ export function Timeline({
         hasRange={hasRange}
         onClearRange={clearRange}
       >
-        <p className="insights__empty">
+        <p className="insights__empty hint-text">
           {/* Two ways to have no axis, and they call for different fixes: widen the filter, or
               go and repair a spokenAt that will not parse. */}
           {dialogues.length === 0
@@ -343,10 +343,10 @@ function TimelinePanel({
   children: ReactNode
 }): ReactElement {
   return (
-    <section className="insights__panel" aria-label="Timeline">
+    <section className="insights__panel card" aria-label="Timeline">
       <header className="insights__panel-head">
         <h2 className="insights__panel-title">Timeline</h2>
-        <p className="insights__panel-note">{UNIT_NOTE[unit]}</p>
+        <p className="insights__panel-note hint-text">{UNIT_NOTE[unit]}</p>
         <Disclosure>
           <p>
             A stretch nothing was said in gets no bar at all, so the bars sit side by side
@@ -414,7 +414,7 @@ function GrainPicker({
           }}
           type="button"
           role="radio"
-          className="grain-picker__button"
+          className="grain-picker__button segmented-button"
           aria-checked={option === selected}
           tabIndex={option === selected ? 0 : -1}
           // Auto names the unit it currently resolves to, so the control and the axis below can
@@ -530,12 +530,12 @@ function BucketDetail({
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
 }): ReactElement {
   if (bucket === null) {
-    return <p className="insights__empty">Hover or focus a bar to see the lines it holds.</p>
+    return <p className="insights__empty hint-text">Hover or focus a bar to see the lines it holds.</p>
   }
 
   return (
     <div className="timeline__detail">
-      <h3 className="timeline__detail-title">
+      <h3 className="timeline__detail-title micro-label">
         {capitalize(describeBucket(bucket, unit))}
         <span className="count-pill">{bucket.dialogues.length}</span>
       </h3>
@@ -557,7 +557,7 @@ function BucketDetail({
         ))}
       </ul>
       {bucket.dialogues.length > DETAIL_LIMIT && (
-        <p className="insights__empty">
+        <p className="insights__empty hint-text">
           …and {bucket.dialogues.length - DETAIL_LIMIT} more in this {unit}.
         </p>
       )}

@@ -23,25 +23,17 @@
   color: var(--text);
 }
 
+/* `.hint-text` (index.css) supplies the colour; the size is a step up, and the redundant
+   `margin: 0` is harmless on this flex child, which has no margin to reset. */
 .repair-notice__message {
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is only the larger
+   glyph size and the transparent resting background. */
 .repair-notice__dismiss {
-  font: inherit;
   font-size: 1.125rem;
   line-height: 1;
   margin-left: auto;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.repair-notice__dismiss:hover {
-  background: var(--surface-3);
-  color: var(--text);
 }

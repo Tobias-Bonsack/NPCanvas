@@ -230,6 +230,11 @@ body {
   cursor: default;
 }
 
+.button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
 .button--danger {
   border-color: var(--border-strong);
   color: var(--danger);
@@ -260,6 +265,48 @@ body {
   cursor: progress;
 }
 
+.button--primary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* One mutually-exclusive-choice segmented control — the map's `.tool-picker` and the timeline's
+   `.grain-picker` are the same shape at two different sizes, so only sizing (font-size, padding)
+   stays in the feature file. The focus ring is inset (`-2px`) rather than the usual `1px` outset:
+   an outset ring on a middle segment would be clipped by its neighbours. */
+.segmented-button {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.segmented-button:first-child {
+  border-radius: var(--radius-2) 0 0 var(--radius-2);
+}
+
+.segmented-button:last-child {
+  border-radius: 0 var(--radius-2) var(--radius-2) 0;
+}
+
+.segmented-button[aria-checked='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.segmented-button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: var(--focus-ring);
+  outline-offset: -2px;
+}
+
 /* An uppercase section label — a form's legend, a chart's axis title, a capture profile's
    heading. Never below the app's own text floor; see the typography scale above. */
 .micro-label {
@@ -267,6 +314,15 @@ body {
   font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* A muted caption paragraph — an empty-state message, a hint, a status line — the smallest step
+   of the type scale, restated under a different class in nearly every feature file that has one.
+   A caller whose caption sits one size up (`--text-xs`) overrides `font-size` alone. */
+.hint-text {
+  margin: 0;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }
 
@@ -293,6 +349,97 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius-2);
   padding: var(--space-2);
+}
+
+.text-input:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* A surface for a self-contained block — a card, a row, a panel section — that would otherwise
+   restate the same border/radius/background in every feature file. */
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  background: var(--surface-1);
+}
+
+/* One learned or unrecognised glyph, in the learner's list or the set's grid — a small
+   surface-2 row around a tile and its answer. */
+.glyph-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+/* The tile bitmap itself, framed the same way in the learner and the set — only its size
+   differs between the two. */
+.glyph-tile-frame {
+  flex: none;
+  fill: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+
+/* A full-screen backdrop for a modal panel — calibration, the glyph learner and the glyph set
+   are all "fill the frame so the console picture reads at size" overlays; only the stacking
+   order differs between them. */
+.overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgb(0 0 0 / 0.65);
+}
+
+/* A `<summary>` acting as a toggle rather than a disclosure triangle — Disclosure.tsx and
+   CanvasLegend.tsx both hide the native marker and share one focus ring; each keeps its own
+   class for the resting/hover colour, which differs between them. */
+.disclosure-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-summary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-1);
+}
+
+/* A thumbnail in a horizontally-scrolling strip — `.media-gallery__strip` and
+   `.pending-capture-list__strip` both page through a run of frames one picture at a time, so the
+   thumbnail that jumps to one is the same shape in both. */
+.strip-thumb {
+  flex: none;
+  display: block;
+  width: 4rem;
+  padding: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  cursor: pointer;
+}
+
+.strip-thumb:hover {
+  background: var(--surface-3);
+}
+
+/* The frame being shown, marked on the strip rather than only in the counter — the strip is how
+   a reader jumps, so it has to say where they are. */
+.strip-thumb[aria-current='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 /* A zone or quest's colour, as an outline plus a translucent fill built from whichever hue

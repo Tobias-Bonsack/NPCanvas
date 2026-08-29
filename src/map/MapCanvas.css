@@ -155,23 +155,14 @@
   text-align: right;
 }
 
+/* The `.button` base (index.css) supplies the rest; the text stays full-strength rather than
+   the base's muted-until-hover, and the disabled fade is a touch lighter. */
 .map-canvas__reset {
-  font: inherit;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-}
-
-.map-canvas__reset:hover:not(:disabled) {
-  background: var(--surface-3);
 }
 
 .map-canvas__reset:disabled {
   opacity: 0.4;
-  cursor: default;
 }
 
 .map-canvas__scale {

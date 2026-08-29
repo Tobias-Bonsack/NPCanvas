@@ -1,16 +1,8 @@
-/* A full-screen overlay rather than a panel section: calibration wants the whole frame as large
-   as it can be drawn, and the frame is the size of the user's desktop. */
 .capture-calibration {
-  position: fixed;
-  inset: 0;
   z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4);
-  background: rgb(0 0 0 / 0.65);
 }
 
+/* `.card` (index.css) supplies the border/radius/surface. */
 .capture-calibration__panel {
   display: flex;
   flex-direction: column;
@@ -18,9 +10,6 @@
   width: min(1200px, 100%);
   max-height: 100%;
   padding: var(--space-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-3);
 }
 
 .capture-calibration__header {
@@ -35,10 +24,9 @@
   font-size: var(--text-md);
 }
 
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .capture-calibration__step {
-  margin: 0;
   font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 /* The frame is drawn at up to 2:1, so this is what scrolls — never the page. */
@@ -121,12 +109,9 @@
   border: none;
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment. */
 .capture-calibration__legend {
   padding: 0 var(--space-2) 0 0;
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 /* The same label the fieldsets carry, on a row that is not one — the screen-rect numbers are
@@ -164,29 +149,23 @@
   color: var(--danger);
 }
 
+/* `.micro-label` (index.css) supplies the uppercase treatment. */
 .capture-calibration__field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  font-size: var(--text-2xs);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
 }
 
 .capture-calibration__field--narrow {
   width: 7rem;
 }
 
+/* `.text-input` (index.css) supplies the rest; the size is one step down, and the transform/
+   tracking reset what the wrapping `.micro-label` puts on `.capture-calibration__field`. */
 .capture-calibration__input {
-  font: inherit;
   font-size: var(--text-xs);
   text-transform: none;
   letter-spacing: normal;
-  color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-2);
 }
 
@@ -213,24 +192,22 @@
   gap: var(--space-2);
 }
 
+/* The `.button` base (index.css) supplies the rest; only the size and the disabled cursor
+   differ. */
 .capture-calibration__button {
-  font: inherit;
   font-size: var(--text-xs);
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
   padding: var(--space-1) var(--space-3);
-  cursor: pointer;
 }
 
-.capture-calibration__button--primary {
+/* `:hover` reasserts the accent fill against the base rule's own hover colours
+   (`.button:hover:not(:disabled)`, index.css), which otherwise outrank this on specificity. */
+.capture-calibration__button--primary,
+.capture-calibration__button--primary:hover:not(:disabled) {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
 
 .capture-calibration__button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
 }

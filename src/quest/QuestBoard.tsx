@@ -168,12 +168,12 @@ function QuestGroup({
 }): ReactElement {
   return (
     <section className="quest-board__group" aria-label={`${STATUS_LABEL[status]} quests`}>
-      <h2 className="quest-board__group-heading">
+      <h2 className="quest-board__group-heading micro-label">
         {STATUS_LABEL[status]}
         <span className="count-pill">{quests.length}</span>
       </h2>
       {quests.length === 0 ? (
-        <p className="quest-board__group-empty">Nothing here.</p>
+        <p className="quest-board__group-empty hint-text">Nothing here.</p>
       ) : (
         <ul className="quest-board__list">
           {quests.map((quest) => (
@@ -228,7 +228,7 @@ function QuestCard({
   return (
     <article
       id={questCardElementId(quest.id)}
-      className="quest-card"
+      className="quest-card card"
       data-status={quest.status}
       style={questAccentStyle(quest)}
       // A named region, the same pattern `QuestGroup` already uses — forty cards otherwise all
@@ -239,7 +239,7 @@ function QuestCard({
         <h3 id={nameId} className="quest-card__name">
           {name}
         </h3>
-        <span className="quest-card__linked-count">
+        <span className="quest-card__linked-count hint-text">
           {quest.dialogueIds.length} {quest.dialogueIds.length === 1 ? 'dialogue' : 'dialogues'}
         </span>
         <RowActions>
@@ -299,7 +299,7 @@ function QuestCard({
       )}
 
       {linked.length === 0 ? (
-        <p className="quest-card__empty">
+        <p className="quest-card__empty hint-text">
           Nothing attached yet. Use <strong>Attach dialogue</strong>, or start a quest from{' '}
           <a href={formatRoute({ kind: 'canvas', dialogueId: null, focus: null })}>
             the dialogue panel on the canvas
@@ -453,7 +453,7 @@ function DialoguePicker({
     <div className="quest-picker">
       <div className="quest-picker__bar">
         <input
-          className="quest-picker__input"
+          className="quest-picker__input text-input"
           type="search"
           value={query}
           autoFocus
@@ -470,7 +470,7 @@ function DialoguePicker({
       </div>
 
       {matches.length === 0 ? (
-        <p className="quest-picker__empty">
+        <p className="quest-picker__empty hint-text">
           {dialogues.length === attached.size
             ? 'Every dialogue in the project is already attached.'
             : 'No dialogue matches that.'}
@@ -491,7 +491,7 @@ function DialoguePicker({
       )}
 
       {matches.length > PICKER_LIMIT && (
-        <p className="quest-picker__more">
+        <p className="quest-picker__more hint-text">
           …and {matches.length - PICKER_LIMIT} more. Narrow the search.
         </p>
       )}
