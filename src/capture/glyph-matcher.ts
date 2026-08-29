@@ -110,16 +110,37 @@ export function sampleNative(
 }
 
 /**
- * Ink or background, one byte per pixel, `1` meaning ink.
+ * Ink or background, one byte per pixel, `1` meaning ink — the whole image, or just `rect` of it.
  *
  * Ink is the darker class. A Game Boy text box is a light field with dark glyphs on it under
  * every palette — an SGB one makes the field off-white and the glyphs blue-black rather than
  * black, which moves both luminances but never their order.
+ *
+ * With no `rect` this binarises every pixel, exactly as before — what keeps every existing caller
+ * working. With one, the returned buffer is sized to `rect` itself (rounded), not to `image`: a
+ * caller reading one small text box out of a much larger frame writes only the rows it will ever
+ * read. A `rect` that reaches past the image's edge still returns a buffer of its own full size;
+ * the pixels that would have fallen outside the image are left `0` — background — rather than
+ * throwing, which is the same tolerance a text box calibrated against a differently sized window
+ * already relies on.
  */
-export function binarise(image: PixelBuffer, threshold: number): Uint8Array {
-  const bits = new Uint8Array(image.width * image.height)
-  for (let index = 0; index < bits.length; index++) {
-    bits[index] = luminanceAt(image.data, index * BYTES_PER_PIXEL) <= threshold ? 1 : 0
+export function binarise(image: PixelBuffer, threshold: number, rect?: PixelRect): Uint8Array {
+  const region = rect ?? { x: 0, y: 0, width: image.width, height: image.height }
+  const originX = Math.round(region.x)
+  const originY = Math.round(region.y)
+  const width = Math.round(region.width)
+  const height = Math.round(region.height)
+  const bits = new Uint8Array(width * height)
+  for (let y = 0; y < height; y++) {
+    const imageY = originY + y
+    if (imageY < 0 || imageY >= image.height) continue
+    for (let x = 0; x < width; x++) {
+      const imageX = originX + x
+      if (imageX < 0 || imageX >= image.width) continue
+      if (luminanceAt(image.data, (imageY * image.width + imageX) * BYTES_PER_PIXEL) <= threshold) {
+        bits[y * width + x] = 1
+      }
+    }
   }
   return bits
 }
@@ -177,14 +198,16 @@ export function inkThreshold(image: PixelBuffer, rect: PixelRect): number {
 /**
  * The text rect cut into 8 × 8 cells, in reading order.
  *
+ * `bits` is addressed through the rectangle's **own** origin and stride, not the screen's: it is
+ * `binarise`'s rect-sized output, whose `(0, 0)` already **is** `textRect`'s top-left. `stride` is
+ * that buffer's own row width, which `binarise` rounds `textRect.width` to.
+ *
  * A rect that is not a whole number of tiles loses its partial last column and row: a half cell
- * holds half a glyph, which can only ever be unmatchable. Anything outside the image counts as
+ * holds half a glyph, which can only ever be unmatchable. Anything outside `bits` counts as
  * background, so a rect nudged past the screen edge reads as spaces rather than throwing.
  */
-export function readTiles(bits: Uint8Array, nativeWidth: number, textRect: PixelRect): TileMask[] {
-  const height = Math.floor(bits.length / nativeWidth)
-  const originX = Math.round(textRect.x)
-  const originY = Math.round(textRect.y)
+export function readTiles(bits: Uint8Array, stride: number, textRect: PixelRect): TileMask[] {
+  const height = Math.floor(bits.length / stride)
   const columns = Math.floor(textRect.width / TILE_SIZE)
   const rows = Math.floor(textRect.height / TILE_SIZE)
 
@@ -193,13 +216,13 @@ export function readTiles(bits: Uint8Array, nativeWidth: number, textRect: Pixel
     for (let column = 0; column < columns; column++) {
       const cell = new Uint8Array(TILE_SIZE)
       for (let y = 0; y < TILE_SIZE; y++) {
-        const pixelY = originY + row * TILE_SIZE + y
+        const pixelY = row * TILE_SIZE + y
         if (pixelY < 0 || pixelY >= height) continue
         let packed = 0
         for (let x = 0; x < TILE_SIZE; x++) {
-          const pixelX = originX + column * TILE_SIZE + x
-          if (pixelX < 0 || pixelX >= nativeWidth) continue
-          if (bits[pixelY * nativeWidth + pixelX] === 1) packed |= 1 << (TILE_SIZE - 1 - x)
+          const pixelX = column * TILE_SIZE + x
+          if (pixelX < 0 || pixelX >= stride) continue
+          if (bits[pixelY * stride + pixelX] === 1) packed |= 1 << (TILE_SIZE - 1 - x)
         }
         cell[y] = packed
       }
@@ -256,8 +279,8 @@ export function readTextBox(
   origin: Point = ORIGIN_ZERO,
 ): TextBoxReading {
   const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
-  const bits = binarise(native, inkThreshold(native, profile.textRect))
-  const tiles = readTiles(bits, profile.nativeWidth, profile.textRect)
+  const bits = binarise(native, inkThreshold(native, profile.textRect), profile.textRect)
+  const tiles = readTiles(bits, Math.round(profile.textRect.width), profile.textRect)
 
   const lines: string[] = []
   const contexts: string[] = []

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { asCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile, Glyph } from '../project/types.ts'
+import { TILE_SIZE } from './capture-profile.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 import {
   binarise,
@@ -343,6 +344,56 @@ describe('readTextBox', () => {
     const second = readTextBox(frame, profile(), [...partial, ...learned])
 
     expect(second).toEqual({ text: 'DUß', unknown: [], unreadable: 0 })
+  })
+
+  it('reads a text rect flush against the screen\'s top-left corner', () => {
+    const native = blankNative()
+    drawTile(native, D, 0, 0)
+    drawTile(native, U, 1, 0)
+
+    const reading = readTextBox(
+      toFrame(native),
+      profile({ textRect: { x: 0, y: 0, width: 16, height: 8 } }),
+      ALPHABET,
+    )
+
+    expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
+  })
+
+  it('reads a text rect flush against the screen\'s bottom-right edge', () => {
+    const native = blankNative()
+    drawTile(native, D, NATIVE_WIDTH / TILE_SIZE - 2, NATIVE_HEIGHT / TILE_SIZE - 1)
+    drawTile(native, U, NATIVE_WIDTH / TILE_SIZE - 1, NATIVE_HEIGHT / TILE_SIZE - 1)
+
+    const reading = readTextBox(
+      toFrame(native),
+      profile({
+        textRect: {
+          x: NATIVE_WIDTH - 16,
+          y: NATIVE_HEIGHT - 8,
+          width: 16,
+          height: 8,
+        },
+      }),
+      ALPHABET,
+    )
+
+    expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
+  })
+
+  it('reads a text rect overhanging the screen edge as background, not a throw', () => {
+    const native = blankNative()
+    drawTile(native, D, NATIVE_WIDTH / TILE_SIZE - 1, 0)
+
+    const reading = readTextBox(
+      toFrame(native),
+      profile({ textRect: { x: NATIVE_WIDTH - 8, y: 0, width: 16, height: 8 } }),
+      ALPHABET,
+    )
+
+    // The second tile of the rect falls entirely outside the native image and reads as a space,
+    // which the final trim then drops.
+    expect(reading).toEqual({ text: 'D', unknown: [], unreadable: 0 })
   })
 })
 
