@@ -1,0 +1,613 @@
+import { defaultRelevanceTags } from '../dialogue/relevance.ts'
+import { nextMapOrigin } from '../map/canvas-layout.ts'
+import { nextQuestHue } from '../quest/quest-style.ts'
+import {
+  assertUniqueIds,
+  readArray,
+  readCaptureProfile,
+  readCommonFields,
+  readDialogue,
+  readDialogueCommon,
+  readDialogueId,
+  readGameMap,
+  readGlyphs,
+  readMapId,
+  readMedia,
+  readMediaFile,
+  readNonNegativeNumber,
+  readNumber,
+  readObject,
+  readPendingCapture,
+  readPixelRect,
+  readPositiveNumber,
+  readCaptureProfileId,
+  readProjectFileV10,
+  readQuestId,
+  readQuestsV3,
+  readQuestStatus,
+  readRelevanceTag,
+  readString,
+  readUniqueArray,
+  SchemaError,
+} from './data-file.ts'
+import { newMediaId } from './ids.ts'
+import type {
+  CaptureProfile,
+  CaptureProfileV5,
+  CaptureProfileV7,
+  CaptureProfileV8,
+  DialogueV3,
+  DialogueV4,
+  GameMap,
+  GameMapV1,
+  Glyph,
+  ProjectFile,
+  ProjectFileV1,
+  ProjectFileV2,
+  ProjectFileV3,
+  ProjectFileV4,
+  ProjectFileV5,
+  ProjectFileV6,
+  ProjectFileV7,
+  ProjectFileV8,
+  ProjectFileV9,
+  ProjectFileV10,
+  Quest,
+  QuestV2,
+  RelevanceSlugV4,
+} from './types.ts'
+import { RELEVANCE_SLUGS_V4 } from './types.ts'
+
+// ---- pre-migration readers ----
+//
+// Everything below is read only by a session adding a tenth migration: every reader here
+// parses a shape no live code path writes anymore, and every `migrateVN` turns that shape into
+// the next one. `data-file.ts` keeps the shared primitives and the current-version readers;
+// this file is the ledger of every version this project's `data.json` has ever had.
+
+/** A V1–V4 dialogue's relevance: slugs against the compiled-in `RELEVANCE_SLUGS_V4` vocabulary. */
+function readRelevanceV4(value: unknown, path: string): RelevanceSlugV4[] {
+  const raw = readArray(value, path)
+  const found = raw.map((tag, index) => {
+    const text = readString(tag, `${path}[${index}]`)
+    if (!isRelevanceSlugV4(text)) {
+      throw new SchemaError(`${path}[${index}]`, `one of ${RELEVANCE_SLUGS_V4.join(', ')}`)
+    }
+    return text
+  })
+  // Rebuilt from RELEVANCE_SLUGS_V4 rather than returned as read, which enforces the
+  // "deduplicated, in RELEVANCE_SLUGS_V4 order" invariant on a hand-edited file too.
+  return RELEVANCE_SLUGS_V4.filter((tag) => found.includes(tag))
+}
+
+function isRelevanceSlugV4(value: string): value is RelevanceSlugV4 {
+  return (RELEVANCE_SLUGS_V4 as readonly string[]).includes(value)
+}
+
+function readDialogueContentV3(value: unknown, path: string): DialogueV3['content'] {
+  const raw = readObject(value, path)
+  const kind = readString(raw.kind, `${path}.kind`)
+  switch (kind) {
+    case 'text':
+      return { kind: 'text', text: readString(raw.text, `${path}.text`) }
+
+    case 'image':
+    case 'gif':
+      return {
+        kind,
+        file: readMediaFile(raw.file, `${path}.file`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
+      }
+
+    case 'video':
+      return {
+        kind: 'video',
+        file: readMediaFile(raw.file, `${path}.file`),
+        width: readPositiveNumber(raw.width, `${path}.width`),
+        height: readPositiveNumber(raw.height, `${path}.height`),
+        durationMs: readNonNegativeNumber(raw.durationMs, `${path}.durationMs`),
+      }
+
+    default:
+      throw new SchemaError(`${path}.kind`, 'one of text, image, gif, video')
+  }
+}
+
+/**
+ * A V8 profile, carrying the gauge measurement V9 dropped. Kept beside `readCaptureProfileV5` as
+ * the pre-migration reader, and the only thing that still builds `CaptureProfileV8`.
+ */
+function readCaptureProfileV8(value: unknown, path: string): CaptureProfileV8 {
+  const raw = readObject(value, path)
+  return {
+    ...readCaptureProfileV7(value, path),
+    battleRect:
+      raw.battleRect === null || raw.battleRect === undefined
+        ? null
+        : readPixelRect(raw.battleRect, `${path}.battleRect`),
+  }
+}
+
+/**
+ * A V6-and-V7 profile, before the gauge was measured. Kept beside `readCaptureProfileV5` as the
+ * pre-migration reader, and used by both `readCaptureProfile` and `readCaptureProfileV8` for the
+ * fields they share — the measurement V8 added and V9 dropped again is appended *after* them, so a
+ * migrated document's first save writes the keys in the order every save after it does.
+ */
+export function readCaptureProfileV7(value: unknown, path: string): CaptureProfileV7 {
+  const raw = readObject(value, path)
+  return {
+    id: readCaptureProfileId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    frameWidth: readPositiveNumber(raw.frameWidth, `${path}.frameWidth`),
+    frameHeight: readPositiveNumber(raw.frameHeight, `${path}.frameHeight`),
+    screenRect: readPixelRect(raw.screenRect, `${path}.screenRect`),
+    nativeWidth: readPositiveNumber(raw.nativeWidth, `${path}.nativeWidth`),
+    nativeHeight: readPositiveNumber(raw.nativeHeight, `${path}.nativeHeight`),
+    textRect: readPixelRect(raw.textRect, `${path}.textRect`),
+  }
+}
+
+/**
+ * A V5-and-earlier profile, alphabet and all. `glyphs` is appended *after* the shared fields so a
+ * migrated document's first save writes the keys in the order every save after it does — the
+ * byte-stability the round-trip test pins.
+ */
+function readCaptureProfileV5(value: unknown, path: string): CaptureProfileV5 {
+  const raw = readObject(value, path)
+  return {
+    ...readCaptureProfileV7(value, path),
+    glyphs: readGlyphs(raw.glyphs, `${path}.glyphs`),
+  }
+}
+
+export function readGameMapV1(value: unknown, path: string): GameMapV1 {
+  const raw = readObject(value, path)
+  return {
+    id: readMapId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    file: readMediaFile(raw.file, `${path}.file`),
+    width: readPositiveNumber(raw.width, `${path}.width`),
+    height: readPositiveNumber(raw.height, `${path}.height`),
+  }
+}
+
+function readDialogueV4(value: unknown, path: string): DialogueV4 {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path, readRelevanceV4),
+    text: readString(raw.text, `${path}.text`),
+    media: readMedia(raw.media, `${path}.media`),
+  }
+}
+
+function readDialogueV3(value: unknown, path: string): DialogueV3 {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path, readRelevanceV4),
+    content: readDialogueContentV3(raw.content, `${path}.content`),
+  }
+}
+
+export function readQuestV2(value: unknown, path: string): QuestV2 {
+  const raw = readObject(value, path)
+  return {
+    id: readQuestId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    status: readQuestStatus(raw.status, `${path}.status`),
+    dialogueIds: readArray(raw.dialogueIds, `${path}.dialogueIds`).map((id, index) =>
+      readDialogueId(id, `${path}.dialogueIds[${index}]`),
+    ),
+    note: readString(raw.note, `${path}.note`),
+  }
+}
+
+// ---- routing ----
+
+/**
+ * Migrations chain one step at a time rather than jumping straight to the newest shape: a
+ * fourth version then adds one `migrateV3` and one `case`, instead of a new N→newest function
+ * per version already on disk.
+ */
+export function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
+  const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
+  switch (schemaVersion) {
+    case 1:
+      return migrateV9(
+        migrateV8(
+          migrateV7(
+            migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+          ),
+        ),
+      )
+    case 2:
+      return migrateV9(
+        migrateV8(
+          migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+        ),
+      )
+    case 3:
+      return migrateV9(
+        migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))),
+      )
+    case 4:
+      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw)))))))
+    case 5:
+      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw))))))
+    case 6:
+      return migrateV9(migrateV8(migrateV7(migrateV6(readProjectFileV6(raw)))))
+    case 7:
+      return migrateV9(migrateV8(migrateV7(readProjectFileV7(raw))))
+    case 8:
+      return migrateV9(migrateV8(readProjectFileV8(raw)))
+    case 9:
+      return migrateV9(readProjectFileV9(raw))
+    case 10:
+      return readProjectFileV10(raw)
+    default:
+      throw new SchemaError(
+        'schemaVersion',
+        `1, 2, 3, 4, 5, 6, 7, 8, 9 or 10, but found ${String(schemaVersion)}`,
+      )
+  }
+}
+
+function readDialoguesV3(raw: Record<string, unknown>): DialogueV3[] {
+  return readUniqueArray(raw, 'dialogues', readDialogueV3)
+}
+
+function readQuestsV2(raw: Record<string, unknown>): QuestV2[] {
+  return readUniqueArray(raw, 'quests', readQuestV2)
+}
+
+function readProjectFileV1(raw: Record<string, unknown>): ProjectFileV1 {
+  return {
+    schemaVersion: 1,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMapV1),
+    dialogues: readDialoguesV3(raw),
+    quests: readQuestsV2(raw),
+  }
+}
+
+function readProjectFileV2(raw: Record<string, unknown>): ProjectFileV2 {
+  return {
+    schemaVersion: 2,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues: readDialoguesV3(raw),
+    quests: readQuestsV2(raw),
+  }
+}
+
+function readProjectFileV3(raw: Record<string, unknown>): ProjectFileV3 {
+  return {
+    schemaVersion: 3,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues: readDialoguesV3(raw),
+    quests: readQuestsV3(raw),
+  }
+}
+
+function readProjectFileV4(raw: Record<string, unknown>): ProjectFileV4 {
+  return {
+    schemaVersion: 4,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues: readUniqueArray(raw, 'dialogues', readDialogueV4),
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV5),
+  }
+}
+
+/**
+ * V5 reads `relevanceTags` first: its order is what `readDialogue` normalizes every dialogue's
+ * relevance ids against, so the tag list has to exist before a single dialogue can be read.
+ */
+function readProjectFileV5(raw: Record<string, unknown>): ProjectFileV5 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  return {
+    schemaVersion: 5,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV5),
+    relevanceTags,
+  }
+}
+
+/**
+ * V6 reads the project's own alphabet after everything else, which is the order it is written in.
+ * Otherwise identical to V5 — moving `glyphs` off the profiles changed nothing a dialogue or a
+ * zone is read by.
+ */
+function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  return {
+    schemaVersion: 6,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV7),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+  }
+}
+
+/**
+ * V7 reads `pendingCaptures` last, against the same `tagOrder` `dialogues` already normalized
+ * relevance ids against — a capture's relevance is read no differently than a dialogue's.
+ * Otherwise identical to V6.
+ */
+function readProjectFileV7(raw: Record<string, unknown>): ProjectFileV7 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 7,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV7),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+  }
+}
+
+/**
+ * V8 reads the profile shape that carries `battleRect`. Otherwise identical to V7 — the gauge is
+ * the only thing this version adds, and it adds it to the profile rather than to the document.
+ */
+function readProjectFileV8(raw: Record<string, unknown>): ProjectFileV8 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 8,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfileV8),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+  }
+}
+
+/**
+ * V9 reads the profile shape with `battleRect` gone again — #104 deleted the machinery that read
+ * it, so a V9 document holds a plain `CaptureProfile`. Otherwise identical to V8.
+ */
+function readProjectFileV9(raw: Record<string, unknown>): ProjectFileV9 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 9,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+  }
+}
+
+// ---- migrateVN ----
+
+/**
+ * V1 had no shared canvas, so its maps have no placement. They are laid out left to right at
+ * native scale through the same `nextMapOrigin` an import uses, which is what guarantees a
+ * migrated project opens with nothing overlapping.
+ */
+function migrateV1(file: ProjectFileV1): ProjectFileV2 {
+  const maps: GameMap[] = []
+  for (const map of file.maps) {
+    maps.push({ ...map, origin: nextMapOrigin(maps), scale: 1 })
+  }
+  return { ...file, schemaVersion: 2, maps }
+}
+
+/**
+ * V2 drew every quest in one shared gold. Colours are handed out through the same
+ * `nextQuestHue` a newly created quest calls, with the array built up as it goes so each quest
+ * sees the ones already coloured — the migration and the board therefore colour identically.
+ */
+function migrateV2(file: ProjectFileV2): ProjectFileV3 {
+  const quests: Quest[] = []
+  for (const quest of file.quests) {
+    quests.push({ ...quest, hue: nextQuestHue(quests) })
+  }
+  return { ...file, schemaVersion: 3, quests }
+}
+
+/**
+ * V3 held either text or exactly one file per dialogue. The text case becomes a line with no
+ * pictures, and each media case a picture with no line — which is what those documents already
+ * meant. `fileName` is carried over verbatim rather than renamed to the V4 scheme: a migration
+ * is pure and cannot touch `media/`, and the name has always been stored rather than derived.
+ */
+function migrateV3(file: ProjectFileV3): ProjectFileV4 {
+  return {
+    ...file,
+    schemaVersion: 4,
+    dialogues: file.dialogues.map(migrateDialogueV3),
+    captureProfiles: [],
+  }
+}
+
+function migrateDialogueV3(dialogue: DialogueV3): DialogueV4 {
+  const { content, ...rest } = dialogue
+  if (content.kind === 'text') return { ...rest, text: content.text, media: [] }
+  // `id` first, matching the order `readDialogueMedia` builds a medium in. JSON.stringify
+  // writes keys in insertion order, so spreading `content` first would make a migrated
+  // project's first save differ from every save after it — a whole-file diff, once, for
+  // nothing. See the byte-stability test in data-file.test.ts.
+  return { ...rest, text: '', media: [{ id: newMediaId(), ...content }] }
+}
+
+/**
+ * V4 compiled the relevance vocabulary in; V5 moves it into the document. The four tags are
+ * built once, via the same `defaultRelevanceTags` a brand new project seeds — which is what
+ * makes a migrated project and a fresh one indistinguishable — and every dialogue's slugs are
+ * rewritten into the matching ids. `RELEVANCE_SLUGS_V4.indexOf` is safe here because
+ * `defaultRelevanceTags` returns its four tags in that exact order.
+ */
+function migrateV4(file: ProjectFileV4): ProjectFileV5 {
+  const relevanceTags = defaultRelevanceTags()
+  return {
+    ...file,
+    schemaVersion: 5,
+    dialogues: file.dialogues.map((dialogue) => ({
+      ...dialogue,
+      relevance: dialogue.relevance.map(
+        (slug) => relevanceTags[RELEVANCE_SLUGS_V4.indexOf(slug)].id,
+      ),
+    })),
+    relevanceTags,
+  }
+}
+
+/**
+ * V5 gave every capture profile an alphabet of its own; V6 gives the project one. The profiles'
+ * alphabets are folded together in profile order, and the **first** naming of a bitmap wins.
+ *
+ * Deliberately not `mergeGlyphs`: that replaces on identical bits, so the last profile taught
+ * would overrule every earlier one. Profiles are appended in the order they were created, which is
+ * the order they were taught in, and the fullest alphabet is the one that was taught first — a
+ * later profile aimed at a second box on the same console is re-learning tiles, not correcting
+ * them. Where the two disagree the earlier answer is the one with the most readings behind it.
+ * A disagreement is now fixable in the UI either way, which is what makes this a rule rather than
+ * a guess: `forgetGlyph` plus the learner replaces a wrong entry in two clicks.
+ */
+function migrateV5(file: ProjectFileV5): ProjectFileV6 {
+  const glyphs: Glyph[] = []
+  const known = new Set<string>()
+  for (const profile of file.captureProfiles) {
+    for (const glyph of profile.glyphs) {
+      if (known.has(glyph.bits)) continue
+      known.add(glyph.bits)
+      glyphs.push(glyph)
+    }
+  }
+  return {
+    ...file,
+    schemaVersion: 6,
+    captureProfiles: file.captureProfiles.map(stripGlyphs),
+    glyphs,
+  }
+}
+
+/** A V5 profile as V6 stores it. Written out field by field rather than destructured, because
+ * `noUnusedLocals` fails on the binding a rest-spread would leave behind. */
+function stripGlyphs(profile: CaptureProfileV5): CaptureProfileV7 {
+  return {
+    id: profile.id,
+    name: profile.name,
+    frameWidth: profile.frameWidth,
+    frameHeight: profile.frameHeight,
+    screenRect: profile.screenRect,
+    nativeWidth: profile.nativeWidth,
+    nativeHeight: profile.nativeHeight,
+    textRect: profile.textRect,
+  }
+}
+
+/**
+ * V6 had no way to record a conversation before it had a place to be. V7 adds the empty list —
+ * nothing before this version could have written a `PendingCapture`, so there is nothing to
+ * carry over.
+ */
+function migrateV6(file: ProjectFileV6): ProjectFileV7 {
+  return { ...file, schemaVersion: 7, pendingCaptures: [] }
+}
+
+/**
+ * V7 could not tell a fight from a conversation, because nothing in a profile said where the
+ * opponent's status gauge is drawn. V8 adds that measurement, and there is nothing to derive it
+ * from: a rectangle guessed here would be a confident claim about a console this project may not
+ * even be aimed at. `null` says it has not been measured, and the watcher then behaves exactly as
+ * it did under V7.
+ */
+function migrateV7(file: ProjectFileV7): ProjectFileV8 {
+  return {
+    ...file,
+    schemaVersion: 8,
+    captureProfiles: file.captureProfiles.map((profile) => ({ ...profile, battleRect: null })),
+  }
+}
+
+/**
+ * V8 measured a gauge nothing reads: #104 deleted the M15 battle-detection machinery, so
+ * `battleRect` is a claim about the screen no code checks anymore, and the calibration step that
+ * asked for it was asking for nothing. V9 drops it — there is nothing to fold it into, the same
+ * way `migrateV6` had nothing to carry over.
+ */
+function migrateV8(file: ProjectFileV8): ProjectFileV9 {
+  return {
+    ...file,
+    schemaVersion: 9,
+    captureProfiles: file.captureProfiles.map(dropBattleRect),
+  }
+}
+
+/** A V8 profile as V9 stores it. Written out field by field rather than destructured, because
+ * `noUnusedLocals` fails on the binding a rest-spread would leave behind. */
+function dropBattleRect(profile: CaptureProfileV8): CaptureProfile {
+  return {
+    id: profile.id,
+    name: profile.name,
+    frameWidth: profile.frameWidth,
+    frameHeight: profile.frameHeight,
+    screenRect: profile.screenRect,
+    nativeWidth: profile.nativeWidth,
+    nativeHeight: profile.nativeHeight,
+    textRect: profile.textRect,
+  }
+}
+
+/**
+ * V9 had no way to say which gamepad button starts or stops a recording. V10 adds the empty
+ * list — nothing before this version could have written a `RecorderBinding`, the same shape of
+ * migration as `migrateV6`.
+ */
+function migrateV9(file: ProjectFileV9): ProjectFileV10 {
+  return { ...file, schemaVersion: 10, recorderBindings: [] }
+}

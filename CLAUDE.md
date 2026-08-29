@@ -364,13 +364,18 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   (`crypto.randomUUID()`), `date-fns` (`Intl.DateTimeFormat`), any charting library (inline SVG by
   hand), `@types/wicg-file-system-access` (conflicts with the interfaces `lib.dom` already ships).
   One tripwire: if `parseProjectFile` exceeds ~250 lines, or a second schema version forces
-  per-version validation, `zod` becomes justified — nothing else on that list does. Measured at
-  V7 (`src/project/data-file.ts` is ~990 lines total): the exported `parseProjectFile` function
-  itself is still ~15 lines and delegates outright, and the file's size is the seven versions'
-  worth of small, uniform `readVN`/`migrateVN` pairs sitting side by side, not one function that
-  grew branches. Each new version has cost one new reader and one new migration function — V7's
-  `migrateV6` is three lines — so the growth is linear and mechanical rather than the per-version
-  branching the tripwire is actually about. `zod` is still not adopted.
+  per-version validation, `zod` becomes justified — nothing else on that list does. Re-measured at
+  V10, after #135 split the file along exactly that seam: `src/project/data-file.ts` (~690 lines)
+  keeps the shared primitives, the current-version readers, `repairReferences` and
+  `parseProjectFile` itself, which is still ~15 lines and delegates outright (`readProjectFile` →
+  `readVersionedProjectFile`). Every pre-migration reader and every `migrateVN` — read only by a
+  session adding an eleventh version — lives in `src/project/data-file-migrations.ts`
+  (~610 lines). Neither file grew a branchy function; the size is ten versions' worth of small,
+  uniform `readVN`/`migrateVN` pairs sitting side by side — V9's `migrateV8` is a five-line
+  field-by-field copy. Each new version still costs one new reader and one new migration function,
+  so the growth stays linear and mechanical rather than the per-version branching the tripwire is
+  actually about, and splitting the ledger out is what keeps that true as the count climbs further.
+  `zod` is still not adopted.
 - **File System Access typings.** `lib.dom.d.ts` ships the handle interfaces but not
   `showDirectoryPicker`, `queryPermission`/`requestPermission`, or `values()`. Those live in
   `src/storage/file-system-access.d.ts` as augmentations, not redefinitions.
