@@ -196,10 +196,10 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 10
+    data.schemaVersion = 11
     expect(
       rejectionMessage(data),
-    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7, 8 or 9, but found 10')
+    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7, 8, 9 or 10, but found 11')
   })
 
   it('rejects a map with no placement', () => {
@@ -214,7 +214,7 @@ describe('parseProjectFile', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
@@ -358,7 +358,7 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.glyphs).toEqual([
       { char: 'P', bits: 'fc8282fc80808000' },
       { char: 'a', bits: '000038043c443e00' },
@@ -410,7 +410,7 @@ describe('parseProjectFile: V5 migration', () => {
     const reread = parseProjectFile(serializeProject(migrated.file))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(9)
+    expect(reread.file.schemaVersion).toBe(10)
     expect({ ...reread.file, savedAt: '' }).toEqual({ ...migrated.file, savedAt: '' })
   })
 
@@ -512,13 +512,105 @@ function v7Document(): Record<string, unknown> {
   return data
 }
 
+/** A V9 document: today's shape minus `recorderBindings`, which V10 adds. */
+function v9Document(): Record<string, unknown> {
+  const data = v7Document()
+  data.schemaVersion = 9
+  return data
+}
+
+describe('parseProjectFile: V9 migration', () => {
+  it('adds an empty recorderBindings list, since nothing before V10 could have written one', () => {
+    const result = parseProjectFile(JSON.stringify(v9Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.recorderBindings).toEqual([])
+    // Everything else survives untouched.
+    expect(result.file.captureProfiles).toHaveLength(1)
+    expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
+  })
+})
+
+/** A valid V10 document with one binding per recorder action. */
+function documentWithRecorderBindings(): Record<string, unknown> {
+  const data = v9Document()
+  data.schemaVersion = 10
+  data.recorderBindings = [
+    { action: 'record-new', buttonIndex: 0 },
+    { action: 'record-extend', buttonIndex: 1 },
+  ]
+  return data
+}
+
+describe('parseProjectFile: recorderBindings', () => {
+  it('reads a binding for each action', () => {
+    const result = parseProjectFile(JSON.stringify(documentWithRecorderBindings()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.recorderBindings).toEqual([
+      { action: 'record-new', buttonIndex: 0 },
+      { action: 'record-extend', buttonIndex: 1 },
+    ])
+  })
+
+  it('round trips a binding unchanged', () => {
+    const result = parseProjectFile(JSON.stringify(documentWithRecorderBindings()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const reread = parseProjectFile(serializeProject(result.file))
+    expect(reread.ok).toBe(true)
+    if (!reread.ok) return
+    expect(reread.file.recorderBindings).toEqual(result.file.recorderBindings)
+  })
+
+  it('collapses a duplicate action to its first binding, mirroring the reducer’s own rule', () => {
+    const data = documentWithRecorderBindings()
+    data.recorderBindings = [
+      { action: 'record-new', buttonIndex: 0 },
+      { action: 'record-new', buttonIndex: 4 },
+    ]
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.recorderBindings).toEqual([{ action: 'record-new', buttonIndex: 0 }])
+  })
+
+  it('rejects a buttonIndex that is not a non-negative integer', () => {
+    const data = documentWithRecorderBindings()
+    data.recorderBindings = [{ action: 'record-new', buttonIndex: -1 }]
+    expect(rejectionMessage(data)).toBe(
+      'recorderBindings[0].buttonIndex: expected a non-negative integer',
+    )
+  })
+
+  it('rejects a fractional buttonIndex', () => {
+    const data = documentWithRecorderBindings()
+    data.recorderBindings = [{ action: 'record-new', buttonIndex: 1.5 }]
+    expect(rejectionMessage(data)).toBe(
+      'recorderBindings[0].buttonIndex: expected a non-negative integer',
+    )
+  })
+
+  it('rejects an unknown action', () => {
+    const data = documentWithRecorderBindings()
+    data.recorderBindings = [{ action: 'record-forever', buttonIndex: 0 }]
+    expect(rejectionMessage(data)).toBe(
+      'recorderBindings[0].action: expected record-new or record-extend',
+    )
+  })
+})
+
 describe('parseProjectFile: V7 migration', () => {
   it('carries a profile with no gauge measurement through to the current schema unchanged', () => {
     const result = parseProjectFile(JSON.stringify(v7Document()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
     // Every other measurement is the one that was on disk.
@@ -541,7 +633,7 @@ describe('parseProjectFile: V8 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
     expect(result.file.captureProfiles[0].textRect).toEqual({ x: 8, y: 104, width: 144, height: 32 })
@@ -554,7 +646,7 @@ describe('parseProjectFile: V6 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.pendingCaptures).toEqual([])
     // Everything else survives untouched.
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
@@ -568,7 +660,7 @@ describe('parseProjectFile: V4 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -608,7 +700,7 @@ describe('parseProjectFile: V3 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -662,7 +754,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -691,7 +783,7 @@ describe('parseProjectFile: V1 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
@@ -731,7 +823,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 9, maps: [], pendingCaptures: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 10, maps: [], pendingCaptures: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -940,10 +1032,11 @@ describe('parseProjectFile: pendingCaptures', () => {
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(9)
+    expect(project.schemaVersion).toBe(10)
     expect(project.captureProfiles).toEqual([])
     expect(project.glyphs).toEqual([])
     expect(project.pendingCaptures).toEqual([])
+    expect(project.recorderBindings).toEqual([])
     expect(project.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -954,7 +1047,7 @@ describe('createEmptyProject', () => {
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(9)
+    expect(reread.file.schemaVersion).toBe(10)
   })
 })
 
@@ -1172,7 +1265,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(9)
+    expect(reread.file.schemaVersion).toBe(10)
   })
 })
 
@@ -1295,7 +1388,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(9)
+    expect(result.file.schemaVersion).toBe(10)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })

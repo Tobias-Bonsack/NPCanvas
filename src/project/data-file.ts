@@ -44,23 +44,26 @@ import type {
   ProjectFileV7,
   ProjectFileV8,
   ProjectFileV9,
+  ProjectFileV10,
   ProjectRepairs,
   Quest,
   QuestId,
   QuestStatus,
   QuestV2,
+  RecorderAction,
+  RecorderBinding,
   RelevanceSlugV4,
   RelevanceTag,
   RelevanceTagId,
   Zone,
   ZoneId,
 } from './types.ts'
-import { QUEST_STATUSES, RELEVANCE_SLUGS_V4 } from './types.ts'
+import { QUEST_STATUSES, RECORDER_ACTIONS, RELEVANCE_SLUGS_V4 } from './types.ts'
 
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 9,
+    schemaVersion: 10,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -71,6 +74,9 @@ export function createEmptyProject(name: string): ProjectFile {
     relevanceTags: defaultRelevanceTags(),
     glyphs: [],
     pendingCaptures: [],
+    // No default binding — see RecorderBinding: a guessed one would claim a button on a
+    // controller this project has never seen means "record".
+    recorderBindings: [],
   }
 }
 
@@ -417,6 +423,51 @@ function readGlyphs(value: unknown, path: string): Glyph[] {
   return readArray(value, path).map((glyph, index) => readGlyph(glyph, `${path}[${index}]`))
 }
 
+/** A button index: never negative, never fractional — it addresses `Gamepad.buttons`. */
+function readNonNegativeInteger(value: unknown, path: string): number {
+  const number = readNumber(value, path)
+  if (!Number.isInteger(number) || number < 0) {
+    throw new SchemaError(path, 'a non-negative integer')
+  }
+  return number
+}
+
+function readRecorderAction(value: unknown, path: string): RecorderAction {
+  const action = readString(value, path)
+  if (!isRecorderAction(action)) throw new SchemaError(path, RECORDER_ACTIONS.join(' or '))
+  return action
+}
+
+function isRecorderAction(value: string): value is RecorderAction {
+  return (RECORDER_ACTIONS as readonly string[]).includes(value)
+}
+
+function readRecorderBinding(value: unknown, path: string): RecorderBinding {
+  const raw = readObject(value, path)
+  return {
+    action: readRecorderAction(raw.action, `${path}.action`),
+    buttonIndex: readNonNegativeInteger(raw.buttonIndex, `${path}.buttonIndex`),
+  }
+}
+
+/**
+ * At most one binding per action, mirroring the reducer's own invariant — the first naming of an
+ * action wins, so a hand-edited duplicate collapses rather than rejecting the whole document.
+ */
+function readRecorderBindings(value: unknown, path: string): RecorderBinding[] {
+  const bindings = readArray(value, path).map((binding, index) =>
+    readRecorderBinding(binding, `${path}[${index}]`),
+  )
+  const seen = new Set<RecorderAction>()
+  const result: RecorderBinding[] = []
+  for (const binding of bindings) {
+    if (seen.has(binding.action)) continue
+    seen.add(binding.action)
+    result.push(binding)
+  }
+  return result
+}
+
 /**
  * A V9 profile: exactly the fields `readCaptureProfileV7` already reads. V8's gauge measurement
  * had no reader left after #104, so V9 drops it and this is once again a plain pass-through.
@@ -738,33 +789,41 @@ function readVersionedProjectFile(raw: Record<string, unknown>): ProjectFile {
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV8(
-        migrateV7(
-          migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+      return migrateV9(
+        migrateV8(
+          migrateV7(
+            migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+          ),
         ),
       )
     case 2:
-      return migrateV8(
-        migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+      return migrateV9(
+        migrateV8(
+          migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+        ),
       )
     case 3:
-      return migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw)))))))
+      return migrateV9(
+        migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))),
+      )
     case 4:
-      return migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw))))))
+      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw)))))))
     case 5:
-      return migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw)))))
+      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw))))))
     case 6:
-      return migrateV8(migrateV7(migrateV6(readProjectFileV6(raw))))
+      return migrateV9(migrateV8(migrateV7(migrateV6(readProjectFileV6(raw)))))
     case 7:
-      return migrateV8(migrateV7(readProjectFileV7(raw)))
+      return migrateV9(migrateV8(migrateV7(readProjectFileV7(raw))))
     case 8:
-      return migrateV8(readProjectFileV8(raw))
+      return migrateV9(migrateV8(readProjectFileV8(raw)))
     case 9:
-      return readProjectFileV9(raw)
+      return migrateV9(readProjectFileV9(raw))
+    case 10:
+      return readProjectFileV10(raw)
     default:
       throw new SchemaError(
         'schemaVersion',
-        `1, 2, 3, 4, 5, 6, 7, 8 or 9, but found ${String(schemaVersion)}`,
+        `1, 2, 3, 4, 5, 6, 7, 8, 9 or 10, but found ${String(schemaVersion)}`,
       )
   }
 }
@@ -957,6 +1016,35 @@ function readProjectFileV9(raw: Record<string, unknown>): ProjectFileV9 {
   }
 }
 
+/**
+ * V10 reads `recorderBindings` last, after everything V9 already read. Otherwise identical to V9
+ * — the bindings are the only thing this version adds, and it adds them to the document rather
+ * than to any profile.
+ */
+function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogue(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 10,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues,
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+    recorderBindings: readRecorderBindings(raw.recorderBindings, 'recorderBindings'),
+  }
+}
+
 function readQuestsV3(raw: Record<string, unknown>): Quest[] {
   return readUniqueArray(raw, 'quests', readQuest)
 }
@@ -1130,4 +1218,13 @@ function dropBattleRect(profile: CaptureProfileV8): CaptureProfile {
     nativeHeight: profile.nativeHeight,
     textRect: profile.textRect,
   }
+}
+
+/**
+ * V9 had no way to say which gamepad button starts or stops a recording. V10 adds the empty
+ * list — nothing before this version could have written a `RecorderBinding`, the same shape of
+ * migration as `migrateV6`.
+ */
+function migrateV9(file: ProjectFileV9): ProjectFileV10 {
+  return { ...file, schemaVersion: 10, recorderBindings: [] }
 }

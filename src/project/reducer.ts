@@ -24,6 +24,7 @@ import type {
   ProjectRepairs,
   Quest,
   QuestId,
+  RecorderAction,
   RelevanceTag,
   RelevanceTagId,
   SaveFailure,
@@ -110,6 +111,8 @@ export type Action =
       mapId: MapId
       position: Point
     }
+  | { kind: 'recorder-binding/set'; action: RecorderAction; buttonIndex: number }
+  | { kind: 'recorder-binding/cleared'; action: RecorderAction }
   | { kind: 'history/undo' }
   | { kind: 'history/redo' }
 
@@ -843,6 +846,41 @@ function applyAction(state: AppState, action: Action): AppState {
             (capture) => capture.id !== action.captureId,
           ),
           dialogues: [...project.dialogues, dialogue],
+        },
+      }
+    }
+
+    // At most one binding per action, enforced here rather than at each call site — the same
+    // rule `readRecorderBindings` enforces on a hand-edited file. An invalid buttonIndex is
+    // rejected as a no-op instead of a thrown error: the caller is a browser API reading live
+    // gamepad state, not a form with a place to show a validation message.
+    case 'recorder-binding/set': {
+      if (state.kind !== 'ready') return state
+      if (!Number.isInteger(action.buttonIndex) || action.buttonIndex < 0) return state
+      const existing = state.project.recorderBindings.find((b) => b.action === action.action)
+      if (existing !== undefined && existing.buttonIndex === action.buttonIndex) return state
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          recorderBindings: [
+            ...state.project.recorderBindings.filter((b) => b.action !== action.action),
+            { action: action.action, buttonIndex: action.buttonIndex },
+          ],
+        },
+      }
+    }
+
+    case 'recorder-binding/cleared': {
+      if (state.kind !== 'ready') return state
+      if (!state.project.recorderBindings.some((b) => b.action === action.action)) return state
+      return {
+        ...state,
+        project: {
+          ...state.project,
+          recorderBindings: state.project.recorderBindings.filter(
+            (b) => b.action !== action.action,
+          ),
         },
       }
     }

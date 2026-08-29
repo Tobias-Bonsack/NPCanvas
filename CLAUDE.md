@@ -238,14 +238,14 @@ its whole context budget. `src/project/types.ts` is the specification — read i
 - **`createWritable()` is already atomic** (swap file, committed on `close()`). Do not add a
   tmp-file/rename scheme.
 - **`requestPermission` must be called inside a user gesture.** Reconnect is always a button click.
-- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **9**. To
-  evolve: add `ProjectFileV10`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
+- **Schema versioning.** `schemaVersion` is a literal type, and the current version is **10**. To
+  evolve: add `ProjectFileV11`, widen `StoredProjectFile` to include it, point `ProjectFile` at the
   new version, branch in `readProjectFile`, and migrate forward on load. `StoredProjectFile` is the
   union of on-disk shapes and is `parseProjectFile`'s business alone; `ProjectFile` is always the
   newest version, which is the only shape the store, the components, and writes ever see. Never
   redefine the meaning of an existing field. **Migrations chain one step at a time** — `case 1` runs
-  `migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…))))))))` — so a
-  new version adds one function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
+  `migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(…)))))))))`
+  — so a new version adds one function and one case, not one per shape already on disk. The V1→V2 migration lays legacy maps out left to right through
   `nextMapOrigin`, and the V2→V3 migration hands each quest a hue through `nextQuestHue`, building
   the array up as it goes so each quest sees those already coloured. Both call the same function the
   live app calls (an import; a newly created quest), which is what makes a migrated project
@@ -284,7 +284,13 @@ its whole context budget. `src/project/types.ts` is the specification — read i
   ordering trap applies one version later: `ProjectFileV8` had to be re-pointed at `CaptureProfileV8`
   rather than left naming `CaptureProfile`, because by the time V9 existed `CaptureProfile` no longer
   carried `battleRect` and a V8 document's own shape would have been silently redefined out from
-  under it.
+  under it. The V9→V10 migration (`migrateV9`) sets `recorderBindings: []` and nothing else — the
+  same shape of migration as V6→V7, since nothing before V10 could have written a `RecorderBinding`.
+  No ordering trap this time: `CaptureProfile` did not change shape between V9 and V10, so
+  `ProjectFileV9` keeps naming it. A `RecorderBinding` says which gamepad button starts or stops a
+  recording, and it lives on the project rather than on a `CaptureProfile` for the same reason the
+  alphabet does (see "The alphabet belongs to the project, not to a capture profile" above): it says
+  how *this player* triggers a recording, not a measurement of the console on screen.
 - **One canvas, every map.** There is no active map. `MapCanvas` renders a group per map inside the
   world element, placed by `origin` and sized by `scale`, and every dialogue in the project is
   pinned onto the map it belongs to. It fits to `mapsBounds` once, when the container is first

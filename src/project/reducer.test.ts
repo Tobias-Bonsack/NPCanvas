@@ -294,6 +294,8 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
     mapId: asMapId('harbour'),
     position: { x: 0, y: 0 },
   },
+  { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 0 },
+  { kind: 'recorder-binding/cleared', action: 'record-new' },
   { kind: 'history/undo' },
   { kind: 'history/redo' },
 ]
@@ -1676,6 +1678,87 @@ describe('reduce: the project alphabet', () => {
 
     expect(glyphsOf(twice)).toEqual([])
     expect(glyphsOf(reduce(twice, { kind: 'history/undo' }))).toEqual([B])
+  })
+})
+
+describe('reduce: recorder bindings', () => {
+  function bindingsOf(state: AppState): readonly { action: string; buttonIndex: number }[] {
+    return readyOf(state).project.recorderBindings
+  }
+
+  it('sets a binding for an action with none yet', () => {
+    const next = reduce(ready(), { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 3 })
+    expect(bindingsOf(next)).toEqual([{ action: 'record-new', buttonIndex: 3 }])
+  })
+
+  it('replaces the existing binding for that action rather than adding a second one', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      recorderBindings: [{ action: 'record-new', buttonIndex: 3 }],
+    })
+    const next = reduce(state, { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 7 })
+    expect(bindingsOf(next)).toEqual([{ action: 'record-new', buttonIndex: 7 }])
+  })
+
+  it('leaves a different action’s binding alone', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      recorderBindings: [{ action: 'record-new', buttonIndex: 3 }],
+    })
+    const next = reduce(state, {
+      kind: 'recorder-binding/set',
+      action: 'record-extend',
+      buttonIndex: 5,
+    })
+    expect(bindingsOf(next)).toEqual([
+      { action: 'record-new', buttonIndex: 3 },
+      { action: 'record-extend', buttonIndex: 5 },
+    ])
+  })
+
+  it('ignores setting the binding it already is', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      recorderBindings: [{ action: 'record-new', buttonIndex: 3 }],
+    })
+    expect(
+      reduce(state, { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 3 }),
+    ).toBe(state)
+  })
+
+  it.each([-1, 1.5, Number.NaN])(
+    'rejects a buttonIndex of %s as a no-op rather than storing it',
+    (buttonIndex) => {
+      const state = ready()
+      expect(
+        reduce(state, { kind: 'recorder-binding/set', action: 'record-new', buttonIndex }),
+      ).toBe(state)
+    },
+  )
+
+  it('clears a binding', () => {
+    const state = ready({
+      ...createEmptyProject('Harbour'),
+      recorderBindings: [{ action: 'record-new', buttonIndex: 3 }],
+    })
+    const next = reduce(state, { kind: 'recorder-binding/cleared', action: 'record-new' })
+    expect(bindingsOf(next)).toEqual([])
+  })
+
+  it('ignores clearing an action with no binding', () => {
+    const state = ready()
+    expect(reduce(state, { kind: 'recorder-binding/cleared', action: 'record-new' })).toBe(state)
+  })
+
+  it('makes a set and a clear each their own undo step', () => {
+    const state = ready()
+    const set = reduce(state, { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 3 })
+    const cleared = reduce(set, { kind: 'recorder-binding/cleared', action: 'record-new' })
+    expect(bindingsOf(cleared)).toEqual([])
+    expect(readyOf(cleared).history.undo).toHaveLength(2)
+
+    const undoneOnce = reduce(cleared, { kind: 'history/undo' })
+    expect(bindingsOf(undoneOnce)).toEqual([{ action: 'record-new', buttonIndex: 3 }])
   })
 })
 

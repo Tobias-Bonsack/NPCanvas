@@ -201,6 +201,23 @@ export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
 export type CaptureProfileV8 = CaptureProfile & { battleRect: PixelRect | null }
 
 /**
+ * What a bound gamepad button starts or stops. A runtime list rather than a fixed pair of
+ * nullable fields, matching every other user-owned list in the document — a third trigger later
+ * is a new action value, not a new field.
+ */
+export const RECORDER_ACTIONS = ['record-new', 'record-extend'] as const
+export type RecorderAction = (typeof RECORDER_ACTIONS)[number]
+
+/**
+ * A gamepad button bound to a recorder action, and nothing else — there is no keyboard variant
+ * to widen this into (#107 removed the last keyboard trigger on purpose). Lives on the project
+ * rather than on a `CaptureProfile`: it says how *this player* starts a recording, the same way
+ * whichever profile is aimed at the screen, not a measurement of the console — see CLAUDE.md's
+ * paragraph on why the alphabet belongs to the project for the identical reasoning.
+ */
+export type RecorderBinding = { action: RecorderAction; buttonIndex: number }
+
+/**
  * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
  * list is what the quest board iterates to build its groups, so a third status would appear
  * there without the board learning a new name.
@@ -420,6 +437,25 @@ export type ProjectFileV9 = {
 }
 
 /**
+ * V10 gives the project a place to remember which gamepad button starts and stops a recording —
+ * see `RecorderBinding` for why that is the project's, not a `CaptureProfile`'s.
+ */
+export type ProjectFileV10 = {
+  schemaVersion: 10
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
+  dialogues: Dialogue[]
+  quests: Quest[]
+  captureProfiles: CaptureProfile[]
+  relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
+  pendingCaptures: PendingCapture[]
+  recorderBindings: RecorderBinding[]
+}
+
+/**
  * Every shape a `data.json` on disk may have. Only `parseProjectFile` handles this union;
  * it migrates anything older forward, so nothing downstream branches on a version.
  */
@@ -433,9 +469,10 @@ export type StoredProjectFile =
   | ProjectFileV7
   | ProjectFileV8
   | ProjectFileV9
+  | ProjectFileV10
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV9
+export type ProjectFile = ProjectFileV10
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
