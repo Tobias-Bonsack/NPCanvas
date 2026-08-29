@@ -32,4 +32,14 @@ describe('pressedEdges', () => {
     // ...or fewer buttons: the missing current entry is simply never iterated.
     expect(pressedEdges([false, true], [false])).toEqual([])
   })
+
+  it('fires no edge on the poll after the loop restarts with a button still held', () => {
+    // `gamepad-watch.ts` clears its per-pad `previous` on every stop, so the loop's first poll
+    // after stopping and starting again — no binding, then a binding added back while the player
+    // never let go of the button — sees `previous.length === 0` exactly as a fresh connection does.
+    const held = [false, true, false]
+    expect(pressedEdges(held, held)).toEqual([])
+    const afterRestart: readonly boolean[] = []
+    expect(pressedEdges(afterRestart, held)).toEqual([])
+  })
 })
