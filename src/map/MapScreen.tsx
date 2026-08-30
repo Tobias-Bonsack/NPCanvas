@@ -152,6 +152,7 @@ export function MapScreen({
     () => withZonePreview(project.zones, zoneDrag),
     [project.zones, zoneDrag],
   )
+  const zonesById = useMemo(() => byId(project.zones), [project.zones])
 
   // `replace`: focusing is a one-shot intent, not something to keep in history.
   const dialogueId = route.dialogueId
@@ -353,6 +354,8 @@ export function MapScreen({
             project={project}
             dialogue={selectedDialogue}
             locations={selectedLocations}
+            zonesById={zonesById}
+            zoneIndex={zoneIndex}
             onClose={onCloseDialogue}
             autoFocusNpc={autoFocusDialogueId === selectedDialogue.id}
             onAutoFocusConsumed={onAutoFocusConsumed}
@@ -391,6 +394,14 @@ function intersect(
 function withZonePreview(zones: Zone[], drag: ZoneDragPreview | null): readonly Zone[] {
   if (drag === null) return zones
   return zones.map((zone) => (zone.id === drag.id ? { ...zone, polygon: drag.polygon } : zone))
+}
+
+// T['id'], not a second type parameter — a key parameter is only inferable from the
+// constraint, which lands as `unknown` and throws away the brand.
+function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
+  const map = new Map<T['id'], T>()
+  for (const item of items) map.set(item.id, item)
+  return map
 }
 
 // `key` is a single unmodified letter — matched by the global listener above and printed by

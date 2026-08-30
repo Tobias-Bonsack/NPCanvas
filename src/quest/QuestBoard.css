@@ -177,47 +177,6 @@
   resize: vertical;
 }
 
-/* ---- attach picker ---- */
-
-.quest-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-2);
-  background: var(--surface-2);
-}
-
-.quest-picker__bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-/* `.text-input` (index.css) supplies the rest; the background sits a level darker than the base
-   since this field lives inside the already-raised `.quest-picker` surface below it. */
-.quest-picker__input {
-  flex: 1;
-  min-width: 0;
-  background: var(--surface-0);
-}
-
-.quest-picker__list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  /* Capped rather than paged: the list is a search result, and scrolling it must not scroll
-     the card it belongs to out from under the search field. */
-  max-height: 18rem;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-2);
-  background: var(--surface-0);
-}
-
-/* `.hint-text` (index.css) supplies the rest. */
-
 /* --breakpoint-wide (index.css). A card is prose plus a list, not a paragraph — see
    `.quest-card__note`'s own cap above — so the board grows into a grid instead of one wider
    column. `auto-fill` rather than `auto-fit`: an odd card count then leaves a gap on the last

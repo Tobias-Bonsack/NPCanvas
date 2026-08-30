@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
 import { useEditableRow } from '../app/use-editable-row.ts'
 import type { Route } from '../app/route.ts'
@@ -7,12 +7,12 @@ import { formatRoute, navigate } from '../app/route.ts'
 import { RowActions } from '../app/RowActions.tsx'
 import type { QuestsViewState } from '../app/view-state.ts'
 import { assertNever } from '../assert-never.ts'
-import { DialogueRow, DialogueRowContent } from '../dialogue-row/DialogueRow.tsx'
+import { DialoguePicker } from '../dialogue-row/DialoguePicker.tsx'
+import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.ts'
-import { subsetByTimeAsc, subsetByTimeDesc } from '../dialogue/dialogue-order.ts'
+import { subsetByTimeAsc } from '../dialogue/dialogue-order.ts'
 import { npcKey, npcLabel } from '../insights/filters.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
-import { dialogueSearchTexts } from '../project/derived.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -375,6 +375,7 @@ function QuestCardMode({
           exclude={quest.dialogueIds}
           zonesById={zonesById}
           zoneIndex={zoneIndex}
+          emptyMessage="Every dialogue in the project is already attached."
           onPick={(dialogueId) =>
             dispatch({ kind: 'quest/dialogue-attached', questId: quest.id, dialogueId })
           }
@@ -385,89 +386,6 @@ function QuestCardMode({
     default:
       return assertNever(mode)
   }
-}
-
-const PICKER_LIMIT = 25
-
-// Empty query lists everything unattached, newest first — the line just logged is the one
-// most likely being filed.
-function DialoguePicker({
-  dialogues,
-  exclude,
-  zonesById,
-  zoneIndex,
-  onPick,
-  onClose,
-}: {
-  dialogues: readonly Dialogue[]
-  exclude: readonly DialogueId[]
-  zonesById: ReadonlyMap<ZoneId, Zone>
-  zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
-  onPick: (id: DialogueId) => void
-  onClose: () => void
-}): ReactElement {
-  const [query, setQuery] = useState('')
-
-  const attached = useMemo(() => new Set(exclude), [exclude])
-  const matches = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const searchTexts = dialogueSearchTexts(dialogues)
-    const candidates = dialogues.filter((dialogue) => !attached.has(dialogue.id))
-    const hits =
-      needle === ''
-        ? candidates
-        : candidates.filter((dialogue) => (searchTexts.get(dialogue.id) ?? '').includes(needle))
-    return subsetByTimeDesc(hits, dialogues)
-  }, [dialogues, attached, query])
-
-  return (
-    <div className="quest-picker">
-      <div className="quest-picker__bar">
-        <input
-          className="quest-picker__input text-input"
-          type="search"
-          value={query}
-          autoFocus
-          placeholder="Search by NPC or what was said"
-          aria-label="Search dialogues"
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') onClose()
-          }}
-        />
-        <button type="button" className="button" onClick={onClose}>
-          Close
-        </button>
-      </div>
-
-      {matches.length === 0 ? (
-        <p className="quest-picker__empty hint-text">
-          {dialogues.length === attached.size
-            ? 'Every dialogue in the project is already attached.'
-            : 'No dialogue matches that.'}
-        </p>
-      ) : (
-        <ul className="quest-picker__list">
-          {matches.slice(0, PICKER_LIMIT).map((dialogue) => (
-            <li key={dialogue.id}>
-              <button type="button" className="dialogue-row" onClick={() => onPick(dialogue.id)}>
-                <DialogueRowContent
-                  dialogue={dialogue}
-                  zones={resolveZones(dialogue.id, zoneIndex, zonesById)}
-                />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {matches.length > PICKER_LIMIT && (
-        <p className="quest-picker__more hint-text">
-          …and {matches.length - PICKER_LIMIT} more. Narrow the search.
-        </p>
-      )}
-    </div>
-  )
 }
 
 // T['id'], not a second type parameter — a key parameter is only inferable from the

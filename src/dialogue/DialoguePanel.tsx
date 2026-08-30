@@ -11,6 +11,7 @@ import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
 import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
+import { DialogueReferences } from './DialogueReferences.tsx'
 import { subsetByTimeAsc } from './dialogue-order.ts'
 import type {
   Dialogue,
@@ -19,6 +20,7 @@ import type {
   MediaId,
   ProjectFile,
   Zone,
+  ZoneId,
 } from '../project/types.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { DialogueForm } from './DialogueForm.tsx'
@@ -37,6 +39,8 @@ export function DialoguePanel({
   project,
   dialogue,
   locations,
+  zonesById,
+  zoneIndex,
   onClose,
   autoFocusNpc,
   onAutoFocusConsumed,
@@ -48,6 +52,8 @@ export function DialoguePanel({
   project: ProjectFile
   dialogue: Dialogue
   locations: readonly Zone[]
+  zonesById: ReadonlyMap<ZoneId, Zone>
+  zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
   /** Must be stable — the Escape listener below depends on it. */
   onClose: () => void
   autoFocusNpc: boolean
@@ -216,6 +222,13 @@ export function DialoguePanel({
         />
 
         <MergeIntoThisLine dialogue={dialogue} dialogues={project.dialogues} />
+
+        <DialogueReferences
+          dialogue={dialogue}
+          dialogues={project.dialogues}
+          zonesById={zonesById}
+          zoneIndex={zoneIndex}
+        />
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
       </div>
