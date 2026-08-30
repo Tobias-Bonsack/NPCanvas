@@ -8,32 +8,20 @@ import { beginDrag, cancelDrag, commitDrag, moveDrag } from './drag-gesture.ts'
 import type { Viewport } from './viewport.ts'
 import { screenToWorld } from './viewport.ts'
 
-/**
- * A map being dragged, in canvas coordinates. It is a *preview*: `map/moved` is dispatched
- * once, on pointerup, so autosave sees one document change per drag rather than one per
- * frame — the same contract zone dragging follows.
- */
+// A preview: map/moved dispatches once, on pointerup, so autosave sees one change per drag.
 export type MapDragPreview = { id: MapId; origin: Point }
 
-/** What a map drag snapshots. Same contract as `ZoneGesture`: a preview plus its commit value. */
 type MapDragGesture = {
   id: MapId
   from: Point
-  /**
-   * The canvas point under the pointer at pointerdown. The origin follows its live delta, so
-   * only the *viewport* scale is ever involved — the map's own scale sizes its contents, not
-   * its position, and folding it in would make the map lag the cursor.
-   */
+  // Canvas point under the pointer at pointerdown; only the viewport scale is ever involved,
+  // not the map's own — the map's scale sizes its contents, not its position.
   grabbed: Point
   latest: Point | null
 }
 
-/**
- * Container-relative coordinates, which is the space every viewport transform expects.
- * Mirrors `anchorOf` in `MapCanvas.tsx`: this hook's handlers are called directly by
- * `MapImage` with the raw pointer event rather than a precomputed anchor, so it needs its own
- * copy rather than one threaded through every call.
- */
+// Mirrors anchorOf in MapCanvas.tsx — needs its own copy since MapImage calls these handlers
+// directly with the raw pointer event, not a precomputed anchor.
 function anchorOf(event: { clientX: number; clientY: number }, origin: Point): Point {
   return { x: event.clientX - origin.x, y: event.clientY - origin.y }
 }
@@ -54,15 +42,8 @@ export type MapDragApi = {
   onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void
 }
 
-/**
- * The map drag mirrors the pan: the bookkeeping lives in a ref so a sub-threshold wobble
- * costs no render, and the canvas point grabbed at pointerdown is what the origin trails — so
- * zooming mid-gesture moves the map with the cursor rather than jumping it.
- *
- * The four handlers are `useCallback`s because `MapImage` is memoized and they are its props:
- * a fresh identity per render would re-run `useMediaUrl` and rebuild `mapGroupStyle` for every
- * map on every frame of a pan, which is exactly what the memo is there to prevent.
- */
+// Handlers are useCallbacks because MapImage is memoized and they are its props — a fresh
+// identity per render would rebuild every map's memo every frame of a pan.
 export function useMapDrag({
   tool,
   viewportRef,
@@ -75,13 +56,10 @@ export function useMapDrag({
   const onPointerDown = useCallback(
     function onMapPointerDown(event: ReactPointerEvent<HTMLDivElement>, map: GameMap): void {
       if (event.button !== 0 || tool.kind !== 'move-map') return
-      // Without this the canvas underneath would start panning at the same time.
-      event.stopPropagation()
+      event.stopPropagation() // else the canvas underneath starts panning too
       const began = beginDrag(mapDrag, event, {
         id: map.id,
         from: map.origin,
-        // Container-relative even though the press landed on the map: `anchorOf` measures
-        // from the cached container origin, so it does not care which element took the event.
         grabbed: screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current)),
         latest: null,
       })
@@ -95,8 +73,6 @@ export function useMapDrag({
     function onMapPointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
       const move = moveDrag(mapDrag, event)
       if (move === null) return
-      // Guarded on the transition, as the pan is: a press that only selects a map must not
-      // promote a layer, and setting it every move would re-render on every frame.
       if (move.started) setPanning(true)
 
       const at = screenToWorld(viewportRef.current, anchorOf(event, containerOrigin.current))
@@ -127,7 +103,6 @@ export function useMapDrag({
     [onMapDrag, setPanning],
   )
 
-  /** Drops the preview and dispatches nothing — see `MapCanvas`'s `onPointerCancel`. */
   const onPointerCancel = useCallback(
     function onMapPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void {
       if (cancelDrag(mapDrag, event)) {

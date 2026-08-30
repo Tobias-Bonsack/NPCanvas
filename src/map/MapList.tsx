@@ -10,26 +10,17 @@ import { discardMediaFile } from '../media/discard-media.ts'
 import { MapImportButton } from './MapImportButton.tsx'
 import { useRowFocus } from './row-focus.ts'
 
-/**
- * Every map in the project, as a list. On a shared canvas its job is navigation, naming, and
- * deletion — there is no active map to pick, so this is not a picker.
- */
 export function MapList({ project }: { project: ProjectFile }): ReactElement {
-  /** Focus is carried in the hash so the jump is one navigation, not a second channel. */
   function onFocus(map: GameMap): void {
     selectMap(map.id)
     navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'map', id: map.id } })
   }
 
   async function onDeleteConfirmed(map: GameMap): Promise<void> {
-    // File names are collected *before* the dispatch, because the cascade removes the very
-    // dialogues that name the files — afterwards nothing would say what to clean up.
+    // Collected before the dispatch — the cascade removes the very dialogues that name the files.
     const orphanedFiles = mediaFileNamesOf(project, map.id)
 
     dispatch({ kind: 'map/deleted', mapId: map.id })
-
-    // `discardMediaFile` never rejects — the document is already correct, so a file that
-    // resists deletion is dead weight in media/, not a broken project.
     await Promise.all(orphanedFiles.map(discardMediaFile))
   }
 
@@ -53,10 +44,6 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
   )
 }
 
-/**
- * One map's row — rename and delete are both `EditableRow`'s (see CLAUDE.md's note on that
- * component); this only supplies the map-specific idle content and the delete cascade counts.
- */
 function MapRow({
   project,
   map,
@@ -131,7 +118,6 @@ function cascadeCounts(project: ProjectFile, mapId: MapId): { dialogues: number;
   }
 }
 
-/** Every file in `media/` that deleting this map would otherwise orphan. */
 function mediaFileNamesOf(project: ProjectFile, mapId: MapId): string[] {
   const map = project.maps.find((candidate) => candidate.id === mapId)
   const names = map === undefined ? [] : [map.file.fileName]

@@ -6,20 +6,11 @@ import type { Point, Polygon } from '../project/types.ts'
 export type Size = { width: number; height: number }
 export type Rect = { x: number; y: number; width: number; height: number }
 
-/**
- * Absolute tolerance in world units, i.e. map-image pixels. A boundary hit within a
- * thousandth of a pixel is a hit; anything looser would swallow genuinely-outside points
- * on the small polygons a user can draw at high zoom.
- */
+// Absolute tolerance in world units (map-image pixels).
 const EPSILON = 1e-3
 
-/**
- * Even-odd ray casting, with the boundary defined as **inside**.
- *
- * Parity alone answers vertices and edges arbitrarily — whether a grazing ray flips the
- * count depends on which side of the vertex the neighbouring edge happens to fall — so the
- * degenerate cases are decided exactly, up front, and never reach the parity loop.
- */
+// Even-odd ray casting, boundary defined as inside. Boundary/vertex cases are decided exactly
+// up front so a grazing ray's parity flip doesn't depend on which side a vertex falls on.
 export function pointInPolygon(point: Point, polygon: Polygon): boolean {
   if (isOnBoundary(point, polygon)) return true
 
@@ -27,8 +18,7 @@ export function pointInPolygon(point: Point, polygon: Polygon): boolean {
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const a = polygon[i]
     const b = polygon[j]
-    // Half-open vertical span (`a.y > y` vs `b.y > y`): a vertex shared by two edges lies
-    // in exactly one of them, so a ray through it flips parity once rather than twice.
+    // Half-open span: a vertex shared by two edges lies in exactly one, flipping parity once.
     if (a.y > point.y === b.y > point.y) continue
     const crossX = a.x + ((point.y - a.y) / (b.y - a.y)) * (b.x - a.x)
     if (point.x < crossX) inside = !inside
@@ -36,7 +26,6 @@ export function pointInPolygon(point: Point, polygon: Polygon): boolean {
   return inside
 }
 
-/** Boundary included, matching `pointInPolygon`. Hit-testing and visibility culling alike. */
 export function rectContains(rect: Rect, point: Point): boolean {
   return (
     point.x >= rect.x &&
@@ -46,7 +35,6 @@ export function rectContains(rect: Rect, point: Point): boolean {
   )
 }
 
-/** Axis-aligned bounding box. Cheap reject before `pointInPolygon`, and zone hit-testing. */
 export function polygonBounds(polygon: Polygon): Rect {
   let minX = Infinity
   let minY = Infinity
@@ -61,10 +49,7 @@ export function polygonBounds(polygon: Polygon): Rect {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
-/**
- * Unsigned shoelace area. Unsigned because zone-index ordering only compares magnitudes,
- * and a user-drawn polygon has no guaranteed winding direction to preserve.
- */
+// Unsigned — a user-drawn polygon has no guaranteed winding direction to preserve.
 export function polygonArea(polygon: Polygon): number {
   let twiceSigned = 0
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -75,7 +60,6 @@ export function polygonArea(polygon: Polygon): number {
   return Math.abs(twiceSigned) / 2
 }
 
-/** Area-weighted centroid — where a zone's label belongs. */
 export function polygonCentroid(polygon: Polygon): Point {
   let twiceSigned = 0
   let x = 0
@@ -89,13 +73,11 @@ export function polygonCentroid(polygon: Polygon): Point {
     y += (a.y + b.y) * cross
   }
 
-  // A degenerate polygon (all vertices collinear, or all identical) has zero area, and the
-  // weighted formula divides by it. The vertex average is the only meaningful answer left.
+  // Degenerate (collinear or identical vertices) has zero area; fall back to vertex average.
   if (Math.abs(twiceSigned) < EPSILON) return vertexAverage(polygon)
   return { x: x / (3 * twiceSigned), y: y / (3 * twiceSigned) }
 }
 
-/** Rectangles are 4-point polygons — there is deliberately no shape union. See CLAUDE.md. */
 export function rectToPolygon(rect: Rect): Polygon {
   return [
     { x: rect.x, y: rect.y },
@@ -105,7 +87,6 @@ export function rectToPolygon(rect: Rect): Polygon {
   ]
 }
 
-/** Normalized, so dragging up and to the left describes the same rectangle as down-right. */
 export function rectBetween(a: Point, b: Point): Rect {
   return {
     x: Math.min(a.x, b.x),
@@ -115,11 +96,8 @@ export function rectBetween(a: Point, b: Point): Rect {
   }
 }
 
-/**
- * Grows a rectangle by `margin` of **its own size** on every side, not by `margin` units.
- * A viewport twice as wide therefore grows twice as much, which is what the culling margin
- * wants: the overscan is a fraction of what is on screen, at any zoom.
- */
+// Grows by `margin` of its own size, not by `margin` units — overscan stays a fraction of
+// what's on screen at any zoom.
 export function inflate(rect: Rect, margin: number): Rect {
   const dx = rect.width * margin
   const dy = rect.height * margin
@@ -131,11 +109,7 @@ export function inflate(rect: Rect, margin: number): Rect {
   }
 }
 
-/**
- * Whether two rectangles share any area, edges and corners counting as shared — the same
- * boundary-is-inside rule `rectContains` and `pointInPolygon` follow, so a zone exactly
- * touching the edge of the visible rect is drawn rather than culled.
- */
+// Edges and corners count as shared, matching rectContains/pointInPolygon's boundary-is-inside rule.
 export function rectsOverlap(a: Rect, b: Rect): boolean {
   return (
     a.x <= b.x + b.width &&
@@ -145,18 +119,13 @@ export function rectsOverlap(a: Rect, b: Rect): boolean {
   )
 }
 
-/**
- * The polygon shifted by `delta`, in its own space. Destructured rather than `.map()`ed
- * because `Polygon` guarantees three vertices and `map` would widen it back to `Point[]`,
- * which is exactly the guarantee an `as` cast would throw away.
- */
+// Destructured, not .map()ed — map() would widen the three-vertex guarantee back to Point[].
 export function translatePolygon(polygon: Polygon, delta: Point): Polygon {
   const shift = (point: Point): Point => ({ x: point.x + delta.x, y: point.y + delta.y })
   const [a, b, c, ...rest] = polygon
   return [shift(a), shift(b), shift(c), ...rest.map(shift)]
 }
 
-/** Vertex-wise equality. The reducer's no-op test, so a settled drag writes nothing. */
 export function isSamePolygon(a: Polygon, b: Polygon): boolean {
   return (
     a.length === b.length &&
@@ -185,14 +154,12 @@ function isOnSegment(point: Point, a: Point, b: Point): boolean {
   const dx = b.x - a.x
   const dy = b.y - a.y
   const lengthSquared = dx * dx + dy * dy
-  // A zero-length segment (duplicated vertex) reduces to a point comparison; the projection
-  // below would divide by zero otherwise.
+  // Zero-length segment: reduces to a point comparison, else the projection divides by zero.
   if (lengthSquared < EPSILON * EPSILON) {
     return Math.hypot(point.x - a.x, point.y - a.y) <= EPSILON
   }
 
-  // Perpendicular distance, not the raw cross product: the cross scales with segment length,
-  // so comparing it to a fixed epsilon would make long edges arbitrarily "thick".
+  // Perpendicular distance, not raw cross product — the cross scales with segment length.
   const cross = dx * (point.y - a.y) - dy * (point.x - a.x)
   if (Math.abs(cross) / Math.sqrt(lengthSquared) > EPSILON) return false
 

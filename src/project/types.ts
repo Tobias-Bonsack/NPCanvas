@@ -9,25 +9,14 @@ export type CaptureProfileId = string & { readonly brand: 'CaptureProfileId' }
 export type RelevanceTagId = string & { readonly brand: 'RelevanceTagId' }
 export type PendingCaptureId = string & { readonly brand: 'PendingCaptureId' }
 
-/**
- * A coordinate pair, in whichever space the field holding it names.
- *
- * Two spaces exist. **Map-local** is pixels within one map image — `Dialogue.position` and
- * `Zone.polygon` are map-local, and stay that way. **Canvas** is the shared space every map
- * is placed into, one canvas unit being one map pixel at `scale: 1` — `GameMap.origin` is
- * canvas space. See CLAUDE.md § Domain and architecture decisions.
- */
+/** Map-local (`Dialogue.position`, `Zone.polygon`) or canvas (`GameMap.origin`) — see CLAUDE.md. */
 export type Point = { x: number; y: number }
 
 /** At least three vertices — a two-point "region" is not representable. */
 export type Polygon = readonly [Point, Point, Point, ...Point[]]
 
-/**
- * The vocabulary a V1–V4 document had no choice but to use — four names chosen up front,
- * compiled in rather than owned by the project. Frozen here, beside `GameMapV1`, `DialogueV3`
- * and `QuestV2`, purely so `migrateV4` has something to zip against `defaultRelevanceTags()`'s
- * output by index; nothing post-migration ever reads it again.
- */
+// Frozen V1-V4 vocabulary, kept only so migrateV4 can zip it against defaultRelevanceTags() by
+// index; nothing post-migration reads it.
 export const RELEVANCE_SLUGS_V4 = [
   'out-of-world',
   'worldbuilding',
@@ -36,31 +25,17 @@ export const RELEVANCE_SLUGS_V4 = [
 ] as const
 export type RelevanceSlugV4 = (typeof RELEVANCE_SLUGS_V4)[number]
 
-/**
- * A relevance tag the project owns, the same shape `Zone` and `Quest` already use for a
- * user-owned coloured record. Its position in `ProjectFile['relevanceTags']` is the canonical
- * order every chart, chip and pin band draws in — see `Dialogue.relevance` below.
- */
+/** A project-owned relevance tag; position in `ProjectFile['relevanceTags']` is display order. */
 export type RelevanceTag = { id: RelevanceTagId; name: string; hue: number }
 
 /** A file that physically lives in <project>/media/. Never a URL, never a path. */
 export type MediaFile = { fileName: string; mimeType: string; byteSize: number }
 
-/**
- * What a dialogue reads as at a glance, as a runtime list, for anything that has to iterate the
- * possibilities — the canvas legend and the insights filter. It is `DialogueMedia['kind']` plus
- * the text case, which is not a medium: a dialogue that owns no picture still has to be drawn.
- * The `Record<DialogueContentKind, …>` glyph and label maps make forgetting one a compile error
- * at the point where it would otherwise render as nothing.
- */
+/** `DialogueMedia['kind']` plus `'text'`, since a dialogue with no picture still has to render. */
 export const DIALOGUE_CONTENT_KINDS = ['text', 'image', 'gif', 'video'] as const
 export type DialogueContentKind = (typeof DIALOGUE_CONTENT_KINDS)[number]
 
-/**
- * One picture of a line. A dialogue owns a list of them, because a line that ran over five text
- * boxes is one thing said and five frames proving it — see CLAUDE.md § Media contract for why
- * the id is part of the file name.
- */
+/** One picture of a line — a dialogue owns a list because one line can span several frames. */
 export type DialogueMedia =
   | { id: MediaId; kind: 'image'; file: MediaFile; width: number; height: number }
   | { id: MediaId; kind: 'gif'; file: MediaFile; width: number; height: number }
@@ -77,10 +52,9 @@ export type GameMap = {
   id: MapId
   name: string
   file: MediaFile
-  /** The image's natural pixel size, and therefore the extent of its map-local space. */
   width: number
   height: number
-  /** Top-left corner in canvas space. Moving it carries the map's pins and zones along. */
+  /** Top-left corner in canvas space; moving it carries the map's pins and zones along. */
   origin: Point
   /** Canvas units per map pixel; 1 is native size. */
   scale: number
@@ -94,34 +68,25 @@ export type Zone = {
   hue: number // 0..359; fill/stroke derived via hsl() so colors stay in one system
 }
 
-/**
- * What was said, and what proves it. The two are orthogonal and stored separately: a captured
- * line appends a frame *and* transcribed text, which an exclusive union could not express.
- */
+/** Text and media are orthogonal and stored separately — a captured line can append both. */
 export type Dialogue = {
   id: DialogueId
   mapId: MapId
   npcName: string
   position: Point
-  /** The line itself. Empty is ordinary — a picture logged before it was transcribed. */
   text: string
-  /** In the order they were captured; the first is what the pin shows. Empty is ordinary too. */
   media: DialogueMedia[]
-  /** ISO 8601 from Date#toISOString — when the line was heard in real time. */
+  /** ISO 8601 from Date#toISOString. */
   spokenAt: string
-  /** Deduplicated, stored in `project.relevanceTags` order. Empty = untagged. */
+  /** Deduplicated, stored in `project.relevanceTags` order. */
   relevance: RelevanceTagId[]
 }
 
 /**
- * A conversation the watcher recorded before anyone said where it happened — everything a
- * `Dialogue` is except its placement, `mapId` and `position`. The absence of those two fields
- * *is* the meaning: there is deliberately no field to spell "unknown" in (see CLAUDE.md's
- * "location is derived, never stored"), so a capture that has not found its place lives in its
- * own list rather than in a placed/unplaced union `Dialogue` would have to become. Every reader
- * of `dialogues` is unaffected by construction — a capture is invisible to search, insights and
- * the quest board until `pending-capture/placed` turns it into a real `Dialogue`, carrying
- * `npcName`, `text`, `media`, `spokenAt` and `relevance` across verbatim.
+ * A conversation the watcher recorded before anyone said where it happened — every `Dialogue`
+ * field except `mapId`/`position`. No field spells "unknown" (location is derived, never
+ * stored — see CLAUDE.md), so an unplaced capture lives in its own list rather than widening
+ * `Dialogue` into a placed/unplaced union.
  */
 export type PendingCapture = {
   id: PendingCaptureId
@@ -132,11 +97,7 @@ export type PendingCapture = {
   relevance: RelevanceTagId[]
 }
 
-/**
- * What a pin, a row and the kind filter show for a dialogue: its first medium, or text when it
- * owns none. Derived on every read for the same reason a location is — a stored summary of the
- * media list would go stale the moment a medium is added or removed.
- */
+/** Derived on every read, like location — a stored summary would go stale on media add/remove. */
 export function dialogueContentKind(dialogue: Dialogue): DialogueContentKind {
   return dialogue.media.length === 0 ? 'text' : dialogue.media[0].kind
 }
@@ -144,84 +105,52 @@ export function dialogueContentKind(dialogue: Dialogue): DialogueContentKind {
 /** A pixel rectangle inside a captured frame or a console screen — never canvas space. */
 export type PixelRect = { x: number; y: number; width: number; height: number }
 
-/**
- * One 8×8 tile of a console font, and the character it means. `char` may be empty: Pokémon's
- * blinking continuation arrow is a glyph that is recognised and then dropped, which is not the
- * same as an unmatched tile.
- */
+/** One 8x8 tile of a console font. `char` may be empty — a recognised-then-dropped glyph. */
 export type Glyph = {
   char: string
-  /** The bitmap as 16 hex characters, row-major, one bit per pixel. */
+  /** 16 hex characters, row-major, one bit per pixel. */
   bits: string
 }
 
 /**
  * How to cut a console screen out of a captured frame, and where the text box sits inside it.
- * Declared here because it is document state — several per project, written by #52 onwards.
- *
- * Every field is a measurement. The font is not one: it is the console's, and it is the same
- * whether the box being read is the dialogue box or the Pokédex panel, so the alphabet lives on
- * `ProjectFile.glyphs` and every profile reads with it.
+ * The font is not a measurement here — it is the console's, shared via `ProjectFile.glyphs`.
  */
 export type CaptureProfile = {
   id: CaptureProfileId
   name: string
-  /** Frame size at calibration time. A different size means the profile no longer applies. */
+  /** Frame size at calibration time; a different size means the profile no longer applies. */
   frameWidth: number
   frameHeight: number
-  /** The console screen inside the captured frame, in frame pixels. */
   screenRect: PixelRect
-  /** The console's own resolution — 160 × 144 for a Game Boy. With screenRect it fixes the grid. */
+  /** The console's own resolution — 160x144 for a Game Boy. With screenRect it fixes the grid. */
   nativeWidth: number
   nativeHeight: number
-  /** The text box, in native pixels, snapped to the 8-pixel tile grid. */
+  /** Snapped to the 8-pixel tile grid, in native pixels. */
   textRect: PixelRect
 }
 
-/**
- * A profile as V5 and earlier stored it, carrying an alphabet of its own. The pre-migration shape,
- * beside `GameMapV1`, `QuestV2`, `DialogueV3` and `DialogueV4`, and the only thing
- * `readCaptureProfileV5` still builds.
- */
+/** Pre-migration shape: a V5-and-earlier profile, carrying its own alphabet. */
 export type CaptureProfileV5 = CaptureProfileV7 & { glyphs: Glyph[] }
 
-/**
- * A profile as V6 and V7 stored it, before the gauge was measured. The pre-migration shape, beside
- * `CaptureProfileV5`, and the only thing `readCaptureProfileV7` still builds.
- */
+/** Pre-migration shape: a V6/V7 profile, before the battle gauge was measured. */
 export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
 
 /**
- * A profile as V8 stored it: `CaptureProfileV7` plus where the opponent's status gauge sits, in
- * native pixels — what `battleGaugeVisible` used to read to answer whether a fight is on screen,
- * until #104 deleted the M15 battle-detection machinery and left the measurement with no reader.
- * `null` was a profile calibrated before the measurement existed. The pre-migration shape, beside
- * `CaptureProfileV5` and `CaptureProfileV7`, and the only thing `readCaptureProfileV8` still builds.
+ * Pre-migration shape: a V8 profile, carrying the opponent's status-gauge rect that
+ * `battleGaugeVisible` used to read before #104 deleted the M15 battle-detection machinery.
  */
 export type CaptureProfileV8 = CaptureProfile & { battleRect: PixelRect | null }
 
-/**
- * What a bound gamepad button starts or stops. A runtime list rather than a fixed pair of
- * nullable fields, matching every other user-owned list in the document — a third trigger later
- * is a new action value, not a new field.
- */
+/** A runtime list, not fixed nullable fields — a third trigger is a new value, not a new field. */
 export const RECORDER_ACTIONS = ['record-new', 'record-extend'] as const
 export type RecorderAction = (typeof RECORDER_ACTIONS)[number]
 
-/**
- * A gamepad button bound to a recorder action, and nothing else — there is no keyboard variant
- * to widen this into (#107 removed the last keyboard trigger on purpose). Lives on the project
- * rather than on a `CaptureProfile`: it says how *this player* starts a recording, the same way
- * whichever profile is aimed at the screen, not a measurement of the console — see CLAUDE.md's
- * paragraph on why the alphabet belongs to the project for the identical reasoning.
- */
+/** Lives on the project, not a `CaptureProfile` — it says how this player triggers, not a
+ *  console measurement. No keyboard variant on purpose (#107). */
 export type RecorderBinding = { action: RecorderAction; buttonIndex: number }
 
-/**
- * A union, not a boolean: leaves room for 'abandoned' without a schema break. The runtime
- * list is what the quest board iterates to build its groups, so a third status would appear
- * there without the board learning a new name.
- */
+/** A union, not a boolean — leaves room for e.g. 'abandoned' without a schema break. */
 export const QUEST_STATUSES = ['open', 'done'] as const
 export type QuestStatus = (typeof QUEST_STATUSES)[number]
 
@@ -231,11 +160,7 @@ export type Quest = {
   status: QuestStatus
   dialogueIds: DialogueId[]
   note: string
-  /**
-   * 0..359, stored rather than hashed from the id: a pin can carry one flag per quest, so the
-   * hues have to be distinguishable *and* correctable by hand. `quest-style.ts` derives every
-   * colour from it, and overrides it for a done quest.
-   */
+  /** 0..359, stored rather than hashed from the id — correctable by hand; see quest-style.ts. */
   hue: number
 }
 
@@ -250,10 +175,7 @@ export type GameMapV1 = {
   height: number
 }
 
-/**
- * A V1–V3 dialogue: one exclusive content slot, so a line was *either* text or one file and
- * never both. `readDialogueV3` is the only thing that still reads this shape.
- */
+/** A V1-V3 dialogue: one exclusive content slot — text XOR one file, never both. */
 export type DialogueV3 = {
   id: DialogueId
   mapId: MapId
@@ -268,10 +190,7 @@ export type DialogueV3 = {
   relevance: RelevanceSlugV4[]
 }
 
-/**
- * A V4 dialogue: today's `Dialogue`, before relevance became a document-owned tag rather than a
- * compiled-in slug. `migrateV4` is the only thing that still reads this shape.
- */
+/** A V4 dialogue: today's `Dialogue`, before relevance became a document-owned tag. */
 export type DialogueV4 = {
   id: DialogueId
   mapId: MapId
@@ -293,7 +212,6 @@ export type QuestV2 = {
 }
 
 export type ProjectFileV1 = {
-  /** Literal, not `number`: every version discriminates on it in parseProjectFile. */
   schemaVersion: 1
   projectName: string
   savedAt: string
@@ -325,10 +243,7 @@ export type ProjectFileV3 = {
   quests: Quest[]
 }
 
-/**
- * V4 splits a dialogue into what was said and the pictures of it, and gives the project the
- * capture profiles those pictures come from.
- */
+/** V4 splits a dialogue into text and pictures, and adds capture profiles. */
 export type ProjectFileV4 = {
   schemaVersion: 4
   projectName: string
@@ -340,12 +255,7 @@ export type ProjectFileV4 = {
   captureProfiles: CaptureProfileV5[]
 }
 
-/**
- * V5 moves the relevance vocabulary into the document: four names chosen up front cannot be
- * the categories every player wants for their own log, so a relevance tag becomes a record the
- * project owns, exactly the way a `Quest` already owns its name and its hue. `relevanceTags`'
- * own order is the canonical order `Dialogue.relevance` is normalized against.
- */
+/** V5 moves the relevance vocabulary into the document, project-owned like a `Quest`'s hue. */
 export type ProjectFileV5 = {
   schemaVersion: 5
   projectName: string
@@ -358,13 +268,7 @@ export type ProjectFileV5 = {
   relevanceTags: RelevanceTag[]
 }
 
-/**
- * V6 takes the alphabet off the profile and gives it to the project. A profile says *where* to
- * read pixels — a frame rect, a screen rect, a text rect — while the font is the console's, so
- * two profiles aimed at one game were learning the same tiles twice. `glyphs` is keyed by bitmap
- * and its order carries no meaning: `matchGlyph` is an exact lookup and `mergeGlyphs` keeps the
- * bitmaps unique, so nothing may read the position of an entry the way `relevanceTags` is read.
- */
+/** V6 moves the alphabet off the profile and onto the project, since the font is the console's. */
 export type ProjectFileV6 = {
   schemaVersion: 6
   projectName: string
@@ -378,10 +282,7 @@ export type ProjectFileV6 = {
   glyphs: Glyph[]
 }
 
-/**
- * V7 adds `pendingCaptures`: conversations the watcher recorded before anyone said where they
- * happened. See `PendingCapture` for why that is a second list rather than a widened `Dialogue`.
- */
+/** V7 adds `pendingCaptures` — see `PendingCapture`. */
 export type ProjectFileV7 = {
   schemaVersion: 7
   projectName: string
@@ -396,14 +297,7 @@ export type ProjectFileV7 = {
   pendingCaptures: PendingCapture[]
 }
 
-/**
- * V8 gave a profile the one measurement it was missing: where the opponent's status gauge sits,
- * which was meant to tell a fight from a conversation. `battleRect` is nullable rather than
- * required because a profile calibrated before this version had never been measured for it — see
- * `CaptureProfileV8`. Names `CaptureProfileV8`, not `CaptureProfile` — the profile shape a V9
- * document holds no longer carries `battleRect`, and a versioned file type that named the current
- * shape would silently redefine what a V8 document on disk held.
- */
+/** V8 adds the battle-gauge rect to a profile — nullable because older profiles never measured it. */
 export type ProjectFileV8 = {
   schemaVersion: 8
   projectName: string
@@ -418,10 +312,7 @@ export type ProjectFileV8 = {
   pendingCaptures: PendingCapture[]
 }
 
-/**
- * V9 drops `battleRect`: #104 deleted the M15 battle-detection machinery that read it, so the
- * measurement was a calibration step asking the user for something the app no longer used.
- */
+/** V9 drops `battleRect`: #104 deleted the machinery that read it. */
 export type ProjectFileV9 = {
   schemaVersion: 9
   projectName: string
@@ -436,10 +327,7 @@ export type ProjectFileV9 = {
   pendingCaptures: PendingCapture[]
 }
 
-/**
- * V10 gives the project a place to remember which gamepad button starts and stops a recording —
- * see `RecorderBinding` for why that is the project's, not a `CaptureProfile`'s.
- */
+/** V10 adds `recorderBindings` — see `RecorderBinding`. */
 export type ProjectFileV10 = {
   schemaVersion: 10
   projectName: string
@@ -459,34 +347,26 @@ export type ProjectFileV10 = {
 export type ProjectFile = ProjectFileV10
 
 /**
- * What `parseProjectFile` had to drop to hand back a referentially whole document. Counts, not
- * records: the user cannot act on the record itself — it is already gone from the document they
- * are looking at — only on the fact that the folder held one.
- *
- * `none` is a distinct member rather than three zeroes so a clean load cannot be mistaken for a
- * repair that happened to drop nothing, and so the notice has one thing to test.
+ * What `parseProjectFile` had to drop to hand back a referentially whole document — counts, not
+ * records, since the user can only act on the fact that something was dropped, not the record
+ * itself. `none` is a distinct member so a clean load can't be mistaken for a repair of nothing.
  */
 export type ProjectRepairs =
   | { kind: 'none' }
   | {
       kind: 'repaired'
-      /** Dialogues whose `mapId` named no map. */
       dialogues: number
-      /** Zones whose `mapId` named no map. */
       zones: number
-      /** Quest references that named no dialogue, summed over every quest. */
       questDialogueIds: number
-      /** Dialogue relevance ids naming no tag, summed over every dialogue. */
       relevance: number
     }
 
 // ---- in-memory app state ----
 
 /**
- * Why a write failed, and therefore what the retry has to do first. Chromium can drop a
- * `readwrite` grant mid-session; every later write then throws `NotAllowedError`, and a plain
- * retry can only throw it again. Re-granting is `requestPermission`, which prompts only inside
- * a user gesture — so the distinction has to survive as far as the button that offers it.
+ * Chromium can drop a `readwrite` grant mid-session; every later write then throws
+ * `NotAllowedError`. Re-granting is `requestPermission`, which prompts only inside a user
+ * gesture, so the distinction has to survive as far as the button that offers it.
  */
 export type SaveFailure = 'write' | 'permission'
 
@@ -503,13 +383,9 @@ export type Selection =
   | { kind: 'map'; id: MapId }
 
 /**
- * Document snapshots to step back to or forward to, over `ProjectFile` references rather than
- * copies — the reducer already returns a fresh one for anything that changed, which is what
- * makes pushing cheap. `coalesceKey` names the field the most recent push was for; the next
- * action that reports the same key extends that step instead of pushing a new one, so a burst
- * of keystrokes into one field undoes as a single step. `null` after `history/undo` and
- * `history/redo`, so stepping and then immediately editing the same field again does not
- * silently merge into the step just landed on.
+ * Undo/redo over `ProjectFile` references, not copies. `coalesceKey` names the field the most
+ * recent push was for; the next action reporting the same key extends that step instead of
+ * pushing a new one. `null` after undo/redo so the step just landed on cannot silently merge.
  */
 export type History = {
   undo: readonly ProjectFile[]
@@ -527,21 +403,14 @@ export type AppState =
       kind: 'ready'
       directoryName: string
       project: ProjectFile
-      /**
-       * What the load had to drop to make the document referentially whole. Set once, by
-       * `project/loaded`, and never again — the document cannot grow a dangling reference
-       * while the app is running, because the reducer guards every edge that could add one.
-       */
+      /** Set once by `project/loaded`; the reducer guards every edge that could add another. */
       repairs: ProjectRepairs
       save: SaveState
       selection: Selection
       history: History
     }
 
-/**
- * Which gesture the canvas is in. A tool carries no draft: an in-progress rectangle lives in
- * `MapCanvas`'s own refs and state, because it changes every frame and the tool is a prop.
- */
+/** A tool carries no draft — an in-progress rectangle lives in `MapCanvas`'s own state. */
 export type CanvasTool =
   | { kind: 'inspect' }
   | { kind: 'place-dialogue' }

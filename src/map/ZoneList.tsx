@@ -10,11 +10,6 @@ import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types
 import { useRowFocus } from './row-focus.ts'
 import { ZONE_HUES, zoneHueStyle } from './zone-style.ts'
 
-/**
- * Every zone in the project, grouped under the map it is drawn on — a zone's polygon is
- * meaningless without knowing which map's pixels it is in, so the grouping is the only
- * honest flat presentation.
- */
 export function ZoneList({
   project,
   selectedId,
@@ -22,23 +17,15 @@ export function ZoneList({
 }: {
   project: ProjectFile
   selectedId: ZoneId | null
-  /**
-   * Dialogues per zone, derived — see `zone-index.ts`. A zone with none is simply absent from
-   * the map, which is why every read here defaults to zero.
-   */
   counts: ReadonlyMap<ZoneId, number>
 }): ReactElement {
-  // One pass instead of one filter per map: a scan per group is O(maps × zones), and this
-  // list re-renders whenever the zone counts do, which is every frame of a zone drag.
+  // One pass instead of a filter per map — O(maps x zones) matters since this re-renders every
+  // frame of a zone drag.
   const byMap = useMemo(
     () => groupByMap(project.maps, project.zones),
     [project.maps, project.zones],
   )
 
-  /**
-   * The same one-shot `focus` channel `MapList` jumps a map with — see `route.ts`'s
-   * `FocusTarget` — so a zone off screen reads as "jumped to" instead of "nothing happened".
-   */
   function onFocus(zone: Zone): void {
     selectZone(zone.id)
     navigate({ kind: 'canvas', dialogueId: null, focus: { kind: 'zone', id: zone.id } })
@@ -68,10 +55,8 @@ export function ZoneList({
   )
 }
 
-/** One shared empty array, so a map with no zones is handed the same reference every render. */
 const NO_ZONES: readonly Zone[] = []
 
-/** Zones bucketed by map, in one pass — the same shape `ZoneLayer` builds, for the same reason. */
 function groupByMap(maps: readonly GameMap[], zones: readonly Zone[]): ReadonlyMap<MapId, Zone[]> {
   const byMap = new Map<MapId, Zone[]>()
   for (const map of maps) byMap.set(map.id, [])
@@ -79,7 +64,6 @@ function groupByMap(maps: readonly GameMap[], zones: readonly Zone[]): ReadonlyM
   return byMap
 }
 
-/** Renders nothing at all for a map with no zones — an empty heading is noise in a sidebar. */
 function ZoneGroup({
   map,
   zones,
@@ -113,11 +97,7 @@ function ZoneGroup({
   )
 }
 
-/**
- * One zone's row — rename and delete are both `EditableRow`'s. Colour is not: it is its own,
- * untouched third mode (see the issue's non-goals), tracked locally beside `EditableRow`'s own
- * state rather than folded into it.
- */
+// Colour is its own third mode, tracked locally beside EditableRow's rename/delete state.
 function ZoneRow({
   zone,
   selected,
@@ -126,7 +106,6 @@ function ZoneRow({
 }: {
   zone: Zone
   selected: boolean
-  /** Dialogues currently inside, recomputed from the geometry on every state change. */
   count: number
   onFocus: () => void
 }): ReactElement {
@@ -151,8 +130,6 @@ function ZoneRow({
   if (editable.mode === 'delete') {
     return (
       <EditableRowDeleteConfirm
-        // No cascade to warn about: deleting a zone takes nothing with it, because no
-        // dialogue ever stored a reference to it.
         message={
           <>
             Delete <strong>{zone.name}</strong>? Its dialogues stay where they are.

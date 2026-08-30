@@ -6,10 +6,6 @@ import type { GameMap } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { nextMapOrigin } from './canvas-layout.ts'
 
-/**
- * The only import path in the app, used both in the map list and in the empty-project call
- * to action, hence a shared leaf rather than the same file input written out twice.
- */
 export function MapImportButton({ label }: { label: string }): ReactElement {
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,21 +14,15 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
   async function onFilePicked(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const input = event.target
     const file = input.files?.[0]
-    // Clearing the input is what lets the same file be picked twice in a row — otherwise
-    // the second pick is not a change and fires no event at all.
-    input.value = ''
+    input.value = '' // else picking the same file twice in a row fires no change event
     if (file === undefined) return
 
     setError(null)
     setImporting(true)
     try {
       const imported = await importMapImage(file)
-      // Placed against the maps as they are *now*, which is the whole reason `nextMapOrigin`
-      // exists: two imports started a moment apart would otherwise both be placed against the
-      // array as it was before either landed, and end up stacked on the same origin.
-      //
-      // No navigation and no viewport change: the new map appears beside the others, and
-      // yanking the view to it would lose wherever the user was working.
+      // currentMaps() reads state at dispatch time so two imports a moment apart don't both
+      // place against the same stale array and stack on one origin.
       dispatch({ kind: 'map/added', map: { ...imported, origin: nextMapOrigin(currentMaps()) } })
     } catch (importError) {
       setError(describeError(importError))
@@ -43,8 +33,6 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
 
   return (
     <div className="map-import">
-      {/* A styled `<label>` driving a visually-hidden input: `<input type="file">` cannot be
-          restyled, and a button would need a ref plus a synthetic click to reach it. */}
       <label
         className="button--primary map-import__label"
         htmlFor={inputId}
@@ -69,7 +57,6 @@ export function MapImportButton({ label }: { label: string }): ReactElement {
   )
 }
 
-/** Read at dispatch time, never taken as a prop: a prop is the render the file was picked in. */
 function currentMaps(): readonly GameMap[] {
   const state = getState()
   return state.kind === 'ready' ? state.project.maps : []

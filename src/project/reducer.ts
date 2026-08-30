@@ -116,16 +116,9 @@ export type Action =
   | { kind: 'history/undo' }
   | { kind: 'history/redo' }
 
-/**
- * Pure. Returns the *same* reference for a no-op, which is how `dispatch` skips notifying
- * subscribers. Never throws: async IO in storage/ dispatches steps that may land after the
- * state has already moved on, and a reducer crash there would take the whole app down.
- *
- * History bookkeeping is layered on top of `applyAction` rather than folded into its switch:
- * every case there already returns a fresh `project` reference for a real change and the
- * identical one for a no-op, which is exactly the signal history needs, so one generic wrapper
- * covers all of them instead of forty repeated pushes.
- */
+// Pure; returns the same reference for a no-op, which is how dispatch skips notifying
+// subscribers. History is layered on top of applyAction rather than folded into its switch,
+// since every case already signals a real change via that same reference equality.
 export function reduce(state: AppState, action: Action): AppState {
   const next = applyAction(state, action)
   if (next === state) return next
@@ -140,9 +133,6 @@ function applyAction(state: AppState, action: Action): AppState {
     case 'project/disconnected':
       return state.kind === 'disconnected' ? state : { kind: 'disconnected' }
 
-    // Closing the folder picker means only that no folder was chosen. What follows from that
-    // depends on what there was to keep: a project already open stays open, and anywhere else
-    // there is nothing to fall back to but `disconnected`.
     case 'project/pick-cancelled':
       if (state.kind === 'ready') return state
       return state.kind === 'disconnected' ? state : { kind: 'disconnected' }
@@ -159,12 +149,9 @@ function applyAction(state: AppState, action: Action): AppState {
         directoryName: action.directoryName,
         project: action.project,
         repairs: action.repairs,
-        // Freshly read from disk, so the document and the file agree as of `savedAt`.
         save: { kind: 'saved', at: action.project.savedAt },
         selection: { kind: 'none' },
-        // Undoing across a project switch must be impossible: a step here would land the
-        // document holding one project back into the state of a different one.
-        history: EMPTY_HISTORY,
+        history: EMPTY_HISTORY, // undoing across a project switch must be impossible
       }
 
     case 'project/load-failed':
@@ -196,11 +183,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return { ...state, selection: action.selection }
     }
 
-    // An id already in the document would make identity ambiguous everywhere at once —
-    // `replaceIn` replaces by reference, a delete removes both, React renders two nodes under one
-    // key. Unreachable through the UI (ids are UUIDs), and guarded for the same reason
-    // `quest/dialogue-attached` is: parse and the reducer are the only two doors into the
-    // document, and an invariant enforced on one of them is not enforced.
     case 'map/added': {
       if (state.kind !== 'ready') return state
       if (state.project.maps.some((map) => map.id === action.map.id)) return state
@@ -217,8 +199,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'maps', target, { ...target, name: action.name })
     }
 
-    // Fires once per drag, on pointerup, for the same reason `dialogue/moved` does: the map
-    // follows the cursor from component state, so autosave sees one document change.
     case 'map/moved': {
       if (state.kind !== 'ready') return state
       const target = state.project.maps.find((map) => map.id === action.mapId)
@@ -227,8 +207,7 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'maps', target, { ...target, origin: action.origin })
     }
 
-    // The origin moves with the scale so the map's centre stays put — the two are one
-    // adjustment, and splitting them would let a caller apply half of it.
+    // Origin moves with scale so the map's centre stays put — one adjustment, not two.
     case 'map/scaled': {
       if (state.kind !== 'ready') return state
       const target = state.project.maps.find((map) => map.id === action.mapId)
@@ -238,10 +217,8 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'maps', target, { ...target, scale, origin: originForScale(target, scale) })
     }
 
-    // The whole cascade is one action: a map, its zones, its dialogues, and every quest
-    // reference to those dialogues move together. Split across several dispatches, autosave
-    // would write an intermediate document in which quests point at dialogues that no
-    // longer exist.
+    // One action: map, zones, dialogues, and quest references all move together, so autosave
+    // never writes an intermediate document with quests pointing at gone dialogues.
     case 'map/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -273,8 +250,8 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // The map must exist, for the same reason `dialogue/added` requires one: a zone on a
-    // missing map renders nowhere, lists nowhere, and is written back on every save.
+    // The map must exist — a zone on a missing map renders and lists nowhere but is still
+    // written back on every save.
     case 'zone/added': {
       if (state.kind !== 'ready') return state
       if (!hasMap(state.project, action.zone.mapId)) return state
@@ -298,11 +275,8 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'zones', target, { ...target, hue: action.hue })
     }
 
-    // One action for both zone gestures — a move and a resize each hand over the polygon they
-    // ended on, and a zone is nothing but its polygon. Fires once per drag, on pointerup, like
-    // `map/moved` and `dialogue/moved`. Nothing here touches a `Dialogue`: which zone a
-    // dialogue is in is derived from the geometry on every read, so reshaping a zone
-    // reclassifies its contents with zero writes. See CLAUDE.md.
+    // One action for move and resize — both just hand over the ending polygon. Nothing here
+    // touches a Dialogue: zone membership is derived, so reshaping reclassifies with zero writes.
     case 'zone/reshaped': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'zones', action.zoneId)
@@ -310,8 +284,7 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'zones', target, { ...target, polygon: action.polygon })
     }
 
-    // No cascade, deliberately: a zone owns nothing. Dialogues inside it merely stop deriving
-    // a location from it, which is the point of never storing the association.
+    // No cascade: a zone owns nothing; dialogues inside it just stop deriving a location from it.
     case 'zone/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -332,10 +305,8 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // The map must exist. A dialogue on a missing map is invisible and undeletable:
-    // `groupByMap` drops it from the canvas, so the one place `dialogue/deleted` is dispatched
-    // from — its pin — never renders, while Insights still counts it and every save writes it
-    // back. `repairReferences` closes the same hole on the other door, at parse.
+    // The map must exist — a dialogue on a missing map would be invisible (groupByMap drops it)
+    // and therefore undeletable through its own pin, while still being written back on save.
     case 'dialogue/added': {
       if (state.kind !== 'ready') return state
       if (!hasMap(state.project, action.dialogue.mapId)) return state
@@ -348,8 +319,6 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // Fires once per drag, on pointerup — not per pointermove. The dragged pin follows the
-    // cursor from PinLayer's own state, so autosave sees one document change, not sixty.
     case 'dialogue/moved': {
       if (state.kind !== 'ready') return state
       const target = state.project.dialogues.find((dialogue) => dialogue.id === action.dialogueId)
@@ -360,10 +329,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'dialogues', target, { ...target, position: action.position })
     }
 
-    // The four field edits below each fire per keystroke or per click. They are separate
-    // actions rather than one patch so every one of them can compare its own field and
-    // return the identical state for a no-op — which is what keeps autosave from waking on
-    // a re-render that changed nothing.
     case 'dialogue/npc-named': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'dialogues', action.dialogueId)
@@ -371,19 +336,9 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'dialogues', target, { ...target, npcName: action.npcName })
     }
 
-    /**
-     * An NPC is not an entity — there is no `Npc` record, only a name repeated on every line
-     * they said. So "rename this NPC" is one action over the whole document rather than a loop
-     * of `dialogue/npc-named` from a component: a loop would write a document per line, and
-     * autosave would persist a project half-way through the rename.
-     *
-     * Matching is on the *trimmed* name, which is the identity the insights view groups by
-     * (`npcKey`). Exact otherwise: 'Mara' leaves 'mara' and 'Mara the Elder' alone.
-     *
-     * Renaming onto a name that already exists **merges** the two — the lines simply end up
-     * carrying one name. That is the correct outcome for the case this exists for (a typo
-     * discovered fifty lines later), so it is stated rather than stumbled into.
-     */
+    // An NPC is not an entity, just a name repeated on every line — so "rename this NPC" is one
+    // action over the whole document, matched on the trimmed name (the same identity `npcKey`
+    // groups by). Renaming onto an existing name merges the two, deliberately.
     case 'npc/renamed': {
       if (state.kind !== 'ready') return state
       const from = action.from.trim()
@@ -398,8 +353,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return { ...state, project: { ...state.project, dialogues } }
     }
 
-    // Unconditional: what was said and what proves it are separate fields, so a dialogue that
-    // already carries pictures still has a line to edit — and a capture appends both.
     case 'dialogue/text-set': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'dialogues', action.dialogueId)
@@ -407,7 +360,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'dialogues', target, { ...target, text: action.text })
     }
 
-    // Appended, never replacing: several frames of one line is the case the list exists for.
     case 'dialogue/media-added': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'dialogues', action.dialogueId)
@@ -415,8 +367,7 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'dialogues', target, { ...target, media: [...target.media, action.media] })
     }
 
-    // Deleting the file the medium referenced is the caller's job: it is IO, and IO never
-    // enters the reducer.
+    // Deleting the referenced file is the caller's job — IO never enters the reducer.
     case 'dialogue/media-removed': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'dialogues', action.dialogueId)
@@ -429,8 +380,6 @@ function applyAction(state: AppState, action: Action): AppState {
       })
     }
 
-    // Moves one medium to a position, rather than taking a whole order: an order supplied from
-    // outside could drop an id, and a list that loses a picture on a drag is a lost file.
     case 'dialogue/media-reordered': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'dialogues', action.dialogueId)
@@ -477,19 +426,10 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    /**
-     * Two records that were always one. A single action, for the reason `pending-capture/placed`
-     * is one: it must be a single undo step and must not half-happen.
-     *
-     * Nothing here is invented. The text joins with `appendWithoutOverlap` — what the watcher
-     * would have produced had it never split them — and the media concatenate with their files
-     * **untouched**, since `fileName` is stored rather than derived (CLAUDE.md § Media contract).
-     * `spokenAt` is the earlier of the two, because the encounter began when the first box was
-     * heard, while `mapId`, `position` and `npcName` stay the target's: a merge is *into* a pin.
-     *
-     * Quests reference dialogues, so every reference to the source becomes one to the target.
-     * Dropping them instead would silently tear a quest thread.
-     */
+    // One action so it is one undo step. Text joins via appendWithoutOverlap (what the watcher
+    // would have produced unsplit); media concatenate with files untouched; spokenAt takes the
+    // earlier of the two; mapId/position/npcName stay the target's — merge is into a pin. Quest
+    // references to the source are repointed at the target rather than dropped.
     case 'dialogue/merged': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -558,9 +498,8 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'quests', target, { ...target, status: action.status })
     }
 
-    // The dialogue must exist. `pruneQuestDialogues` guarantees no dangling id survives a
-    // deletion, and this is the only other way one could enter the document — so the two
-    // together are what let every reader treat a `dialogueIds` entry as resolvable.
+    // The dialogue must exist — together with pruneQuestDialogues, this keeps every
+    // dialogueIds entry resolvable.
     case 'quest/dialogue-attached': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'quests', action.questId)
@@ -582,8 +521,7 @@ function applyAction(state: AppState, action: Action): AppState {
       })
     }
 
-    // No cascade, and deliberately none: a quest *references* dialogues, it does not own them.
-    // Deleting the thread the user was following must never delete the lines it collected.
+    // No cascade: a quest references dialogues, it does not own them.
     case 'quest/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -623,9 +561,7 @@ function applyAction(state: AppState, action: Action): AppState {
     }
 
     // No cascade: a profile is how pixels were read, not something the document references.
-    // Which profile is active is transient UI state and never enters the store, so there is
-    // nothing here to clear either. The alphabet is the project's, so deleting a profile does
-    // not cost it — which is why the confirmation no longer warns about the glyphs.
+    // The alphabet is the project's, so deleting a profile does not cost it.
     case 'capture-profile/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -641,9 +577,6 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // The alphabet belongs to the project, not to whichever profile happened to be aimed at the
-    // box when a tile was typed in — see CLAUDE.md. `mergeGlyphs` is the only addition path, and
-    // it replaces on identical bits, so re-learning a tile corrects it.
     case 'glyphs/learned': {
       if (state.kind !== 'ready') return state
       if (action.glyphs.length === 0) return state
@@ -653,8 +586,6 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // `forgetGlyph` hands back the array it was given when the bitmap was not in the alphabet,
-    // which is what makes a removal of nothing cost no undo step.
     case 'glyph/forgotten': {
       if (state.kind !== 'ready') return state
       const glyphs = forgetGlyph(state.project.glyphs, action.bits)
@@ -687,11 +618,8 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'relevanceTags', target, { ...target, hue: action.hue })
     }
 
-    // The array order is the canonical order `normalizeRelevance` sorts against, so moving a
-    // tag changes what a *correct* `relevance` array looks like for every dialogue that carries
-    // it — left alone, the next `readRelevance` would silently rewrite them, the whole-file diff
-    // the byte-stability tests exist to prevent. The index is clamped rather than rejected, like
-    // `moveMedium`'s `toIndex`, so a malformed reorder is simply "last" instead of a no-op.
+    // Array order is the canonical order normalizeRelevance sorts against, so reordering here
+    // also re-normalizes every dialogue's relevance array to match, avoiding a stray rewrite later.
     case 'relevance-tag/reordered': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -720,9 +648,7 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // A relevance tag is referenced by `Dialogue.relevance` from the other direction a quest
-    // references dialogues: leaving the id behind would put a dangling reference into a document
-    // whose whole invariant is that it cannot hold one. Dialogues are never deleted, only pruned.
+    // Dialogue.relevance references the tag; dialogues themselves are never deleted, only pruned.
     case 'relevance-tag/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -760,8 +686,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'pendingCaptures', target, { ...target, text: action.text })
     }
 
-    // Appended, never replacing — mirrors `dialogue/media-added`: the watcher's held-frame
-    // queue can add several pictures to one conversation before it ever gets a place.
     case 'pending-capture/media-added': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'pendingCaptures', action.captureId)
@@ -769,9 +693,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'pendingCaptures', target, { ...target, media: [...target.media, action.media] })
     }
 
-    // Mirrors `dialogue/media-removed`: deleting the file is the caller's job, exactly as it is
-    // there. What `keepWindow` in capture-watch.ts takes back a scrolled-through middle frame
-    // with, once the queue is what it was written into instead of a placed line.
     case 'pending-capture/media-removed': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'pendingCaptures', action.captureId)
@@ -791,7 +712,6 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'pendingCaptures', target, { ...target, npcName: action.npcName })
     }
 
-    // Mirrors `dialogue/relevance-set` exactly, normalized against the same `relevanceTags`.
     case 'pending-capture/relevance-set': {
       if (state.kind !== 'ready') return state
       const target = findById(state.project, 'pendingCaptures', action.captureId)
@@ -801,9 +721,8 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'pendingCaptures', target, { ...target, relevance })
     }
 
-    // No cascade in the reducer: the caller collects the capture's media file names before
-    // dispatching and discards them afterwards, exactly as `dialogue/deleted`'s callers do —
-    // async IO never enters the reducer. See CLAUDE.md.
+    // No cascade here: the caller collects and discards the capture's media files — async IO
+    // never enters the reducer.
     case 'pending-capture/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -819,10 +738,8 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // One action for the whole promotion, so it is one undo step and cannot half-happen: the
-    // capture leaves `pendingCaptures` and the new `Dialogue` appears in `dialogues` together.
-    // Every field but the placement carries over verbatim, including each medium's existing
-    // `fileName` — placement moves no file in media/, it only gives the record a home.
+    // One action so promotion is one undo step: the capture leaves pendingCaptures and the new
+    // Dialogue appears together. Every field but placement carries over verbatim — no file moves.
     case 'pending-capture/placed': {
       if (state.kind !== 'ready') return state
       const { project } = state
@@ -850,10 +767,8 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // At most one binding per action, enforced here rather than at each call site — the same
-    // rule `readRecorderBindings` enforces on a hand-edited file. An invalid buttonIndex is
-    // rejected as a no-op instead of a thrown error: the caller is a browser API reading live
-    // gamepad state, not a form with a place to show a validation message.
+    // At most one binding per action. An invalid buttonIndex is a no-op, not a thrown error —
+    // the caller is a browser API reading live gamepad state, not a form.
     case 'recorder-binding/set': {
       if (state.kind !== 'ready') return state
       if (!Number.isInteger(action.buttonIndex) || action.buttonIndex < 0) return state
@@ -885,9 +800,6 @@ function applyAction(state: AppState, action: Action): AppState {
       }
     }
 
-    // Both step through `state.history` and leave every other field alone. A drag or an edit
-    // that landed after this document was pushed is not this action's business to worry about:
-    // whatever the stack holds is exactly what `trackHistory` recorded for it.
     case 'history/undo': {
       if (state.kind !== 'ready') return state
       const stepped = stepHistory(state.history.undo, state.history.redo, state.project)
@@ -917,11 +829,7 @@ function applyAction(state: AppState, action: Action): AppState {
   }
 }
 
-/**
- * What `history/undo` and `history/redo` are the same operation over — pop the top of `from`,
- * push the document being left onto `to`. `null` when `from` is empty, so both cases can treat
- * "nothing to step to" as the ordinary no-op every other case returns for.
- */
+// Pop the top of `from`, push the document being left onto `to`. `null` when `from` is empty.
 function stepHistory(
   from: readonly ProjectFile[],
   to: readonly ProjectFile[],
@@ -935,18 +843,13 @@ function stepHistory(
   }
 }
 
-/** Bounded so a long session's history does not hold every document version it ever produced. */
 const MAX_HISTORY = 100
 
 const EMPTY_HISTORY: History = { undo: [], redo: [], coalesceKey: null }
 
-/**
- * Runs after `applyAction` for anything that actually changed `state`. Undo and redo already
- * computed their own `history` above and must not be pushed onto themselves; `project/loaded`
- * already reset it. Everything else pushes `previous`'s project when the project itself moved —
- * a selection or save-state change alone leaves `next.project === previous.project` and pushes
- * nothing, which is what keeps the stack scoped to *document* actions.
- */
+// Runs after applyAction for anything that changed state. Undo/redo already computed their own
+// history and project/loaded already reset it; everything else pushes `previous`'s project only
+// when the project itself moved, which scopes the stack to document actions.
 function trackHistory(previous: AppState, next: AppState, action: Action): AppState {
   if (action.kind === 'history/undo' || action.kind === 'history/redo') return next
   if (action.kind === 'project/loaded') return next
@@ -955,11 +858,6 @@ function trackHistory(previous: AppState, next: AppState, action: Action): AppSt
   return { ...next, history: pushHistory(next.history, previous.project, action) }
 }
 
-/**
- * Records `previous` as the step to return to, unless `action` continues the field edit the most
- * recent push was already for — see `History` in types.ts. Drops the oldest entry past
- * `MAX_HISTORY` rather than rejecting the push, so the stack is always the most recent steps.
- */
 function pushHistory(history: History, previous: ProjectFile, action: Action): History {
   const key = coalesceKeyFor(action)
   if (key !== null && key === history.coalesceKey) return history
@@ -970,12 +868,8 @@ function pushHistory(history: History, previous: ProjectFile, action: Action): H
   return { undo, redo: [], coalesceKey: key }
 }
 
-/**
- * Which field `action` edits, for the handful of action kinds a single user gesture can dispatch
- * many of in a row — typing into a text box, dragging a hue slider. `null` is the default and
- * means every dispatch of that kind is its own undo step, which is correct for anything that is
- * not a continuous field edit (adding a zone, deleting a dialogue, and so on).
- */
+// Which field `action` edits, for the handful of kinds a single gesture can dispatch many of in
+// a row (typing, dragging a hue slider). `null` means every dispatch is its own undo step.
 function coalesceKeyFor(action: Action): string | null {
   switch (action.kind) {
     case 'map/renamed':
@@ -1002,11 +896,8 @@ function coalesceKeyFor(action: Action): string | null {
       return `relevance-tag/renamed:${action.tagId}`
     case 'relevance-tag/hue-set':
       return `relevance-tag/hue-set:${action.tagId}`
-    // The watcher's own three dispatches, once per settled box, for as long as a recording runs —
-    // #107's two triggers make one recording the unit a player thinks of, so undoing one undoes
-    // that whole conversation rather than the box before last. `pending-capture/added` is
-    // deliberately not here: the capture's own creation stays its own step, so it is always
-    // undoable on its own even when every box after it coalesces away.
+    // One recording coalesces to one undo step; pending-capture/added stays its own step so the
+    // capture's creation is always undoable on its own.
     case 'pending-capture/media-added':
     case 'pending-capture/text-set':
     case 'pending-capture/media-removed':
@@ -1016,11 +907,8 @@ function coalesceKeyFor(action: Action): string | null {
   }
 }
 
-/**
- * Undo or redo can land on a document where the current selection resolves to nothing — a zone
- * deleted and then restored by undo does not get its old id back. A selection pointing at a
- * gone entity would render a detail panel for nothing, same as `dropDeletedSelection` above.
- */
+// Undo/redo can land on a document where the selection resolves to nothing — a restored zone
+// does not get its old id back.
 function pruneSelection(selection: Selection, project: ProjectFile): Selection {
   switch (selection.kind) {
     case 'none':
@@ -1044,12 +932,8 @@ const EMPTY_MAP_IDS: ReadonlySet<MapId> = new Set<MapId>()
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 
-/**
- * Every `ProjectFile` array field keyed by an `id`, derived from `ProjectFile` so a mismatched
- * field/element pair is a compile error. `replaceIn` still returns a fresh `project` on
- * `replacement === target` like the seven `withX` it replaces — do not "optimize" that away,
- * `trackHistory`/`useAppStateExceptSave` key an undo step / re-render off `project` identity.
- */
+// Every ProjectFile array field keyed by `id`. Do not special-case replacement === target below
+// to skip the fresh project — trackHistory/useAppStateExceptSave key off project identity.
 type ListField = {
   [K in keyof ProjectFile]: ProjectFile[K] extends readonly { id: string }[] ? K : never
 }[keyof ProjectFile]
@@ -1066,23 +950,18 @@ function replaceIn<K extends ListField>(
   }
 }
 
-/** Finds one element of a project list by id — the one rule every `findX` spelled out separately. */
 function findById<K extends ListField>(
   project: ProjectFile, field: K, id: ProjectFile[K][number]['id'],
 ): ProjectFile[K][number] | null {
   return project[field].find((item) => item.id === id) ?? null
 }
 
-/** The map a `dialogue/added` or `zone/added` claims to sit on has to be a real one. */
 function hasMap(project: ProjectFile, id: MapId): boolean {
   return findById(project, 'maps', id) !== null
 }
 
-/**
- * The list with one medium moved, or `null` when nothing would change — an unknown id, or a
- * target index that is already where the medium sits. The index is clamped rather than
- * rejected, so a drag past the end of the list means "last" instead of doing nothing.
- */
+// `null` when nothing would change. The index is clamped, not rejected, so a drag past the
+// end of the list means "last" instead of doing nothing.
 function moveMedium(
   media: readonly DialogueMedia[],
   mediaId: MediaId,
@@ -1098,11 +977,8 @@ function moveMedium(
   return next
 }
 
-/**
- * Deduplicated and in the project's own `relevanceTags` order, whatever order the checkboxes
- * were clicked in. That order is the canonical one, so `data.json` stays stable and diffable —
- * toggling a tag off and on again must not reshuffle the array and produce a spurious write.
- */
+// Deduplicated, in the project's relevanceTags order, so data.json stays stable and diffable —
+// toggling a tag off and on again must not reshuffle the array.
 function normalizeRelevance(
   ids: readonly RelevanceTagId[],
   tags: readonly RelevanceTag[],
@@ -1111,16 +987,10 @@ function normalizeRelevance(
   return tags.map((tag) => tag.id).filter((id) => chosen.has(id))
 }
 
-/** Both sides are already normalized, so element-wise equality is enough. */
 function isSameRelevance(a: readonly RelevanceTagId[], b: readonly RelevanceTagId[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index])
 }
 
-/**
- * Quests are not scoped to a map, so they outlive any cascade — but a dangling `DialogueId`
- * in one is a reference to nothing that every later reader would have to defend against.
- * Pruned at the only two places that can create one.
- */
 function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>): Quest[] {
   return quests.map((quest) =>
     quest.dialogueIds.some((id) => removed.has(id))
@@ -1129,12 +999,7 @@ function pruneQuestDialogues(quests: Quest[], removed: ReadonlySet<DialogueId>):
   )
 }
 
-/**
- * Points every quest that named one dialogue at another, deduplicated.
- *
- * The counterpart to `pruneQuestDialogues` for a merge: the dialogue is not gone, it *is* the
- * other one now, so dropping the reference would tear a thread that is still intact.
- */
+// The merge counterpart to pruneQuestDialogues: the dialogue isn't gone, it is the other one now.
 function repointQuestDialogues(quests: Quest[], from: DialogueId, into: DialogueId): Quest[] {
   return quests.map((quest) => {
     if (!quest.dialogueIds.includes(from)) return quest
@@ -1147,11 +1012,6 @@ function repointQuestDialogues(quests: Quest[], from: DialogueId, into: Dialogue
   })
 }
 
-/**
- * A relevance tag is referenced by `Dialogue.relevance` from the other direction
- * `pruneQuestDialogues` prunes: a dialogue points at the tag, not the other way round. Mirrors
- * it exactly, pruning the id out of every dialogue that carried it rather than removing anything.
- */
 function pruneDialogueRelevance(
   dialogues: Dialogue[],
   removed: ReadonlySet<RelevanceTagId>,
@@ -1163,14 +1023,12 @@ function pruneDialogueRelevance(
   )
 }
 
-/** Everything one cascade took out, by kind — the input to `dropDeletedSelection`. */
 type RemovedIds = {
   dialogues: ReadonlySet<DialogueId>
   zones: ReadonlySet<ZoneId>
   maps: ReadonlySet<MapId>
 }
 
-/** A selection pointing at a deleted entity would render as a detail panel for nothing. */
 function dropDeletedSelection(selection: Selection, removed: RemovedIds): Selection {
   switch (selection.kind) {
     case 'none':
@@ -1186,11 +1044,8 @@ function dropDeletedSelection(selection: Selection, removed: RemovedIds): Select
   }
 }
 
-/**
- * Autosave subscribes to the store, so a save action that changed nothing must return the
- * identical state — otherwise marking a save "pending" would wake autosave, which would
- * mark it pending again.
- */
+// Autosave subscribes to the store, so a no-op save action must return the identical state —
+// otherwise marking a save "pending" would wake autosave, which would mark it pending again.
 function withSaveState(state: AppState, save: SaveState): AppState {
   if (state.kind !== 'ready') return state
   if (isSameSaveState(state.save, save)) return state

@@ -17,12 +17,9 @@ export function subscribe(listener: () => void): () => void {
   }
 }
 
-/**
- * Whether a notify pass is running, and what to run after it. Autosave's listener dispatches
- * `save/pending` synchronously, so without this every document edit would run a **nested**
- * notify inside the outer one: listeners registered before autosave would see the old state
- * and listeners after it the newer one, and React's callback would fire twice per edit.
- */
+// dispatch never nests: a dispatch arriving during a notify pass is queued and run after it,
+// over a snapshot of the listener set taken when that pass started — this is what keeps
+// autosave's synchronous save/pending dispatch from firing a listener twice per edit.
 let notifying = false
 const queued: Action[] = []
 
@@ -32,7 +29,6 @@ export function dispatch(action: Action): void {
     return
   }
   apply(action)
-  // A queued action can queue another; the loop is what keeps the chain flat instead of deep.
   for (let next = queued.shift(); next !== undefined; next = queued.shift()) apply(next)
 }
 
@@ -42,8 +38,6 @@ function apply(action: Action): void {
   state = next
   notifying = true
   try {
-    // A snapshot of the set, so subscribing or unsubscribing from inside a listener cannot
-    // change who this pass visits: every listener is notified exactly once per change.
     for (const listener of [...listeners]) listener()
   } finally {
     notifying = false
@@ -54,18 +48,10 @@ export function useAppState(): AppState {
   return useSyncExternalStore(subscribe, getState)
 }
 
-/**
- * The state as everything except the save indicator sees it.
- *
- * A save cycle is three states in under a second — pending, saving, saved — and a subscriber
- * to the whole state re-renders three times per edit for a change only the Nav is showing. This
- * hands back the *previous* state object whenever `save` is the only field that moved, so
- * `useSyncExternalStore`'s `Object.is` check bails and the canvas stands still.
- *
- * The store is still one `AppState`, which CLAUDE.md fixes; this is a selector over it. The
- * name is the warning: the `save` field of what this returns is stale by design. Read it
- * through `useSaveState` instead — `Nav` and the failure banner do.
- */
+// A selector: hands back the previous state object whenever `save` is the only field that
+// moved, so useSyncExternalStore's Object.is check bails and a save cycle (pending/saving/saved)
+// doesn't re-render subscribers who only care about the document. Its own `save` field is
+// therefore stale by design — read that through useSaveState instead.
 export function useAppStateExceptSave(): AppState {
   return useSyncExternalStore(subscribe, getStateExceptSave)
 }
@@ -88,7 +74,6 @@ function onlySaveChanged(before: AppState, after: AppState): boolean {
   )
 }
 
-/** The save state on its own subscription. `null` before a project is open. */
 export function useSaveState(): SaveState | null {
   return useSyncExternalStore(subscribe, getSaveState)
 }
@@ -97,12 +82,8 @@ function getSaveState(): SaveState | null {
   return state.kind === 'ready' ? state.save : null
 }
 
-/**
- * The undo/redo stacks on their own subscription, mirroring `useSaveState` — the Nav's history
- * controls are the only reader, and a field of `AppState` is a stable return per the
- * `useSyncExternalStore` contract in CLAUDE.md, so this hands back the field itself rather than
- * deriving `canUndo`/`canRedo` into a fresh object on every call.
- */
+// useSyncExternalStore requires a stable snapshot, so this returns the `history` field itself
+// rather than deriving canUndo/canRedo into a fresh object on every call.
 export function useHistoryState(): History | null {
   return useSyncExternalStore(subscribe, getHistoryState)
 }
@@ -111,13 +92,8 @@ function getHistoryState(): History | null {
   return state.kind === 'ready' ? state.history : null
 }
 
-/**
- * The dialogue as the document holds it *now*, or null once it is gone.
- *
- * For work that resumes after an await: a component's `dialogue` prop is the render the work
- * started in, and a dispatch naming a deleted dialogue is a no-op the reducer performs
- * silently. Anything that wrote a file before dispatching has to ask.
- */
+// For work resuming after an await: a component's `dialogue` prop is the render it started in,
+// so anything that wrote a file before dispatching has to ask what the document holds now.
 export function currentDialogue(dialogueId: DialogueId): Dialogue | null {
   if (state.kind !== 'ready') return null
   return state.project.dialogues.find((one) => one.id === dialogueId) ?? null

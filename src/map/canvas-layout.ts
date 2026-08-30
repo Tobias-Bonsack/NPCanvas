@@ -2,35 +2,22 @@ import type { GameMap, Point, Zone } from '../project/types.ts'
 import type { Rect } from './geometry.ts'
 import { pointInPolygon, polygonArea, polygonBounds, rectContains } from './geometry.ts'
 
-// Canvas space is the shared coordinate system every map is placed into; one canvas unit is
-// one map pixel at `scale: 1`. Map-local space is pixels within a single map image, which is
-// what `Dialogue.position` and `Zone.polygon` are expressed in — a map carries its contents
-// because they are stored relative to it, never in canvas space.
-//
+// Canvas space is the shared system every map is placed into (one unit = one map pixel at
+// scale 1); map-local is pixels within a single map image (Dialogue.position, Zone.polygon).
 // Nothing here knows about the screen (viewport.ts) or the store.
 
-/**
- * Canvas units between neighbouring maps, both for the V1 migration and for a freshly
- * imported map. Wide enough that two maps read as separate objects when the whole canvas is
- * fitted on screen, narrow enough that the fit is not mostly empty space.
- */
 export const MAP_LAYOUT_GAP = 200
 
-/** Below 0.1 a map is a smudge on the canvas; above 10 it dwarfs every neighbour. */
 export const MIN_MAP_SCALE = 0.1
 export const MAX_MAP_SCALE = 10
 
-/**
- * A NaN scale would make the map's whole transform NaN and render it nowhere, with no error
- * anywhere — it collapses to native size instead, the same absorb-rather-than-prevent
- * approach `clampScale` takes for the viewport.
- */
+// A NaN scale would make the map's whole transform NaN and render it nowhere with no error —
+// collapse to native size instead, same as clampScale does for the viewport.
 export function clampMapScale(scale: number): number {
   if (Number.isNaN(scale)) return 1
   return Math.min(MAX_MAP_SCALE, Math.max(MIN_MAP_SCALE, scale))
 }
 
-/** The map's footprint in canvas space: its natural size taken through its own scale. */
 export function mapCanvasRect(map: GameMap): Rect {
   return {
     x: map.origin.x,
@@ -54,12 +41,7 @@ export function canvasToMapLocal(map: GameMap, point: Point): Point {
   }
 }
 
-/**
- * A canvas-space rectangle in one map's own coordinates — the culling test for that map's
- * contents. Converted once per map rather than per pin, because `Dialogue.position` and
- * `Zone.polygon` are already map-local and converting them all would be the expensive
- * direction.
- */
+// Converted once per map, not per pin — Dialogue.position/Zone.polygon are already map-local.
 export function canvasRectToMapLocal(map: GameMap, rect: Rect): Rect {
   const topLeft = canvasToMapLocal(map, { x: rect.x, y: rect.y })
   return {
@@ -70,11 +52,7 @@ export function canvasRectToMapLocal(map: GameMap, rect: Rect): Rect {
   }
 }
 
-/**
- * The origin a map needs so that rescaling it keeps its **centre** fixed rather than its
- * top-left. Nudging a scale then reads as adjustment instead of the map drifting away from
- * wherever the user put it.
- */
+// Keeps the map's centre fixed under a rescale, rather than its top-left.
 export function originForScale(map: GameMap, scale: number): Point {
   const rect = mapCanvasRect(map)
   return {
@@ -83,11 +61,6 @@ export function originForScale(map: GameMap, scale: number): Point {
   }
 }
 
-/**
- * A zone's footprint in canvas space — its map-local bounding box taken through its map's own
- * origin and scale, mirroring `mapCanvasRect`. What `ZoneList`'s focus jump fits the viewport
- * to, the way `MapList`'s fits to `mapCanvasRect`.
- */
 export function zoneCanvasRect(map: GameMap, zone: Zone): Rect {
   const bounds = polygonBounds(zone.polygon)
   return {
@@ -98,10 +71,7 @@ export function zoneCanvasRect(map: GameMap, zone: Zone): Rect {
   }
 }
 
-/**
- * The rectangle enclosing every map. `null` rather than a zero rect for an empty project, so
- * a caller cannot silently fit the viewport to a degenerate rectangle.
- */
+// `null`, not a zero rect, for an empty project — a caller must not fit to a degenerate rect.
 export function mapsBounds(maps: readonly GameMap[]): Rect | null {
   if (maps.length === 0) return null
 
@@ -119,11 +89,7 @@ export function mapsBounds(maps: readonly GameMap[]): Rect | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
 }
 
-/**
- * The map under a canvas point, topmost first — iterating in reverse, because the canvas
- * renders the array in order and later maps paint over earlier ones. `null` when the point
- * is on bare canvas, which is what stops a dialogue being placed nowhere.
- */
+// Topmost first — reversed because later maps paint over earlier ones in render order.
 export function mapAtCanvasPoint(maps: readonly GameMap[], point: Point): GameMap | null {
   for (let index = maps.length - 1; index >= 0; index--) {
     const map = maps[index]
@@ -132,15 +98,8 @@ export function mapAtCanvasPoint(maps: readonly GameMap[], point: Point): GameMa
   return null
 }
 
-/**
- * The zone under a canvas point, smallest first — a shop drawn inside a town wins, because
- * the more specific region is the one a click means. `null` on bare canvas or bare map.
- *
- * The point is converted into map-local space once and the polygons are left alone: they are
- * *stored* map-local, and converting every vertex per hit test would be the expensive
- * direction as well as the one that drifts. Only the topmost map is consulted, so a zone can
- * never be picked through a map lying over it.
- */
+// Smallest zone first — the more specific region is what a click means. Only the topmost map is
+// consulted, so a zone can never be picked through a map lying over it.
 export function zoneAtCanvasPoint(
   maps: readonly GameMap[],
   zones: readonly Zone[],
@@ -154,8 +113,6 @@ export function zoneAtCanvasPoint(
   let bestArea = Infinity
   for (const zone of zones) {
     if (zone.mapId !== map.id) continue
-    // The bounding box rejects the common case — most zones are nowhere near the click —
-    // for a quarter of the work of the ray cast.
     if (!rectContains(polygonBounds(zone.polygon), local)) continue
     if (!pointInPolygon(local, zone.polygon)) continue
     const area = polygonArea(zone.polygon)
@@ -166,11 +123,6 @@ export function zoneAtCanvasPoint(
   return best
 }
 
-/**
- * Where a freshly imported map goes: to the right of everything already placed, top-aligned
- * with the current bounds. The placement policy lives here rather than in the media layer,
- * so importing and migrating lay maps out the same way.
- */
 export function nextMapOrigin(maps: readonly GameMap[]): Point {
   const bounds = mapsBounds(maps)
   if (bounds === null) return { x: 0, y: 0 }

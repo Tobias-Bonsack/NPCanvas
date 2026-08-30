@@ -6,21 +6,9 @@ import { useMediaUrl } from '../media/media-url-cache.ts'
 import type { GameMap } from '../project/types.ts'
 import { mapGroupStyle } from './map-group-style.ts'
 
-/**
- * The map image, or a footprint-sized placeholder while it loads or if it has gone missing.
- * A placeholder rather than an overlay notice: with every map on screen at once, the message
- * has to say *which* map it is about, and occupying the map's own rectangle says it best.
- *
- * `memo` for the same reason `PinLayer` and `ZoneLayer` have it, and it needs stating because
- * this one is *not* passed through `children`: `MapCanvas` builds these elements itself, so a
- * pan — which re-renders `MapCanvas` per frame — would otherwise re-run `useMediaUrl` and
- * rebuild `mapGroupStyle` for every map, every frame. Every prop here is already viewport
- * independent, so the memo simply holds.
- *
- * Lives in its own file rather than in `MapCanvas.tsx` because it is the one seam there with no
- * coupling to canvas gesture state: a session editing the gestures never has to read it, and a
- * session editing the image layer never has to read them.
- */
+// memo'd like PinLayer/ZoneLayer, worth stating here since MapCanvas builds these elements
+// itself rather than passing them through children — without it a pan would re-run useMediaUrl
+// and rebuild mapGroupStyle for every map, every frame.
 export const MapImage = memo(function MapImage({
   map,
   selected,
@@ -32,17 +20,13 @@ export const MapImage = memo(function MapImage({
 }: {
   map: GameMap
   selected: boolean
-  /** `null` under every tool but `move-map`, which is what makes maps immovable there. */
+  // `null` under every tool but move-map, which is what makes maps immovable there.
   onPointerDown: ((event: ReactPointerEvent<HTMLDivElement>, map: GameMap) => void) | null
   onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void
   onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void
   onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => void
-  /**
-   * Whether the map is drawn at or above 1:1. `image-rendering: pixelated` is the right filter
-   * only there — it is what keeps game-map pixel art from smearing when magnified. Below 1:1 it
-   * is a nearest-neighbour *downsample*, which drops whole rows of a fitted map and shimmers as
-   * the canvas moves; the browser's own filter is the better one for that.
-   */
+  // Whether the map is at or above 1:1 — image-rendering: pixelated is only right there; below
+  // 1:1 it's a nearest-neighbour downsample that shimmers, so the browser's own filter is better.
   crisp: boolean
 }): ReactElement {
   const media = useMediaUrl(map.file)
@@ -67,16 +51,13 @@ export const MapImage = memo(function MapImage({
           height={map.height}
           draggable={false}
           data-crisp={crisp ? 'true' : undefined}
-          // A map image is millions of pixels; decoding it on the main thread blocks the
-          // frame that was going to draw the rest of the canvas.
-          decoding="async"
+          decoding="async" // millions of pixels — sync decode would block the frame
         />
       ) : (
         <div
           className="map-canvas__placeholder"
           style={{ width: `${map.width}px`, height: `${map.height}px` }}
         >
-          {/* Counter-scaled in CSS, so the message stays legible however small the map is. */}
           <p className="map-canvas__notice" role={media.kind === 'loading' ? undefined : 'alert'}>
             <MediaNotice map={map} media={media} />
           </p>
@@ -86,7 +67,6 @@ export const MapImage = memo(function MapImage({
   )
 })
 
-/** Exhaustive over the non-ready `MediaUrl` variants; `ready` renders the image instead. */
 function MediaNotice({ map, media }: { map: GameMap; media: MediaUrl }): ReactElement | null {
   switch (media.kind) {
     case 'ready':
