@@ -26,6 +26,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - run: npm run comment-budget
       - run: npm run deadcode
       - run: npm test
       - run: npm run build
