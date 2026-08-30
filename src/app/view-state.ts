@@ -23,6 +23,9 @@ export type CanvasViewState = {
   trail: boolean
   /** Whether a dialogue's stored references are drawn on the canvas — see `ReferenceLayer`. */
   references: boolean
+  /** Whether the rail's Maps section is expanded — an uncontrolled `<details>` would spring
+   * back open on every view switch. */
+  mapsOpen: boolean
   /** `null` until the canvas has fitted itself once — see `MapCanvas`'s `initialViewport`. */
   viewport: Viewport | null
   /** `null` until the panel's resize handle is dragged once — the width the stylesheet gives it. */
@@ -49,6 +52,7 @@ export const INITIAL_VIEW_STATE: ViewState = {
     questFilter: false,
     trail: false,
     references: true,
+    mapsOpen: true,
     viewport: null,
     panelWidth: null,
   },

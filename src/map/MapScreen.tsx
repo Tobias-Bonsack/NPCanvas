@@ -60,7 +60,7 @@ export function MapScreen({
 }): ReactElement {
   // Tool, quest filter and viewport are lifted to App so a switch away and back leaves the
   // canvas as it was. Setters below are stable functional updates, not closures over viewState.
-  const { tool, questFilter, trail, references, viewport, panelWidth } = viewState
+  const { tool, questFilter, trail, references, mapsOpen, viewport, panelWidth } = viewState
 
   const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
   const [currentCaptureId, setCurrentCaptureId] = useState<PendingCaptureId | null>(null)
@@ -264,16 +264,6 @@ export function MapScreen({
 
   return (
     <section className="map-screen">
-      <header className="map-screen__bar">
-        <h1 className="visually-hidden">Canvas</h1>
-        <div className="map-screen__controls">
-          <ToolPicker tool={tool} onChange={setTool} />
-          <button type="button" className="button" onClick={() => setDisplayDialogOpen(true)}>
-            Display…
-          </button>
-        </div>
-        <CanvasLegend relevanceTags={project.relevanceTags} />
-      </header>
       {displayDialogOpen && (
         <CanvasDisplayDialog
           questFilter={questFilter}
@@ -290,6 +280,7 @@ export function MapScreen({
       )}
       <div className="map-screen__body" ref={bodyRef}>
         <aside className="map-screen__sidebar">
+          <h1 className="visually-hidden">Canvas</h1>
           <CaptureRecorder />
           <PendingCaptureList
             project={project}
@@ -298,8 +289,29 @@ export function MapScreen({
             currentCaptureId={currentCaptureId}
             onSelect={setCurrentCaptureId}
           />
-          <MapList project={project} />
+          <div className="map-screen__tools">
+            <button type="button" className="button" onClick={() => setDisplayDialogOpen(true)}>
+              Display…
+            </button>
+            <ToolPicker tool={tool} onChange={setTool} />
+          </div>
           <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />
+          <details
+            className="map-list-disclosure"
+            open={mapsOpen}
+            // Read synchronously, not inside the updater below — currentTarget reverts to null
+            // once the native event finishes dispatching, before a setState updater runs.
+            onToggle={(event) => {
+              const open = event.currentTarget.open
+              onViewStateChange((prev) => ({ ...prev, mapsOpen: open }))
+            }}
+          >
+            <summary className="map-list-disclosure__summary micro-label disclosure-summary">
+              Maps
+            </summary>
+            <MapList project={project} />
+          </details>
+          <CanvasLegend relevanceTags={project.relevanceTags} />
         </aside>
         <div className="map-screen__canvas">
           <MapCanvas
@@ -460,7 +472,7 @@ function ToolPicker({
   }
 
   return (
-    <div className="tool-picker" role="radiogroup" aria-label="Canvas tool">
+    <div className="tool-picker" role="radiogroup" aria-label="Canvas tool" aria-orientation="vertical">
       {TOOLS.map((entry, index) => (
         <button
           key={entry.tool.kind}

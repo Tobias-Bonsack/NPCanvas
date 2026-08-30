@@ -7,17 +7,6 @@
   flex-direction: column;
 }
 
-.map-screen__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--surface-1);
-}
-
 .map-screen__body {
   flex: 1;
   min-height: 0;
@@ -143,11 +132,22 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  /* A rule rather than a gap between the two sidebar lists: they are different subjects, and
-     the maps list ends with an import button that would otherwise read as belonging here. */
+}
+
+/* A rule rather than a gap between the two sidebar lists: they are different subjects, and
+   the maps list ends with an import button that would otherwise read as belonging to zones. */
+.map-list-disclosure {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
   border-top: 1px solid var(--border);
+}
+
+.map-list-disclosure__summary {
+  color: var(--text-muted);
+}
+
+.map-list-disclosure__summary:hover {
+  color: var(--text);
 }
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
@@ -224,14 +224,46 @@
 
 /* ---- tools ---- */
 
+/* The Display button and the tool picker, together: what used to be the header bar's left
+   half, now the rail's own first block. */
+.map-screen__tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.map-screen__tools > .button {
+  width: 100%;
+}
+
+/* Vertical now — a 16rem rail has no room for four tools in a row. `arrowStep` already
+   accepts ArrowUp/ArrowDown as well as the horizontal pair, so the roving tabIndex needed no
+   logic change, only this and the corner-rounding below. */
 .tool-picker {
   display: flex;
+  flex-direction: column;
   gap: 1px;
 }
 
-/* The `.segmented-button` base (index.css) supplies the shape and states; only the size differs
-   here. */
+/* The `.segmented-button` base (index.css) rounds the first/last child's *left/right* corners
+   for a horizontal strip; a vertical one wants its first/last child's *top/bottom* corners
+   instead, at equal specificity so declaration order in the cascade decides — this file loads
+   after index.css. */
+.tool-picker__button:first-child {
+  border-radius: var(--radius-2) var(--radius-2) 0 0;
+}
+
+.tool-picker__button:last-child {
+  border-radius: 0 0 var(--radius-2) var(--radius-2);
+}
+
+/* The `.segmented-button` base (index.css) supplies the shape and states; only the size and
+   alignment differ here — full width and left-aligned text, since a vertical strip has no
+   neighbour to center against. */
 .tool-picker__button {
+  width: 100%;
+  text-align: left;
   font-size: var(--text-sm);
   padding: var(--space-1) var(--space-3);
 }
@@ -248,13 +280,6 @@
 
 .tool-picker__button[aria-checked='true'] .tool-picker__key {
   background: rgba(0, 0, 0, 0.18);
-}
-
-.map-screen__controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
 }
 
 /* ---- import ---- */
