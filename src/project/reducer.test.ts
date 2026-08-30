@@ -166,6 +166,15 @@ function twoMapProject(): ProjectFile {
   }
 }
 
+/** `twoMapProject` plus one capture profile and one pending capture, for the setField tables below. */
+function entityFixture(): ReadyState {
+  return ready({
+    ...twoMapProject(),
+    captureProfiles: [captureProfile('profile-1')],
+    pendingCaptures: [pendingCapture('capture-1')],
+  })
+}
+
 const NON_READY_STATES: readonly AppState[] = [
   { kind: 'unsupported' },
   { kind: 'disconnected' },
@@ -191,69 +200,28 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'dialogue/npc-named', dialogueId: asDialogueId('dialogue-1'), npcName: 'Ferryman' },
   { kind: 'npc/renamed', from: 'Mara', to: 'Ferryman' },
   { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' },
-  {
-    kind: 'dialogue/media-added',
-    dialogueId: asDialogueId('dialogue-1'),
-    media: medium('media-1'),
-  },
-  {
-    kind: 'dialogue/media-removed',
-    dialogueId: asDialogueId('dialogue-1'),
-    mediaId: asMediaId('media-1'),
-  },
-  {
-    kind: 'dialogue/media-reordered',
-    dialogueId: asDialogueId('dialogue-1'),
-    mediaId: asMediaId('media-1'),
-    toIndex: 0,
-  },
-  {
-    kind: 'dialogue/spoken-at-set',
-    dialogueId: asDialogueId('dialogue-1'),
-    spokenAt: '2026-08-14T10:00:00.000Z',
-  },
-  {
-    kind: 'dialogue/relevance-set',
-    dialogueId: asDialogueId('dialogue-1'),
-    relevance: [asRelevanceTagId('other')],
-  },
+  { kind: 'dialogue/media-added', dialogueId: asDialogueId('dialogue-1'), media: medium('media-1') },
+  { kind: 'dialogue/media-removed', dialogueId: asDialogueId('dialogue-1'), mediaId: asMediaId('media-1') },
+  { kind: 'dialogue/media-reordered', dialogueId: asDialogueId('dialogue-1'), mediaId: asMediaId('media-1'), toIndex: 0 },
+  { kind: 'dialogue/spoken-at-set', dialogueId: asDialogueId('dialogue-1'), spokenAt: '2026-08-14T10:00:00.000Z' },
+  { kind: 'dialogue/relevance-set', dialogueId: asDialogueId('dialogue-1'), relevance: [asRelevanceTagId('other')] },
   { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-1') },
   { kind: 'zone/added', zone: zone('zone-1', asMapId('harbour')) },
   { kind: 'zone/renamed', zoneId: asZoneId('zone-1'), name: 'Docks' },
   { kind: 'zone/hue-set', zoneId: asZoneId('zone-1'), hue: 40 },
-  {
-    kind: 'zone/reshaped',
-    zoneId: asZoneId('zone-1'),
-    polygon: [
-      { x: 1, y: 1 },
-      { x: 11, y: 1 },
-      { x: 11, y: 11 },
-    ],
-  },
+  { kind: 'zone/reshaped', zoneId: asZoneId('zone-1'), polygon: [{ x: 1, y: 1 }, { x: 11, y: 1 }, { x: 11, y: 11 }] },
   { kind: 'zone/deleted', zoneId: asZoneId('zone-1') },
   { kind: 'quest/added', quest: quest('quest-1', []) },
   { kind: 'quest/renamed', questId: asQuestId('quest-1'), name: 'The missing ledger' },
   { kind: 'quest/note-set', questId: asQuestId('quest-1'), note: 'Ask the harbourmaster' },
   { kind: 'quest/hue-set', questId: asQuestId('quest-1'), hue: 265 },
   { kind: 'quest/status-set', questId: asQuestId('quest-1'), status: 'done' },
-  {
-    kind: 'quest/dialogue-attached',
-    questId: asQuestId('quest-1'),
-    dialogueId: asDialogueId('dialogue-1'),
-  },
-  {
-    kind: 'quest/dialogue-detached',
-    questId: asQuestId('quest-1'),
-    dialogueId: asDialogueId('dialogue-1'),
-  },
+  { kind: 'quest/dialogue-attached', questId: asQuestId('quest-1'), dialogueId: asDialogueId('dialogue-1') },
+  { kind: 'quest/dialogue-detached', questId: asQuestId('quest-1'), dialogueId: asDialogueId('dialogue-1') },
   { kind: 'quest/deleted', questId: asQuestId('quest-1') },
   { kind: 'capture-profile/added', profile: captureProfile('profile-1') },
   { kind: 'capture-profile/renamed', profileId: asCaptureProfileId('profile-1'), name: 'Red' },
-  {
-    kind: 'capture-profile/calibrated',
-    profileId: asCaptureProfileId('profile-1'),
-    calibration: CALIBRATION,
-  },
+  { kind: 'capture-profile/calibrated', profileId: asCaptureProfileId('profile-1'), calibration: CALIBRATION },
   { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') },
   { kind: 'glyphs/learned', glyphs: [{ char: 'A', bits: '0123456789abcdef' }] },
   { kind: 'glyph/forgotten', bits: '0123456789abcdef' },
@@ -264,34 +232,12 @@ const READY_SCOPED_ACTIONS: readonly Action[] = [
   { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('other') },
   { kind: 'pending-capture/added', capture: pendingCapture('capture-1') },
   { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi' },
-  {
-    kind: 'pending-capture/media-added',
-    captureId: asPendingCaptureId('capture-1'),
-    media: medium('media-1'),
-  },
-  {
-    kind: 'pending-capture/media-removed',
-    captureId: asPendingCaptureId('capture-1'),
-    mediaId: asMediaId('media-1'),
-  },
-  {
-    kind: 'pending-capture/renamed',
-    captureId: asPendingCaptureId('capture-1'),
-    npcName: 'Ferryman',
-  },
-  {
-    kind: 'pending-capture/relevance-set',
-    captureId: asPendingCaptureId('capture-1'),
-    relevance: [asRelevanceTagId('other')],
-  },
+  { kind: 'pending-capture/media-added', captureId: asPendingCaptureId('capture-1'), media: medium('media-1') },
+  { kind: 'pending-capture/media-removed', captureId: asPendingCaptureId('capture-1'), mediaId: asMediaId('media-1') },
+  { kind: 'pending-capture/renamed', captureId: asPendingCaptureId('capture-1'), npcName: 'Ferryman' },
+  { kind: 'pending-capture/relevance-set', captureId: asPendingCaptureId('capture-1'), relevance: [asRelevanceTagId('other')] },
   { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('capture-1') },
-  {
-    kind: 'pending-capture/placed',
-    captureId: asPendingCaptureId('capture-1'),
-    dialogueId: asDialogueId('dialogue-1'),
-    mapId: asMapId('harbour'),
-    position: { x: 0, y: 0 },
-  },
+  { kind: 'pending-capture/placed', captureId: asPendingCaptureId('capture-1'), dialogueId: asDialogueId('dialogue-1'), mapId: asMapId('harbour'), position: { x: 0, y: 0 } },
   { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 0 },
   { kind: 'recorder-binding/cleared', action: 'record-new' },
   { kind: 'history/undo' },
@@ -476,30 +422,6 @@ describe('reduce: map actions', () => {
   it('ignores a map whose id the document already holds', () => {
     const state = ready(twoMapProject())
     expect(reduce(state, { kind: 'map/added', map: gameMap('harbour', 'A copy') })).toBe(state)
-  })
-
-  it('renames a map without touching the others', () => {
-    const next = reduce(ready(twoMapProject()), {
-      kind: 'map/renamed',
-      mapId: asMapId('harbour'),
-      name: 'Docks',
-    })
-    expect(next.kind === 'ready' && next.project.maps.map((map) => map.name)).toEqual([
-      'Docks',
-      'forest',
-    ])
-  })
-
-  it('ignores a rename of a map that does not exist', () => {
-    const state = ready(twoMapProject())
-    expect(reduce(state, { kind: 'map/renamed', mapId: asMapId('nope'), name: 'Docks' })).toBe(state)
-  })
-
-  it('ignores a rename to the name the map already has', () => {
-    const state = ready(twoMapProject())
-    expect(
-      reduce(state, { kind: 'map/renamed', mapId: asMapId('harbour'), name: 'harbour' }),
-    ).toBe(state)
   })
 })
 
@@ -705,12 +627,8 @@ describe('reduce: dialogue actions', () => {
     })
   })
 
-  it('deletes a dialogue, prunes it from quests, and clears the selection', () => {
-    const selected = reduce(ready(twoMapProject()), {
-      kind: 'selection/set',
-      selection: { kind: 'dialogue', id: asDialogueId('dialogue-harbour') },
-    })
-    const next = reduce(selected, {
+  it('deletes a dialogue and prunes it from quests', () => {
+    const next = reduce(ready(twoMapProject()), {
       kind: 'dialogue/deleted',
       dialogueId: asDialogueId('dialogue-harbour'),
     })
@@ -720,7 +638,6 @@ describe('reduce: dialogue actions', () => {
     expect(next.kind === 'ready' && next.project.quests).toEqual([
       quest('quest-1', ['dialogue-forest']),
     ])
-    expect(next.kind === 'ready' && next.selection).toEqual({ kind: 'none' })
   })
 
   it('keeps a selection pointing at a different dialogue', () => {
@@ -869,49 +786,29 @@ describe('reduce: dialogue field edits', () => {
 
   it('renames the NPC without touching the other dialogues', () => {
     const before = twoMapProject()
-    const next = reduce(ready(before), {
-      kind: 'dialogue/npc-named',
-      dialogueId: target,
-      npcName: 'Ferryman',
-    })
+    const next = reduce(ready(before), { kind: 'dialogue/npc-named', dialogueId: target, npcName: 'Ferryman' })
     expect(edited(next).npcName).toBe('Ferryman')
     expect(next.kind === 'ready' && next.project.dialogues[1]).toBe(before.dialogues[1])
   })
 
   it('edits the line', () => {
-    const next = reduce(ready(twoMapProject()), {
-      kind: 'dialogue/text-set',
-      dialogueId: target,
-      text: 'The tide takes what it likes.',
-    })
+    const next = reduce(ready(twoMapProject()), { kind: 'dialogue/text-set', dialogueId: target, text: 'The tide takes what it likes.' })
     expect(edited(next).text).toBe('The tide takes what it likes.')
   })
 
   it('edits the line of a dialogue that already carries pictures', () => {
-    const next = reduce(ready(projectWithMedia(['a'])), {
-      kind: 'dialogue/text-set',
-      dialogueId: target,
-      text: 'Transcribed from the capture.',
-    })
+    const next = reduce(ready(projectWithMedia(['a'])), { kind: 'dialogue/text-set', dialogueId: target, text: 'Transcribed from the capture.' })
     expect(edited(next).text).toBe('Transcribed from the capture.')
     expect(edited(next).media.map((it) => it.id)).toEqual(['a'])
   })
 
   it('appends a medium rather than replacing the list', () => {
-    const next = reduce(ready(projectWithMedia(['a'])), {
-      kind: 'dialogue/media-added',
-      dialogueId: target,
-      media: medium('b'),
-    })
+    const next = reduce(ready(projectWithMedia(['a'])), { kind: 'dialogue/media-added', dialogueId: target, media: medium('b') })
     expect(edited(next).media.map((it) => it.id)).toEqual(['a', 'b'])
   })
 
   it('removes the middle of three media and leaves the others in order', () => {
-    const next = reduce(ready(projectWithMedia(['a', 'b', 'c'])), {
-      kind: 'dialogue/media-removed',
-      dialogueId: target,
-      mediaId: asMediaId('b'),
-    })
+    const next = reduce(ready(projectWithMedia(['a', 'b', 'c'])), { kind: 'dialogue/media-removed', dialogueId: target, mediaId: asMediaId('b') })
     expect(edited(next).media.map((it) => it.id)).toEqual(['a', 'c'])
   })
 
@@ -924,32 +821,17 @@ describe('reduce: dialogue field edits', () => {
 
   it('reorders without losing an id, clamping an index past the end', () => {
     const state = ready(projectWithMedia(['a', 'b', 'c']))
-    const moved = reduce(state, {
-      kind: 'dialogue/media-reordered',
-      dialogueId: target,
-      mediaId: asMediaId('a'),
-      toIndex: 9,
-    })
+    const moved = reduce(state, { kind: 'dialogue/media-reordered', dialogueId: target, mediaId: asMediaId('a'), toIndex: 9 })
     expect(edited(moved).media.map((it) => it.id)).toEqual(['b', 'c', 'a'])
 
-    const back = reduce(moved, {
-      kind: 'dialogue/media-reordered',
-      dialogueId: target,
-      mediaId: asMediaId('c'),
-      toIndex: 0,
-    })
+    const back = reduce(moved, { kind: 'dialogue/media-reordered', dialogueId: target, mediaId: asMediaId('c'), toIndex: 0 })
     expect(edited(back).media.map((it) => it.id)).toEqual(['c', 'b', 'a'])
   })
 
   it('treats a move onto a medium’s own position as no change at all', () => {
     const state = ready(projectWithMedia(['a', 'b']))
     expect(
-      reduce(state, {
-        kind: 'dialogue/media-reordered',
-        dialogueId: target,
-        mediaId: asMediaId('b'),
-        toIndex: 1,
-      }),
+      reduce(state, { kind: 'dialogue/media-reordered', dialogueId: target, mediaId: asMediaId('b'), toIndex: 1 }),
     ).toBe(state)
   })
 
@@ -974,35 +856,19 @@ describe('reduce: dialogue field edits', () => {
   }
 
   it('replaces the spoken-at instant', () => {
-    const next = reduce(ready(twoMapProject()), {
-      kind: 'dialogue/spoken-at-set',
-      dialogueId: target,
-      spokenAt: '2026-08-15T09:30:00.000Z',
-    })
+    const next = reduce(ready(twoMapProject()), { kind: 'dialogue/spoken-at-set', dialogueId: target, spokenAt: '2026-08-15T09:30:00.000Z' })
     expect(edited(next).spokenAt).toBe('2026-08-15T09:30:00.000Z')
   })
 
   it('stores relevance deduplicated and in the project’s tag order, whatever the click order', () => {
-    const next = reduce(ready(twoMapProject()), {
-      kind: 'dialogue/relevance-set',
-      dialogueId: target,
-      relevance: [OTHER.id, WORLDBUILDING.id, OTHER.id, OUT_OF_WORLD.id],
-    })
+    const next = reduce(ready(twoMapProject()), { kind: 'dialogue/relevance-set', dialogueId: target, relevance: [OTHER.id, WORLDBUILDING.id, OTHER.id, OUT_OF_WORLD.id] })
     expect(edited(next).relevance).toEqual([OUT_OF_WORLD.id, WORLDBUILDING.id, OTHER.id])
   })
 
   it('treats a reshuffled set of the same tags as no change at all', () => {
-    const tagged = reduce(ready(twoMapProject()), {
-      kind: 'dialogue/relevance-set',
-      dialogueId: target,
-      relevance: [WORLDBUILDING.id, OTHER.id],
-    })
+    const tagged = reduce(ready(twoMapProject()), { kind: 'dialogue/relevance-set', dialogueId: target, relevance: [WORLDBUILDING.id, OTHER.id] })
     expect(
-      reduce(tagged, {
-        kind: 'dialogue/relevance-set',
-        dialogueId: target,
-        relevance: [OTHER.id, WORLDBUILDING.id, WORLDBUILDING.id],
-      }),
+      reduce(tagged, { kind: 'dialogue/relevance-set', dialogueId: target, relevance: [OTHER.id, WORLDBUILDING.id, WORLDBUILDING.id] }),
     ).toBe(tagged)
   })
 
@@ -1024,84 +890,35 @@ describe('reduce: dialogue field edits', () => {
 
 describe('reduce: pending captures', () => {
   it('adds, edits and renames a capture', () => {
-    const added = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
-    expect(
-      added.kind === 'ready' && added.project.pendingCaptures.map((it) => it.id),
-    ).toEqual(['capture-1'])
+    const captureId = asPendingCaptureId('capture-1')
+    const added = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
+    expect(added.kind === 'ready' && added.project.pendingCaptures.map((it) => it.id)).toEqual(['capture-1'])
 
-    const texted = reduce(added, {
-      kind: 'pending-capture/text-set',
-      captureId: asPendingCaptureId('capture-1'),
-      text: 'Have you seen my boat?',
-    })
-    expect(
-      texted.kind === 'ready' && texted.project.pendingCaptures[0].text,
-    ).toBe('Have you seen my boat?')
+    const texted = reduce(added, { kind: 'pending-capture/text-set', captureId, text: 'Have you seen my boat?' })
+    expect(texted.kind === 'ready' && texted.project.pendingCaptures[0].text).toBe('Have you seen my boat?')
 
-    const renamed = reduce(texted, {
-      kind: 'pending-capture/renamed',
-      captureId: asPendingCaptureId('capture-1'),
-      npcName: 'Old Fisher',
-    })
-    expect(
-      renamed.kind === 'ready' && renamed.project.pendingCaptures[0].npcName,
-    ).toBe('Old Fisher')
+    const renamed = reduce(texted, { kind: 'pending-capture/renamed', captureId, npcName: 'Old Fisher' })
+    expect(renamed.kind === 'ready' && renamed.project.pendingCaptures[0].npcName).toBe('Old Fisher')
 
-    const withMedia = reduce(renamed, {
-      kind: 'pending-capture/media-added',
-      captureId: asPendingCaptureId('capture-1'),
-      media: medium('media-1'),
-    })
-    expect(
-      withMedia.kind === 'ready' && withMedia.project.pendingCaptures[0].media.map((it) => it.id),
-    ).toEqual(['media-1'])
+    const withMedia = reduce(renamed, { kind: 'pending-capture/media-added', captureId, media: medium('media-1') })
+    expect(withMedia.kind === 'ready' && withMedia.project.pendingCaptures[0].media.map((it) => it.id)).toEqual(['media-1'])
 
-    const withoutMedia = reduce(withMedia, {
-      kind: 'pending-capture/media-removed',
-      captureId: asPendingCaptureId('capture-1'),
-      mediaId: asMediaId('media-1'),
-    })
+    const withoutMedia = reduce(withMedia, { kind: 'pending-capture/media-removed', captureId, mediaId: asMediaId('media-1') })
+    expect(withoutMedia.kind === 'ready' && withoutMedia.project.pendingCaptures[0].media).toEqual([])
     expect(
-      withoutMedia.kind === 'ready' && withoutMedia.project.pendingCaptures[0].media,
-    ).toEqual([])
-    expect(
-      reduce(withoutMedia, {
-        kind: 'pending-capture/media-removed',
-        captureId: asPendingCaptureId('capture-1'),
-        mediaId: asMediaId('media-1'),
-      }),
+      reduce(withoutMedia, { kind: 'pending-capture/media-removed', captureId, mediaId: asMediaId('media-1') }),
     ).toBe(withoutMedia)
 
-    const tagged = reduce(withMedia, {
-      kind: 'pending-capture/relevance-set',
-      captureId: asPendingCaptureId('capture-1'),
-      relevance: [OTHER.id, WORLDBUILDING.id],
-    })
-    expect(tagged.kind === 'ready' && tagged.project.pendingCaptures[0].relevance).toEqual([
-      WORLDBUILDING.id,
-      OTHER.id,
-    ])
+    const tagged = reduce(withMedia, { kind: 'pending-capture/relevance-set', captureId, relevance: [OTHER.id, WORLDBUILDING.id] })
+    expect(tagged.kind === 'ready' && tagged.project.pendingCaptures[0].relevance).toEqual([WORLDBUILDING.id, OTHER.id])
     expect(
-      reduce(tagged, {
-        kind: 'pending-capture/relevance-set',
-        captureId: asPendingCaptureId('capture-1'),
-        relevance: [WORLDBUILDING.id, OTHER.id],
-      }),
+      reduce(tagged, { kind: 'pending-capture/relevance-set', captureId, relevance: [WORLDBUILDING.id, OTHER.id] }),
     ).toBe(tagged)
   })
 
   it('deletes a capture, and ignores one that does not exist', () => {
-    const state = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
-    const deleted = reduce(state, {
-      kind: 'pending-capture/deleted',
-      captureId: asPendingCaptureId('capture-1'),
-    })
+    const state = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
+    const deleted = reduce(state, { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('capture-1') })
     expect(deleted.kind === 'ready' && deleted.project.pendingCaptures).toEqual([])
     expect(
       reduce(deleted, { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('nope') }),
@@ -1109,18 +926,9 @@ describe('reduce: pending captures', () => {
   })
 
   it('ignores a capture placed on a map that does not exist', () => {
-    const state = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
+    const state = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
     expect(
-      reduce(state, {
-        kind: 'pending-capture/placed',
-        captureId: asPendingCaptureId('capture-1'),
-        dialogueId: asDialogueId('dialogue-new'),
-        mapId: asMapId('nope'),
-        position: { x: 0, y: 0 },
-      }),
+      reduce(state, { kind: 'pending-capture/placed', captureId: asPendingCaptureId('capture-1'), dialogueId: asDialogueId('dialogue-new'), mapId: asMapId('nope'), position: { x: 0, y: 0 } }),
     ).toBe(state)
   })
 
@@ -1176,6 +984,97 @@ describe('reduce: ready-scoped actions outside ready', () => {
   })
 })
 
+// The fourteen cases #144 routes through setField, restating the value the record already has.
+// `entityFixture`'s own current values, by field name — so a row can say "unchanged" or "unknown
+// id" just by swapping which of these two a case builder receives.
+const HARBOUR_MAP = asMapId('harbour')
+const HARBOUR_ZONE = asZoneId('zone-harbour')
+const HARBOUR_DIALOGUE = asDialogueId('dialogue-harbour')
+const FIXTURE_QUEST = asQuestId('quest-1')
+const FIXTURE_PROFILE = asCaptureProfileId('profile-1')
+const FIXTURE_CAPTURE = asPendingCaptureId('capture-1')
+
+// The fourteen cases #144 routes through setField: [label, id-that-exists, build(id) => action].
+// One row drives both the "unchanged" and "unknown id" no-op tables below.
+const SET_FIELD_CASES: readonly [string, string, (id: string) => Action][] = [
+  ['map/renamed', HARBOUR_MAP, (mapId) => ({ kind: 'map/renamed', mapId: asMapId(mapId), name: 'harbour' })],
+  ['zone/renamed', HARBOUR_ZONE, (zoneId) => ({ kind: 'zone/renamed', zoneId: asZoneId(zoneId), name: 'zone-harbour' })],
+  ['zone/hue-set', HARBOUR_ZONE, (zoneId) => ({ kind: 'zone/hue-set', zoneId: asZoneId(zoneId), hue: 200 })],
+  ['dialogue/npc-named', HARBOUR_DIALOGUE, (dialogueId) => ({ kind: 'dialogue/npc-named', dialogueId: asDialogueId(dialogueId), npcName: 'dialogue-harbour' })],
+  ['dialogue/text-set', HARBOUR_DIALOGUE, (dialogueId) => ({ kind: 'dialogue/text-set', dialogueId: asDialogueId(dialogueId), text: '' })],
+  ['dialogue/spoken-at-set', HARBOUR_DIALOGUE, (dialogueId) => ({ kind: 'dialogue/spoken-at-set', dialogueId: asDialogueId(dialogueId), spokenAt: '2026-08-14T10:00:00.000Z' })],
+  ['quest/renamed', FIXTURE_QUEST, (questId) => ({ kind: 'quest/renamed', questId: asQuestId(questId), name: 'quest-1' })],
+  ['quest/note-set', FIXTURE_QUEST, (questId) => ({ kind: 'quest/note-set', questId: asQuestId(questId), note: '' })],
+  ['quest/hue-set', FIXTURE_QUEST, (questId) => ({ kind: 'quest/hue-set', questId: asQuestId(questId), hue: 45 })],
+  ['quest/status-set', FIXTURE_QUEST, (questId) => ({ kind: 'quest/status-set', questId: asQuestId(questId), status: 'open' })],
+  ['capture-profile/renamed', FIXTURE_PROFILE, (profileId) => ({ kind: 'capture-profile/renamed', profileId: asCaptureProfileId(profileId), name: 'profile-1' })],
+  ['relevance-tag/renamed', WORLDBUILDING.id, (tagId) => ({ kind: 'relevance-tag/renamed', tagId: asRelevanceTagId(tagId), name: 'Worldbuilding' })],
+  ['relevance-tag/hue-set', WORLDBUILDING.id, (tagId) => ({ kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId(tagId), hue: 150 })],
+  ['pending-capture/text-set', FIXTURE_CAPTURE, (captureId) => ({ kind: 'pending-capture/text-set', captureId: asPendingCaptureId(captureId), text: '' })],
+]
+
+describe('reduce: setField no-ops', () => {
+  it.each(SET_FIELD_CASES)('%s is a no-op when the value already matches', (_label, id, build) => {
+    const state = entityFixture()
+    expect(reduce(state, build(id))).toBe(state)
+  })
+
+  it.each(SET_FIELD_CASES)('%s is a no-op when the id names no record', (_label, _id, build) => {
+    const state = entityFixture()
+    expect(reduce(state, build('nope'))).toBe(state)
+  })
+})
+
+describe('reduce: rename cases', () => {
+  it.each([
+    ['map/renamed', { kind: 'map/renamed', mapId: HARBOUR_MAP, name: 'Docks' } satisfies Action, (s: ReadyState) => s.project.maps[0].name, 'Docks'],
+    ['zone/renamed', { kind: 'zone/renamed', zoneId: HARBOUR_ZONE, name: 'Docks' } satisfies Action, (s: ReadyState) => s.project.zones[0].name, 'Docks'],
+    ['dialogue/npc-named', { kind: 'dialogue/npc-named', dialogueId: HARBOUR_DIALOGUE, npcName: 'Ferryman' } satisfies Action, (s: ReadyState) => s.project.dialogues[0].npcName, 'Ferryman'],
+    ['quest/renamed', { kind: 'quest/renamed', questId: FIXTURE_QUEST, name: 'The missing ledger' } satisfies Action, (s: ReadyState) => s.project.quests[0].name, 'The missing ledger'],
+    ['capture-profile/renamed', { kind: 'capture-profile/renamed', profileId: FIXTURE_PROFILE, name: 'Red' } satisfies Action, (s: ReadyState) => s.project.captureProfiles[0].name, 'Red'],
+    ['relevance-tag/renamed', { kind: 'relevance-tag/renamed', tagId: WORLDBUILDING.id, name: 'Lore' } satisfies Action, (s: ReadyState) => s.project.relevanceTags[1].name, 'Lore'],
+    ['pending-capture/renamed', { kind: 'pending-capture/renamed', captureId: FIXTURE_CAPTURE, npcName: 'Old Fisher' } satisfies Action, (s: ReadyState) => s.project.pendingCaptures[0].npcName, 'Old Fisher'],
+  ])('%s renames the record', (_label, action, read, expected) => {
+    expect(read(readyOf(reduce(entityFixture(), action)))).toBe(expected)
+  })
+})
+
+describe('reduce: hue-set cases', () => {
+  it.each([
+    ['zone/hue-set', { kind: 'zone/hue-set', zoneId: HARBOUR_ZONE, hue: 40 } satisfies Action, (s: ReadyState) => s.project.zones[0].hue, 40],
+    ['quest/hue-set', { kind: 'quest/hue-set', questId: FIXTURE_QUEST, hue: 265 } satisfies Action, (s: ReadyState) => s.project.quests[0].hue, 265],
+    ['relevance-tag/hue-set', { kind: 'relevance-tag/hue-set', tagId: WORLDBUILDING.id, hue: 10 } satisfies Action, (s: ReadyState) => s.project.relevanceTags[1].hue, 10],
+  ])('%s recolours the record', (_label, action, read, expected) => {
+    expect(read(readyOf(reduce(entityFixture(), action)))).toBe(expected)
+  })
+})
+
+describe('reduce: delete clears a matching selection', () => {
+  it.each([
+    ['zone/deleted', { kind: 'zone', id: HARBOUR_ZONE } as const, { kind: 'zone/deleted', zoneId: HARBOUR_ZONE } satisfies Action],
+    ['dialogue/deleted', { kind: 'dialogue', id: HARBOUR_DIALOGUE } as const, { kind: 'dialogue/deleted', dialogueId: HARBOUR_DIALOGUE } satisfies Action],
+  ])('%s clears a selection pointing at the deleted record', (_label, selection, action) => {
+    const selected = reduce(ready(twoMapProject()), { kind: 'selection/set', selection })
+    expect(readyOf(reduce(selected, action)).selection).toEqual({ kind: 'none' })
+  })
+})
+
+// The unknown-id case for the eight delete/clear actions #144 routes through removeById.
+describe('reduce: delete is a no-op when nothing matches', () => {
+  it.each([
+    ['zone/deleted', { kind: 'zone/deleted', zoneId: asZoneId('missing') } satisfies Action],
+    ['dialogue/deleted', { kind: 'dialogue/deleted', dialogueId: asDialogueId('missing') } satisfies Action],
+    ['quest/deleted', { kind: 'quest/deleted', questId: asQuestId('missing') } satisfies Action],
+    ['capture-profile/deleted', { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('missing') } satisfies Action],
+    ['relevance-tag/deleted', { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('missing') } satisfies Action],
+    ['pending-capture/deleted', { kind: 'pending-capture/deleted', captureId: asPendingCaptureId('missing') } satisfies Action],
+    ['recorder-binding/cleared', { kind: 'recorder-binding/cleared', action: 'record-extend' } satisfies Action],
+  ])('%s', (_label, action) => {
+    const state = entityFixture()
+    expect(reduce(state, action)).toBe(state)
+  })
+})
+
 describe('reduce: zone actions', () => {
   const HARBOUR = asMapId('harbour')
 
@@ -1202,18 +1101,6 @@ describe('reduce: zone actions', () => {
     ).toBe(state)
   })
 
-  it('renames and recolours in place', () => {
-    const renamed = reduce(withOneZone(), {
-      kind: 'zone/renamed',
-      zoneId: asZoneId('zone-1'),
-      name: 'Docks',
-    })
-    expect(readyOf(renamed).project.zones[0].name).toBe('Docks')
-
-    const recoloured = reduce(renamed, { kind: 'zone/hue-set', zoneId: asZoneId('zone-1'), hue: 40 })
-    expect(readyOf(recoloured).project.zones[0].hue).toBe(40)
-  })
-
   it('moves a zone without writing to any dialogue', () => {
     const state = withOneZone()
     const before = readyOf(state).project.dialogues
@@ -1237,26 +1124,12 @@ describe('reduce: zone actions', () => {
     expect(readyOf(deleted).project.dialogues).toBe(readyOf(state).project.dialogues)
   })
 
-  it('drops a selection pointing at the deleted zone', () => {
-    const selected = reduce(withOneZone(), {
-      kind: 'selection/set',
-      selection: { kind: 'zone', id: asZoneId('zone-1') },
-    })
-    const deleted = reduce(selected, { kind: 'zone/deleted', zoneId: asZoneId('zone-1') })
-    expect(readyOf(deleted).selection).toEqual({ kind: 'none' })
-  })
-
-  it('returns the identical state for an edit that changes nothing', () => {
+  it('ignores a reshape that changes nothing', () => {
     const state = withOneZone()
     const current = readyOf(state).project.zones[0]
-    expect(reduce(state, { kind: 'zone/renamed', zoneId: current.id, name: current.name })).toBe(
-      state,
-    )
-    expect(reduce(state, { kind: 'zone/hue-set', zoneId: current.id, hue: current.hue })).toBe(state)
     expect(
       reduce(state, { kind: 'zone/reshaped', zoneId: current.id, polygon: current.polygon }),
     ).toBe(state)
-    expect(reduce(state, { kind: 'zone/deleted', zoneId: asZoneId('missing') })).toBe(state)
   })
 })
 
@@ -1277,28 +1150,18 @@ describe('reduce: quests', () => {
     expect(readyOf(next).project.dialogues).toBe(before.dialogues)
   })
 
-  it('renames a quest and edits its note', () => {
-    const renamed = reduce(ready(twoMapProject()), {
-      kind: 'quest/renamed',
-      questId,
-      name: 'The missing ledger',
-    })
-    expect(edited(renamed).name).toBe('The missing ledger')
-
-    const noted = reduce(renamed, {
+  it('edits a quest’s note without disturbing its name', () => {
+    const noted = reduce(ready(twoMapProject()), {
       kind: 'quest/note-set',
       questId,
       note: 'Ask the harbourmaster',
     })
     expect(edited(noted).note).toBe('Ask the harbourmaster')
-    expect(edited(noted).name).toBe('The missing ledger')
+    expect(edited(noted).name).toBe('quest-1')
   })
 
-  it('recolours a quest without disturbing its status, and marking a quest done keeps its stored hue', () => {
+  it('marking a quest done keeps its stored hue', () => {
     const recoloured = reduce(ready(twoMapProject()), { kind: 'quest/hue-set', questId, hue: 265 })
-    expect(edited(recoloured).hue).toBe(265)
-    expect(edited(recoloured).status).toBe('open')
-
     const done = reduce(recoloured, { kind: 'quest/status-set', questId, status: 'done' })
     expect(edited(done).hue).toBe(265)
   })
@@ -1356,16 +1219,8 @@ describe('reduce: quests', () => {
     expect(readyOf(next).project.dialogues).toBe(before.dialogues)
   })
 
-  it('returns the identical state for an edit that changes nothing', () => {
+  it('ignores detaching a dialogue that was never attached', () => {
     const state = ready(twoMapProject())
-    const current = readyOf(state).project.quests[0]
-    expect(reduce(state, { kind: 'quest/renamed', questId, name: current.name })).toBe(state)
-    expect(reduce(state, { kind: 'quest/note-set', questId, note: current.note })).toBe(state)
-    expect(reduce(state, { kind: 'quest/hue-set', questId, hue: current.hue })).toBe(state)
-    expect(reduce(state, { kind: 'quest/hue-set', questId: asQuestId('missing'), hue: 20 })).toBe(
-      state,
-    )
-    expect(reduce(state, { kind: 'quest/status-set', questId, status: current.status })).toBe(state)
     expect(
       reduce(state, {
         kind: 'quest/dialogue-detached',
@@ -1373,7 +1228,6 @@ describe('reduce: quests', () => {
         dialogueId: asDialogueId('never-attached'),
       }),
     ).toBe(state)
-    expect(reduce(state, { kind: 'quest/deleted', questId: asQuestId('missing') })).toBe(state)
   })
 })
 
@@ -1400,14 +1254,12 @@ describe('reduce: relevance tags', () => {
     expect(readyOf(next).project.dialogues).toBe(before.dialogues)
   })
 
-  it('renames a tag and recolours it', () => {
+  it('a hue-set does not disturb a rename that happened first', () => {
     const renamed = reduce(ready(twoMapProject()), {
       kind: 'relevance-tag/renamed',
       tagId,
       name: 'Lore',
     })
-    expect(edited(renamed).name).toBe('Lore')
-
     const recoloured = reduce(renamed, { kind: 'relevance-tag/hue-set', tagId, hue: 10 })
     expect(edited(recoloured).hue).toBe(10)
     expect(edited(recoloured).name).toBe('Lore')
@@ -1450,11 +1302,7 @@ describe('reduce: relevance tags', () => {
 
   it('returns the same dialogues array reference when neither dialogue carries the reordered tag', () => {
     const before = twoMapProject()
-    const next = reduce(ready(before), {
-      kind: 'relevance-tag/reordered',
-      tagId: PEOPLEBUILDING.id,
-      toIndex: 0,
-    })
+    const next = reduce(ready(before), { kind: 'relevance-tag/reordered', tagId: PEOPLEBUILDING.id, toIndex: 0 })
     expect(readyOf(next).project.dialogues).toBe(before.dialogues)
   })
 
@@ -1483,27 +1331,10 @@ describe('reduce: relevance tags', () => {
     expect(state.project.dialogues.find((d) => d.id === forestId)?.relevance).toEqual([])
   })
 
-  it('returns the identical state for an edit that changes nothing', () => {
+  it('ignores a reorder that changes nothing, or one naming no tag', () => {
     const state = ready(twoMapProject())
-    const current = WORLDBUILDING
     expect(
-      reduce(state, { kind: 'relevance-tag/renamed', tagId: current.id, name: current.name }),
-    ).toBe(state)
-    expect(
-      reduce(state, { kind: 'relevance-tag/hue-set', tagId: current.id, hue: current.hue }),
-    ).toBe(state)
-    expect(
-      reduce(state, {
-        kind: 'relevance-tag/renamed',
-        tagId: asRelevanceTagId('missing'),
-        name: 'x',
-      }),
-    ).toBe(state)
-    expect(
-      reduce(state, { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('missing'), hue: 1 }),
-    ).toBe(state)
-    expect(
-      reduce(state, { kind: 'relevance-tag/reordered', tagId: current.id, toIndex: 1 }), // already at index 1
+      reduce(state, { kind: 'relevance-tag/reordered', tagId: WORLDBUILDING.id, toIndex: 1 }), // already at index 1
     ).toBe(state)
     expect(
       reduce(state, {
@@ -1511,9 +1342,6 @@ describe('reduce: relevance tags', () => {
         tagId: asRelevanceTagId('missing'),
         toIndex: 0,
       }),
-    ).toBe(state)
-    expect(
-      reduce(state, { kind: 'relevance-tag/deleted', tagId: asRelevanceTagId('missing') }),
     ).toBe(state)
   })
 })
@@ -1546,26 +1374,13 @@ describe('reduce: npc/renamed', () => {
 
   it('renames only exact matches, case included', () => {
     const state = ready(npcProject())
-    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'mara', to: 'X' }))).toEqual([
-      'Mara',
-      '  Mara  ',
-      'Mara the Elder',
-      '',
-    ])
-    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'Mar', to: 'X' }))).toEqual([
-      'Mara',
-      '  Mara  ',
-      'Mara the Elder',
-      '',
-    ])
+    const unchanged = ['Mara', '  Mara  ', 'Mara the Elder', '']
+    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'mara', to: 'X' }))).toEqual(unchanged)
+    expect(namesOf(reduce(state, { kind: 'npc/renamed', from: 'Mar', to: 'X' }))).toEqual(unchanged)
   })
 
   it('merges two NPCs when the new name is one that already exists', () => {
-    const next = reduce(ready(npcProject()), {
-      kind: 'npc/renamed',
-      from: 'Mara the Elder',
-      to: 'Mara',
-    })
+    const next = reduce(ready(npcProject()), { kind: 'npc/renamed', from: 'Mara the Elder', to: 'Mara' })
     const names = new Set(namesOf(next).filter((name) => name.trim() !== ''))
     expect(names).toEqual(new Set(['Mara', '  Mara  ']))
     expect(namesOf(next)[2]).toBe('Mara')
@@ -1604,20 +1419,8 @@ describe('reduce: capture profiles', () => {
   }
 
   it('adds a profile', () => {
-    const next = reduce(ready(), {
-      kind: 'capture-profile/added',
-      profile: captureProfile('profile-1', 'Pokémon Red'),
-    })
+    const next = reduce(ready(), { kind: 'capture-profile/added', profile: captureProfile('profile-1', 'Pokémon Red') })
     expect(profilesOf(next).map((profile) => profile.name)).toEqual(['Pokémon Red'])
-  })
-
-  it('renames one', () => {
-    const next = reduce(withOneProfile(), {
-      kind: 'capture-profile/renamed',
-      profileId: asCaptureProfileId('profile-1'),
-      name: 'Pokémon Blue',
-    })
-    expect(profilesOf(next)[0].name).toBe('Pokémon Blue')
   })
 
   it('re-calibrates one, leaving the project alphabet alone', () => {
@@ -1647,41 +1450,18 @@ describe('reduce: capture profiles', () => {
       captureProfiles: [captureProfile('profile-1'), captureProfile('profile-2')],
       dialogues: [dialogue('dialogue-1', asMapId('harbour'))],
     })
-    const next = reduce(state, {
-      kind: 'capture-profile/deleted',
-      profileId: asCaptureProfileId('profile-1'),
-    })
+    const next = reduce(state, { kind: 'capture-profile/deleted', profileId: asCaptureProfileId('profile-1') })
     expect(profilesOf(next).map((profile) => profile.id)).toEqual([asCaptureProfileId('profile-2')])
     expect(readyOf(next).project.dialogues).toBe(readyOf(state).project.dialogues)
   })
 
-  it('returns the identical state for an unknown id or an unchanged name', () => {
+  it('ignores a calibration naming an id no profile has', () => {
     const state = withOneProfile()
-    expect(
-      reduce(state, {
-        kind: 'capture-profile/renamed',
-        profileId: asCaptureProfileId('missing'),
-        name: 'X',
-      }),
-    ).toBe(state)
-    expect(
-      reduce(state, {
-        kind: 'capture-profile/renamed',
-        profileId: asCaptureProfileId('profile-1'),
-        name: 'Pokémon Red',
-      }),
-    ).toBe(state)
     expect(
       reduce(state, {
         kind: 'capture-profile/calibrated',
         profileId: asCaptureProfileId('missing'),
         calibration: CALIBRATION,
-      }),
-    ).toBe(state)
-    expect(
-      reduce(state, {
-        kind: 'capture-profile/deleted',
-        profileId: asCaptureProfileId('missing'),
       }),
     ).toBe(state)
   })
@@ -1711,11 +1491,7 @@ describe('reduce: the project alphabet', () => {
   })
 
   it('replaces on an identical bitmap, so re-learning corrects a mistyped character', () => {
-    const next = reduce(withAlphabet([A, B]), {
-      kind: 'glyphs/learned',
-      glyphs: [{ char: 'Ä', bits: A.bits }],
-    })
-
+    const next = reduce(withAlphabet([A, B]), { kind: 'glyphs/learned', glyphs: [{ char: 'Ä', bits: A.bits }] })
     expect(glyphsOf(next)).toEqual([{ char: 'Ä', bits: A.bits }, B])
   })
 
@@ -1820,11 +1596,6 @@ describe('reduce: recorder bindings', () => {
     expect(bindingsOf(next)).toEqual([])
   })
 
-  it('ignores clearing an action with no binding', () => {
-    const state = ready()
-    expect(reduce(state, { kind: 'recorder-binding/cleared', action: 'record-new' })).toBe(state)
-  })
-
   it('makes a set and a clear each their own undo step', () => {
     const state = ready()
     const set = reduce(state, { kind: 'recorder-binding/set', action: 'record-new', buttonIndex: 3 })
@@ -1868,18 +1639,12 @@ describe('reduce: dialogue/merged', () => {
   it('joins the two lines the way the watcher would have written them', () => {
     const next = readyOf(reduce(split(), merge))
     expect(next.project.dialogues).toHaveLength(1)
-    expect(next.project.dialogues[0].text).toBe(
-      'Hey! You have POKeMON too! Shh! You will scare the bugs away...',
-    )
+    expect(next.project.dialogues[0].text).toBe('Hey! You have POKeMON too! Shh! You will scare the bugs away...')
   })
 
   it('keeps every picture, under the name it already had in media/', () => {
     const next = readyOf(reduce(split(), merge))
-    expect(next.project.dialogues[0].media.map((item) => item.file.fileName)).toEqual([
-      'm1.png',
-      'm2.png',
-      'm3.png',
-    ])
+    expect(next.project.dialogues[0].media.map((item) => item.file.fileName)).toEqual(['m1.png', 'm2.png', 'm3.png'])
   })
 
   it('takes the earlier time, and the target’s own placement', () => {
@@ -1890,13 +1655,8 @@ describe('reduce: dialogue/merged', () => {
   })
 
   it('takes the earlier time when it is the source that is earlier', () => {
-    const state = split()
-    const swapped = {
-      kind: 'dialogue/merged',
-      intoId: asDialogueId('two'),
-      fromId: asDialogueId('one'),
-    } as const
-    const next = readyOf(reduce(state, swapped))
+    const swapped = { kind: 'dialogue/merged', intoId: asDialogueId('two'), fromId: asDialogueId('one') } as const
+    const next = readyOf(reduce(split(), swapped))
     expect(next.project.dialogues[0].spokenAt).toBe('2026-08-26T17:21:23.259Z')
   })
 
@@ -1962,23 +1722,15 @@ describe('reduce: dialogue/merged', () => {
     const map = gameMap('map-1')
     const third: Dialogue = { ...dialogue('three', map.id), references: [asDialogueId('two')] }
     const state = split()
-    const withThird = ready({
-      ...state.project,
-      dialogues: [...state.project.dialogues, third],
-    })
+    const withThird = ready({ ...state.project, dialogues: [...state.project.dialogues, third] })
     const next = readyOf(reduce(withThird, merge))
-    expect(next.project.dialogues.find((d) => d.id === asDialogueId('three'))?.references).toEqual([
-      asDialogueId('one'),
-    ])
+    expect(next.project.dialogues.find((d) => d.id === asDialogueId('three'))?.references).toEqual([asDialogueId('one')])
   })
 
   it('is one undo step, and brings both lines back', () => {
     const merged = reduce(split(), merge)
     const undone = readyOf(reduce(merged, { kind: 'history/undo' }))
-    expect(undone.project.dialogues.map((item) => item.id)).toEqual([
-      asDialogueId('one'),
-      asDialogueId('two'),
-    ])
+    expect(undone.project.dialogues.map((item) => item.id)).toEqual([asDialogueId('one'), asDialogueId('two')])
     expect(undone.project.quests[0].dialogueIds).toEqual([asDialogueId('two')])
   })
 })
@@ -1999,34 +1751,17 @@ describe('reduce: history', () => {
     const beforeProject = state.project
 
     // Not a document action: no push, so there is nothing to undo back to.
-    const selected = readyOf(
-      reduce(state, {
-        kind: 'selection/set',
-        selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') },
-      }),
-    )
+    const selected = readyOf(reduce(state, { kind: 'selection/set', selection: { kind: 'dialogue', id: asDialogueId('dialogue-1') } }))
     expect(selected.history.undo).toEqual([])
 
-    const edited = readyOf(
-      reduce(selected, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-1'),
-        text: 'Hello',
-      }),
-    )
+    const edited = readyOf(reduce(selected, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' }))
     expect(edited.history.undo).toEqual([beforeProject])
   })
 
   it('undo restores the previous project and pushes the current one onto redo', () => {
     const state = withTwoDialogues()
     const before = state.project
-    const edited = readyOf(
-      reduce(state, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-1'),
-        text: 'Hello',
-      }),
-    )
+    const edited = readyOf(reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' }))
     const after = edited.project
 
     const undone = readyOf(reduce(edited, { kind: 'history/undo' }))
@@ -2046,65 +1781,30 @@ describe('reduce: history', () => {
 
   it('clears the redo stack once a new document action lands after an undo', () => {
     const state = withTwoDialogues()
-    const editedOnce = reduce(state, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'Hello',
-    })
+    const editedOnce = reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' })
     const undone = reduce(editedOnce, { kind: 'history/undo' })
     expect(readyOf(undone).history.redo.length).toBe(1)
 
-    const editedAgain = readyOf(
-      reduce(undone, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-2'),
-        text: 'Ahoy',
-      }),
-    )
+    const editedAgain = readyOf(reduce(undone, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-2'), text: 'Ahoy' }))
     expect(editedAgain.history.redo).toEqual([])
   })
 
   it('a new project/loaded clears both stacks', () => {
     const state = withTwoDialogues()
-    const edited = reduce(state, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'Hello',
-    })
+    const edited = reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' })
     const undone = reduce(edited, { kind: 'history/undo' })
     expect(readyOf(undone).history.redo.length).toBe(1)
 
     const project = createEmptyProject('Cliffs')
-    const reloaded = readyOf(
-      reduce(undone, {
-        kind: 'project/loaded',
-        directoryName: 'Cliffs',
-        project,
-        repairs: { kind: 'none' },
-      }),
-    )
+    const reloaded = readyOf(reduce(undone, { kind: 'project/loaded', directoryName: 'Cliffs', project, repairs: { kind: 'none' } }))
     expect(reloaded.history).toEqual(EMPTY_HISTORY)
   })
 
   it('coalesces consecutive edits to the same field into one undo step', () => {
     const state = withTwoDialogues()
-    const step1 = reduce(state, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'H',
-    })
-    const step2 = reduce(step1, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'He',
-    })
-    const step3 = readyOf(
-      reduce(step2, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-1'),
-        text: 'Hel',
-      }),
-    )
+    const step1 = reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'H' })
+    const step2 = reduce(step1, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'He' })
+    const step3 = readyOf(reduce(step2, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hel' }))
     expect(step3.history.undo).toEqual([state.project])
 
     const undone = readyOf(reduce(step3, { kind: 'history/undo' }))
@@ -2113,60 +1813,25 @@ describe('reduce: history', () => {
 
   it('does not coalesce across a different field, even on the same entity', () => {
     const state = withTwoDialogues()
-    const textEdited = reduce(state, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'Hello',
-    })
-    const nameEdited = reduce(textEdited, {
-      kind: 'dialogue/npc-named',
-      dialogueId: asDialogueId('dialogue-1'),
-      npcName: 'Ferryman',
-    })
-    const textEditedAgain = readyOf(
-      reduce(nameEdited, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-1'),
-        text: 'Hello there',
-      }),
-    )
+    const textEdited = reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' })
+    const nameEdited = reduce(textEdited, { kind: 'dialogue/npc-named', dialogueId: asDialogueId('dialogue-1'), npcName: 'Ferryman' })
+    const textEditedAgain = readyOf(reduce(nameEdited, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello there' }))
     expect(textEditedAgain.history.undo.length).toBe(3)
   })
 
   it('does not coalesce the same field on two different entities', () => {
     const state = withTwoDialogues()
-    const first = reduce(state, {
-      kind: 'dialogue/text-set',
-      dialogueId: asDialogueId('dialogue-1'),
-      text: 'Hello',
-    })
-    const second = readyOf(
-      reduce(first, {
-        kind: 'dialogue/text-set',
-        dialogueId: asDialogueId('dialogue-2'),
-        text: 'Ahoy',
-      }),
-    )
+    const first = reduce(state, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-1'), text: 'Hello' })
+    const second = readyOf(reduce(first, { kind: 'dialogue/text-set', dialogueId: asDialogueId('dialogue-2'), text: 'Ahoy' }))
     expect(second.history.undo.length).toBe(2)
   })
 
   it('coalesces a whole recording — many boxes into one capture — into one undo step', () => {
-    const state = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
+    const state = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
     let step = state
     for (let i = 0; i < 5; i++) {
-      step = reduce(step, {
-        kind: 'pending-capture/media-added',
-        captureId: asPendingCaptureId('capture-1'),
-        media: medium(`media-${i}`),
-      })
-      step = reduce(step, {
-        kind: 'pending-capture/text-set',
-        captureId: asPendingCaptureId('capture-1'),
-        text: `line ${i}`,
-      })
+      step = reduce(step, { kind: 'pending-capture/media-added', captureId: asPendingCaptureId('capture-1'), media: medium(`media-${i}`) })
+      step = reduce(step, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: `line ${i}` })
     }
     const done = readyOf(step)
     // One step for the capture's own creation, one for the whole run of boxes after it.
@@ -2178,19 +1843,8 @@ describe('reduce: history', () => {
   })
 
   it('keeps pending-capture/added its own undo step even when every box after it coalesces', () => {
-    const created = readyOf(
-      reduce(ready(twoMapProject()), {
-        kind: 'pending-capture/added',
-        capture: pendingCapture('capture-1'),
-      }),
-    )
-    const written = readyOf(
-      reduce(created, {
-        kind: 'pending-capture/text-set',
-        captureId: asPendingCaptureId('capture-1'),
-        text: 'Hello',
-      }),
-    )
+    const created = readyOf(reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') }))
+    const written = readyOf(reduce(created, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hello' }))
     const undone = readyOf(reduce(written, { kind: 'history/undo' }))
     expect(undone.project.pendingCaptures).toEqual([pendingCapture('capture-1')])
 
@@ -2199,77 +1853,27 @@ describe('reduce: history', () => {
   })
 
   it('breaks a recording\'s coalescing on a dispatch of another kind in between', () => {
-    const created = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
-    const firstBox = reduce(created, {
-      kind: 'pending-capture/text-set',
-      captureId: asPendingCaptureId('capture-1'),
-      text: 'Hi',
-    })
-    const renamed = reduce(firstBox, {
-      kind: 'pending-capture/renamed',
-      captureId: asPendingCaptureId('capture-1'),
-      npcName: 'Old Fisher',
-    })
-    const secondBox = readyOf(
-      reduce(renamed, {
-        kind: 'pending-capture/text-set',
-        captureId: asPendingCaptureId('capture-1'),
-        text: 'Hi there',
-      }),
-    )
+    const created = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
+    const firstBox = reduce(created, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi' })
+    const renamed = reduce(firstBox, { kind: 'pending-capture/renamed', captureId: asPendingCaptureId('capture-1'), npcName: 'Old Fisher' })
+    const secondBox = readyOf(reduce(renamed, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi there' }))
     // Creation, first box, rename, second box: four steps, none of them coalesced together.
     expect(secondBox.history.undo.length).toBe(4)
   })
 
   it('does not coalesce two captures recorded one after another', () => {
-    const first = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
-    const firstWritten = reduce(first, {
-      kind: 'pending-capture/text-set',
-      captureId: asPendingCaptureId('capture-1'),
-      text: 'Hi',
-    })
-    const second = reduce(firstWritten, {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-2'),
-    })
-    const secondWritten = readyOf(
-      reduce(second, {
-        kind: 'pending-capture/text-set',
-        captureId: asPendingCaptureId('capture-2'),
-        text: 'Ahoy',
-      }),
-    )
+    const first = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
+    const firstWritten = reduce(first, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi' })
+    const second = reduce(firstWritten, { kind: 'pending-capture/added', capture: pendingCapture('capture-2') })
+    const secondWritten = readyOf(reduce(second, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-2'), text: 'Ahoy' }))
     expect(secondWritten.history.undo.length).toBe(4)
   })
 
   it('starts a new chain for an extended recording rather than merging into the earlier one', () => {
-    const created = reduce(ready(twoMapProject()), {
-      kind: 'pending-capture/added',
-      capture: pendingCapture('capture-1'),
-    })
-    const original = reduce(created, {
-      kind: 'pending-capture/text-set',
-      captureId: asPendingCaptureId('capture-1'),
-      text: 'Hi',
-    })
-    const between = reduce(original, { // an unrelated edit lands between the two recordings
-      kind: 'zone/renamed',
-      zoneId: asZoneId('zone-harbour'),
-      name: 'Renamed',
-    })
-    const extended = readyOf(
-      reduce(between, {
-        kind: 'pending-capture/text-set',
-        captureId: asPendingCaptureId('capture-1'),
-        text: 'Hi, welcome back',
-      }),
-    )
+    const created = reduce(ready(twoMapProject()), { kind: 'pending-capture/added', capture: pendingCapture('capture-1') })
+    const original = reduce(created, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi' })
+    const between = reduce(original, { kind: 'zone/renamed', zoneId: asZoneId('zone-harbour'), name: 'Renamed' }) // an unrelated edit lands between the two recordings
+    const extended = readyOf(reduce(between, { kind: 'pending-capture/text-set', captureId: asPendingCaptureId('capture-1'), text: 'Hi, welcome back' }))
     expect(extended.history.undo.length).toBe(4)
 
     const undone = readyOf(reduce(extended, { kind: 'history/undo' }))
@@ -2280,13 +1884,7 @@ describe('reduce: history', () => {
     let state = withTwoDialogues()
     const ids = [asDialogueId('dialogue-1'), asDialogueId('dialogue-2')]
     for (let i = 0; i < 150; i++) { // alternating the target defeats coalescing
-      state = readyOf(
-        reduce(state, {
-          kind: 'dialogue/text-set',
-          dialogueId: ids[i % 2],
-          text: `line ${i}`,
-        }),
-      )
+      state = readyOf(reduce(state, { kind: 'dialogue/text-set', dialogueId: ids[i % 2], text: `line ${i}` }))
     }
     expect(state.history.undo.length).toBe(100)
   })
@@ -2294,10 +1892,7 @@ describe('reduce: history', () => {
   it('undo prunes a selection that no longer resolves in the restored project', () => {
     const state = withTwoDialogues()
     const withZone = reduce(state, { kind: 'zone/added', zone: zone('zone-1', HARBOUR) })
-    const selected = reduce(withZone, {
-      kind: 'selection/set',
-      selection: { kind: 'zone', id: asZoneId('zone-1') },
-    })
+    const selected = reduce(withZone, { kind: 'selection/set', selection: { kind: 'zone', id: asZoneId('zone-1') } })
     const undone = readyOf(reduce(selected, { kind: 'history/undo' }))
     expect(undone.project.zones).toEqual([])
     expect(undone.selection).toEqual({ kind: 'none' })
