@@ -1,0 +1,59 @@
+/* Between the glyph set/learner (21) and the search palette (30) in the z-index ladder. */
+.canvas-display-dialog {
+  z-index: 22;
+}
+
+/* `.card` (index.css) supplies the border/radius/surface. */
+.canvas-display-dialog__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: min(24rem, 100%);
+  padding: var(--space-4);
+}
+
+/* ---- canvas toggles ---- */
+
+/* The `.button` base (index.css) supplies the box, hover and focus ring; this is one shape for
+   every on/off control in this dialog, only the pressed colour differing, and it is always the
+   colour of what the toggle puts on the canvas — the toggle and its effect are visibly the same
+   subject, rather than every one of them reading as --accent. The text stays full-strength
+   rather than the base's muted-until-hover, and the fade is a touch lighter when disabled. */
+.quest-filter,
+.trail-toggle {
+  width: 100%;
+  font-size: var(--text-sm);
+  color: var(--text);
+  padding: var(--space-1) var(--space-3);
+}
+
+/* `:hover` reasserts the pressed fill against the base rule's own hover background
+   (`.button:hover:not(:disabled)`, index.css), which otherwise outranks this on specificity and
+   would revert a pressed toggle to the unpressed hover colour while the pointer rests on it. */
+.quest-filter[aria-pressed='true'],
+.quest-filter[aria-pressed='true']:hover {
+  color: var(--ink-on-hue);
+  background: var(--quest);
+  border-color: var(--quest);
+}
+
+.trail-toggle[aria-pressed='true'],
+.trail-toggle[aria-pressed='true']:hover {
+  color: var(--ink-on-hue);
+  background: var(--trail);
+  border-color: var(--trail);
+}
+
+.quest-filter:disabled,
+.trail-toggle:disabled {
+  opacity: 0.45;
+}
+
+/* `.panel-footer` (index.css) supplies the layout. */
+
+/* The `.button--primary` base (index.css) supplies the rest; only the size differs. */
+.canvas-display-dialog__button {
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-3);
+}

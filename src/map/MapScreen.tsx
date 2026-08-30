@@ -21,6 +21,7 @@ import type {
   Selection,
   Zone,
 } from '../project/types.ts'
+import { CanvasDisplayDialog } from './CanvasDisplayDialog.tsx'
 import type { Rect } from './geometry.ts'
 import type { MapDragPreview, ZoneDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
@@ -62,6 +63,9 @@ export function MapScreen({
 
   const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
   const [currentCaptureId, setCurrentCaptureId] = useState<PendingCaptureId | null>(null)
+  // A dialog left open across a view switch is not a canvas setting, so this is a local
+  // useState rather than a field of CanvasViewState.
+  const [displayDialogOpen, setDisplayDialogOpen] = useState(false)
   const setTool = useCallback(
     (tool: CanvasTool) => {
       onViewStateChange((prev) => ({ ...prev, tool }))
@@ -259,37 +263,23 @@ export function MapScreen({
         <h1 className="visually-hidden">Canvas</h1>
         <div className="map-screen__controls">
           <ToolPicker tool={tool} onChange={setTool} />
-          <button
-            type="button"
-            className="quest-filter button"
-            aria-pressed={questFilter}
-            disabled={questLinked.size === 0}
-            title={
-              questLinked.size === 0
-                ? 'No dialogue is attached to a quest yet'
-                : 'Dim every pin no quest names'
-            }
-            onClick={toggleQuestFilter}
-          >
-            Quest pins only
-          </button>
-          <button
-            type="button"
-            className="trail-toggle button"
-            aria-pressed={trail}
-            disabled={project.dialogues.length < 2}
-            title={
-              project.dialogues.length < 2
-                ? 'Two lines have to be logged before there is an order to draw'
-                : 'Draw a line through the pins, earliest line to latest'
-            }
-            onClick={toggleTrail}
-          >
-            Time trail
+          <button type="button" className="button" onClick={() => setDisplayDialogOpen(true)}>
+            Display…
           </button>
         </div>
         <CanvasLegend relevanceTags={project.relevanceTags} />
       </header>
+      {displayDialogOpen && (
+        <CanvasDisplayDialog
+          questFilter={questFilter}
+          onToggleQuestFilter={toggleQuestFilter}
+          questFilterDisabled={questLinked.size === 0}
+          trail={trail}
+          onToggleTrail={toggleTrail}
+          trailDisabled={project.dialogues.length < 2}
+          onClose={() => setDisplayDialogOpen(false)}
+        />
+      )}
       <div className="map-screen__body" ref={bodyRef}>
         <aside className="map-screen__sidebar">
           <CaptureRecorder />
