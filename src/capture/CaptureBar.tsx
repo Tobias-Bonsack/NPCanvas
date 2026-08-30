@@ -30,6 +30,7 @@ import './CaptureBar.css'
 const ACTION_LABELS: Record<RecorderAction, string> = {
   'record-new': 'New capture',
   'record-extend': 'Extend last',
+  'cycle-profile': 'Next profile',
 }
 
 // `freezing` is its own state, since grabbing a frame is a round trip through the video element,

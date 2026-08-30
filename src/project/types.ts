@@ -148,7 +148,7 @@ export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
 export type CaptureProfileV8 = CaptureProfile & { battleRect: PixelRect | null }
 
 /** A runtime list, not fixed nullable fields — a third trigger is a new value, not a new field. */
-export const RECORDER_ACTIONS = ['record-new', 'record-extend'] as const
+export const RECORDER_ACTIONS = ['record-new', 'record-extend', 'cycle-profile'] as const
 export type RecorderAction = (typeof RECORDER_ACTIONS)[number]
 
 /** Lives on the project, not a `CaptureProfile` — it says how this player triggers, not a

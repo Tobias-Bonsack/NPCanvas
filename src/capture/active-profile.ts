@@ -50,6 +50,17 @@ export function activeCaptureProfile(
   return resolveActiveProfile(profiles, activeId)
 }
 
+/**
+ * Advances to the next profile in project order, wrapping past the end — the `cycle-profile`
+ * recorder binding's whole job. A no-op with fewer than two profiles: nothing to cycle to.
+ */
+export function cycleActiveCaptureProfile(profiles: readonly CaptureProfile[]): void {
+  if (profiles.length < 2) return
+  const current = resolveActiveProfile(profiles, activeId)
+  const index = current === null ? -1 : profiles.findIndex((profile) => profile.id === current.id)
+  setActiveCaptureProfileId(profiles[(index + 1) % profiles.length].id)
+}
+
 function resolveActiveProfile(
   profiles: readonly CaptureProfile[],
   id: CaptureProfileId | null,

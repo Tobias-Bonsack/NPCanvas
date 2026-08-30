@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react'
+import { assertNever } from '../assert-never.ts'
 import { getState, subscribe as subscribeToStore } from '../project/store.ts'
+import { cycleActiveCaptureProfile } from './active-profile.ts'
 import { triggerRecording } from './capture-watch.ts'
 import { pressedEdges } from './gamepad-edges.ts'
 
@@ -122,7 +124,19 @@ function onEdge(buttonIndex: number): void {
   if (app.kind !== 'ready') return
   const binding = app.project.recorderBindings.find((b) => b.buttonIndex === buttonIndex)
   if (binding === undefined) return
-  triggerRecording(binding.action === 'record-new' ? 'new' : 'extend')
+  switch (binding.action) {
+    case 'record-new':
+      triggerRecording('new')
+      return
+    case 'record-extend':
+      triggerRecording('extend')
+      return
+    case 'cycle-profile':
+      cycleActiveCaptureProfile(app.project.captureProfiles)
+      return
+    default:
+      assertNever(binding.action)
+  }
 }
 
 // Takes the next button pressed on any connected pad as a binding rather than a trigger, once.

@@ -420,7 +420,7 @@ describe('parseProjectFile: recorderBindings', () => {
     const data = documentWithRecorderBindings()
     data.recorderBindings = [{ action: 'record-forever', buttonIndex: 0 }]
     expect(rejectionMessage(data)).toBe(
-      'recorderBindings[0].action: expected record-new or record-extend',
+      'recorderBindings[0].action: expected record-new or record-extend or cycle-profile',
     )
   })
 })
