@@ -34,6 +34,10 @@
   cursor: crosshair;
 }
 
+.map-canvas[data-tool='pick-reference'] {
+  cursor: crosshair;
+}
+
 /* Promotes the world to its own composited layer, so a gesture that moves what is inside it
    — a pan, a map drag, a zone drag — is a compositor job rather than a re-raster of everything.
    Named for the pan because that is the gesture it was measured on. Measured with 500 pins on one map, half of them

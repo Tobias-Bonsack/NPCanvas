@@ -47,6 +47,9 @@ export function DialoguePanel({
   width,
   onWidthChange,
   measureAvailableWidth,
+  pickingReference,
+  onStartPickReference,
+  onCancelPickReference,
 }: {
   project: ProjectFile
   dialogue: Dialogue
@@ -62,6 +65,10 @@ export function DialoguePanel({
   width: number | null
   onWidthChange: (width: number) => void
   measureAvailableWidth: () => number
+  /** True while the canvas is waiting for a click to resolve this dialogue's own reference pick. */
+  pickingReference: boolean
+  onStartPickReference: (dialogueId: DialogueId) => void
+  onCancelPickReference: () => void
 }): ReactElement {
   const [dropTarget, setDropTarget] = useState(false)
   // An id, not an index, so a reorder keeps that picture on screen rather than whatever slid
@@ -210,6 +217,9 @@ export function DialoguePanel({
           dialogues={project.dialogues}
           zonesById={zonesById}
           zoneIndex={zoneIndex}
+          picking={pickingReference}
+          onStartPick={onStartPickReference}
+          onCancelPick={onCancelPickReference}
         />
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />

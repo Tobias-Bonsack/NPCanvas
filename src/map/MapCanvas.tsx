@@ -670,6 +670,11 @@ function handleCanvasClick(
     case 'draw-zone':
       return
 
+    // A pin click resolves the pick directly in PinLayer (it alone knows which pin was hit);
+    // a miss here just means the canvas itself was clicked, so the mode stays armed.
+    case 'pick-reference':
+      return
+
     default:
       return assertNever(tool)
   }

@@ -51,3 +51,13 @@
 .dialogue-references__where {
   color: var(--text-muted);
 }
+
+.dialogue-references__picking {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.dialogue-references__picking-hint {
+  margin: 0;
+}

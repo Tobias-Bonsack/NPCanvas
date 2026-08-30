@@ -59,6 +59,8 @@ export const PinLayer = memo(function PinLayer({
   relevanceHueByTag,
   visibleRect,
   suppressFocusId,
+  pickReferenceFor,
+  onReferencePicked,
   onPinSelected,
   onPinDrag,
 }: {
@@ -70,6 +72,9 @@ export const PinLayer = memo(function PinLayer({
   relevanceHueByTag: ReadonlyMap<RelevanceTagId, number>
   visibleRect: Rect | null
   suppressFocusId: DialogueId | null
+  /** Set while DialogueReferences is waiting for the next pin click to name its partner. */
+  pickReferenceFor: DialogueId | null
+  onReferencePicked: (targetId: DialogueId) => void
   onPinSelected: (dialogueId: DialogueId) => void
   onPinDrag: (preview: PinDragPreview | null) => void
 }): ReactElement {
@@ -79,9 +84,13 @@ export const PinLayer = memo(function PinLayer({
   // Refs, not deps: keeps the handlers' useCallback lists empty so memo(Pin) holds.
   const onPinSelectedRef = useRef(onPinSelected)
   const onPinDragRef = useRef(onPinDrag)
+  const pickReferenceForRef = useRef(pickReferenceFor)
+  const onReferencePickedRef = useRef(onReferencePicked)
   useEffect(() => {
     onPinSelectedRef.current = onPinSelected
     onPinDragRef.current = onPinDrag
+    pickReferenceForRef.current = pickReferenceFor
+    onReferencePickedRef.current = onReferencePicked
   })
 
   // Keyed on the dialogues alone, deliberately: `maps` is a fresh array on every frame of a
@@ -132,6 +141,17 @@ export const PinLayer = memo(function PinLayer({
     onPinDragRef.current(null) // before the dispatch, so nothing sees preview and document at once
 
     if (!end.moved) {
+      const pickingFor = pickReferenceForRef.current
+      if (pickingFor !== null) {
+        // A click on the dialogue that is itself picking is not a partner — reducer guards
+        // self-reference too, but staying armed here (instead of resolving to nothing) reads
+        // as "still waiting for a click", not a silent no-op.
+        if (pickingFor !== end.data.id) {
+          dispatch({ kind: 'dialogue/reference-added', dialogueId: pickingFor, referenceId: end.data.id })
+          onReferencePickedRef.current(end.data.id)
+        }
+        return
+      }
       select(end.data.id)
       onPinSelectedRef.current(end.data.id)
       return

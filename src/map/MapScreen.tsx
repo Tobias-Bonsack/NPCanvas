@@ -85,6 +85,21 @@ export function MapScreen({
     },
     [armedCaptureId, setTool],
   )
+  // Auto-cancels rather than leaving a dangling arm: closing the panel or selecting elsewhere
+  // means there is no longer a "points at" list on screen for a resolved click to land in.
+  useEffect(() => {
+    if (tool.kind !== 'pick-reference') return
+    if (selection.kind === 'dialogue' && selection.id === tool.dialogueId) return
+    setTool({ kind: 'inspect' })
+  }, [tool, selection, setTool])
+
+  const onStartPickReference = useCallback(
+    (dialogueId: DialogueId) => setTool({ kind: 'pick-reference', dialogueId }),
+    [setTool],
+  )
+  const onCancelPickReference = useCallback(() => setTool({ kind: 'inspect' }), [setTool])
+  const onReferencePicked = useCallback(() => setTool({ kind: 'inspect' }), [setTool])
+
   const toggleQuestFilter = useCallback(
     () => onViewStateChange((prev) => ({ ...prev, questFilter: !prev.questFilter })),
     [onViewStateChange],
@@ -353,6 +368,8 @@ export function MapScreen({
               relevanceHueByTag={relevanceHueByTag}
               visibleRect={visibleRect}
               suppressFocusId={autoFocusDialogueId}
+              pickReferenceFor={tool.kind === 'pick-reference' ? tool.dialogueId : null}
+              onReferencePicked={onReferencePicked}
               onPinSelected={onPinSelected}
               onPinDrag={setPinDrag}
             />
@@ -372,6 +389,9 @@ export function MapScreen({
             width={panelWidth}
             onWidthChange={setPanelWidth}
             measureAvailableWidth={measureAvailableWidth}
+            pickingReference={tool.kind === 'pick-reference' && tool.dialogueId === selectedDialogue.id}
+            onStartPickReference={onStartPickReference}
+            onCancelPickReference={onCancelPickReference}
           />
         ) : (
           <CapturesPanel

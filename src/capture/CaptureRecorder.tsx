@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
-import { useActiveCaptureProfile } from './active-profile.ts'
+import { setActiveCaptureProfileId, useActiveCaptureProfile } from './active-profile.ts'
 import { useCaptureSource } from './capture-session.ts'
 import { captureBlocker } from './capture-to-dialogue.ts'
 import type { WatchState } from './capture-watch.ts'
@@ -113,6 +113,9 @@ export function CaptureRecorder(): ReactElement {
       <h2 className="micro-label">Captures</h2>
       <div className="capture-recorder__watch">
         <WatcherStatus watch={watch} pendingCaptures={pendingCaptures} />
+        {captureProfiles.length > 0 && (
+          <ProfileSwitcher profiles={captureProfiles} active={profile} />
+        )}
         <div className="capture-recorder__triggers">
           <button
             type="button"
@@ -168,6 +171,38 @@ export function CaptureRecorder(): ReactElement {
         />
       )}
     </div>
+  )
+}
+
+// Changing which profile the triggers below record against without a trip to Settings — the
+// full rename/re-calibrate/delete controls stay on CaptureBar, this is only the switch.
+function ProfileSwitcher({
+  profiles,
+  active,
+}: {
+  profiles: readonly CaptureProfile[]
+  active: CaptureProfile | null
+}): ReactElement {
+  return (
+    <label className="capture-recorder__profile">
+      <span className="capture-recorder__profile-label">Profile</span>
+      <select
+        className="capture-recorder__profile-select text-input"
+        aria-label="Active capture profile"
+        value={active === null ? '' : active.id}
+        onChange={(event) =>
+          setActiveCaptureProfileId(
+            profiles.find((candidate) => candidate.id === event.target.value)?.id ?? null,
+          )
+        }
+      >
+        {profiles.map((candidate) => (
+          <option key={candidate.id} value={candidate.id}>
+            {candidate.name}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
 

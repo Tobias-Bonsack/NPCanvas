@@ -438,3 +438,4 @@ export type CanvasTool =
   | { kind: 'place-dialogue' }
   | { kind: 'move-map' }
   | { kind: 'draw-zone' }
+  | { kind: 'pick-reference'; dialogueId: DialogueId }

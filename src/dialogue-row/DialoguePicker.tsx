@@ -10,8 +10,7 @@ import './DialoguePicker.css'
 const PICKER_LIMIT = 25
 
 // Empty query lists everything unattached, newest first — the line just logged is the one
-// most likely being picked. Shared by the quest board's attach picker and the dialogue panel's
-// reference picker, so the search, ordering and row rendering exist exactly once.
+// most likely being picked. Used by the quest board's attach picker.
 export function DialoguePicker({
   dialogues,
   exclude,

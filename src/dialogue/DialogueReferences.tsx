@@ -1,30 +1,34 @@
 import type { ReactElement } from 'react'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { selectDialogue } from '../app/select.ts'
-import { DialoguePicker } from '../dialogue-row/DialoguePicker.tsx'
 import { resolveZones, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
 import './DialogueReferences.css'
 
-type ReferenceMode = { kind: 'idle' } | { kind: 'picking' }
-
 // "Points at" is dialogue.references, edited here. "Pointed at by" is derived by scanning every
 // other dialogue — the same shape DialogueQuestLinks uses to find a dialogue's quests — so the
-// inverse can never disagree with the forward list stored on disk.
+// inverse can never disagree with the forward list stored on disk. The partner is picked by a
+// click on its own pin rather than a search list — a name in a dropdown says nothing about
+// where on the map it is, which is the whole reason to be looking at the canvas already.
 export function DialogueReferences({
   dialogue,
   dialogues,
   zonesById,
   zoneIndex,
+  picking,
+  onStartPick,
+  onCancelPick,
 }: {
   dialogue: Dialogue
   dialogues: readonly Dialogue[]
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
+  /** True while the canvas is armed and waiting for a click to name this dialogue's partner. */
+  picking: boolean
+  onStartPick: (dialogueId: DialogueId) => void
+  onCancelPick: () => void
 }): ReactElement {
-  const [mode, setMode] = useState<ReferenceMode>({ kind: 'idle' })
-
   const dialogueId = dialogue.id
   const pointsAt = useMemo(
     () =>
@@ -67,22 +71,18 @@ export function DialogueReferences({
         </ul>
       )}
 
-      {mode.kind === 'picking' ? (
-        <DialoguePicker
-          dialogues={dialogues}
-          exclude={[dialogueId, ...dialogue.references]}
-          zonesById={zonesById}
-          zoneIndex={zoneIndex}
-          emptyMessage="Every other dialogue in the project is already pointed at."
-          onPick={(referenceId) => {
-            dispatch({ kind: 'dialogue/reference-added', dialogueId, referenceId })
-            setMode({ kind: 'idle' })
-          }}
-          onClose={() => setMode({ kind: 'idle' })}
-        />
+      {picking ? (
+        <div className="dialogue-references__picking" role="status">
+          <p className="dialogue-references__picking-hint hint-text">
+            Click the pin it should point at…
+          </p>
+          <button type="button" className="button" onClick={onCancelPick}>
+            Cancel
+          </button>
+        </div>
       ) : (
-        <button type="button" className="button" onClick={() => setMode({ kind: 'picking' })}>
-          Point at another line
+        <button type="button" className="button" onClick={() => onStartPick(dialogueId)}>
+          Point at another line…
         </button>
       )}
 

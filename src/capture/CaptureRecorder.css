@@ -35,6 +35,23 @@
 /* What answering or discarding the held queue did, when it went wrong — `.error-text`
    (index.css) replaces the old `.capture-recorder__held-error`. */
 
+.capture-recorder__profile {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.capture-recorder__profile-label {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+}
+
+.capture-recorder__profile-select {
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  max-width: 12rem;
+}
+
 /* Two triggers side by side rather than stacked — they are one decision (which capture to record
    into), not two independent controls. */
 .capture-recorder__triggers {
