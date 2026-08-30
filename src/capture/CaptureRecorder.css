@@ -1,13 +1,12 @@
-/* Mirrors `.map-list`/`.zone-list`/`.pending-capture-list` in the sidebar — the same rhythm,
-   its own file because this is the one region PendingCaptureList's issue asked to keep separate
+/* Its own file because this is the one region PendingCaptureList's issue asked to keep separate
    from. See CLAUDE.md's #106 note: moved verbatim out of `Nav.css`, minus the `.nav__watch-status`
    strip's `max-width: 20rem` and its ellipsis truncation — a leftover of the top bar's cramped
-   width that the sidebar's own column does not need. */
+   width that the sidebar's own column does not need. No margin-bottom: `.side-panel__content`'s
+   own gap (CapturesPanel.tsx) already spaces this from the pending-capture list below it. */
 .capture-recorder {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: var(--space-3);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }

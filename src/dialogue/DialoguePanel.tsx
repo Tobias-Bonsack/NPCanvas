@@ -1,4 +1,4 @@
-import type { CSSProperties, DragEvent as ReactDragEvent, ReactElement } from 'react'
+import type { DragEvent as ReactDragEvent, ReactElement } from 'react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
 import { formatRoute } from '../app/route.ts'
@@ -7,6 +7,7 @@ import { DIALOGUE_MEDIA_ACCEPT } from '../media/import-media.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { resolveGalleryIndex } from '../media/gallery-index.ts'
 import { MediaGallery } from '../media/MediaGallery.tsx'
+import { SidePanel } from '../map/SidePanel.tsx'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
 import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
@@ -24,13 +25,11 @@ import type {
 } from '../project/types.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { DialogueForm } from './DialogueForm.tsx'
-import { MIN_PANEL_WIDTH } from './panel-width.ts'
 import { npcNamesIn, previousRecordFor } from './recency.ts'
 import type { ImportState } from './use-media-import.ts'
 import { importingLabel, useMediaImport } from './use-media-import.ts'
 import type { CaptureApi } from './use-capture.ts'
 import { CAPTURE_SHORTCUT, useCapture } from './use-capture.ts'
-import { usePanelResize } from './use-panel-resize.ts'
 import './DialoguePanel.css'
 
 // Rendering this at all *is* "open" — the parent owns the selection, so closing on deselect
@@ -73,9 +72,9 @@ export function DialoguePanel({
   // Filled by DialogueForm. The line field is a draft flushed to the store on blur/idle, and a
   // capture appends to the store's text, so Ctrl+Enter must flush the draft first.
   const flushDraft = useRef<(() => void) | null>(null)
-
-  const { resizing, band, beginResize, moveResize, endResize, cancelResize, stepResize } =
-    usePanelResize(asideRef, onWidthChange, measureAvailableWidth)
+  // Mirrors SidePanel's own resize state — a resize gesture holds Escape for itself, so the
+  // close listener below must stand down while one is in progress.
+  const [resizing, setResizing] = useState(false)
 
   const dialogueId = dialogue.id
   const { importState, importFiles, resetImport } = useMediaImport(dialogueId)
@@ -133,15 +132,16 @@ export function DialoguePanel({
   }
 
   return (
-    <aside
-      ref={asideRef}
+    <SidePanel
+      panelRef={asideRef}
       className="dialogue-panel"
-      aria-label="Dialogue"
-      // The custom property, not `width` — DialoguePanel.css's media queries redefine it, so a
-      // dragged width outranks all three declarations.
-      style={width === null ? undefined : panelWidthStyle(width)}
-      tabIndex={-1}
-      data-drop-target={dropTarget ? 'true' : undefined}
+      ariaLabel="Dialogue"
+      resizerLabel="Dialogue panel width"
+      width={width}
+      onWidthChange={onWidthChange}
+      measureAvailableWidth={measureAvailableWidth}
+      onResizingChange={setResizing}
+      dropTarget={dropTarget}
       onDragOver={(event) => {
         event.preventDefault()
         setDropTarget(true)
@@ -155,25 +155,7 @@ export function DialoguePanel({
       }}
       onDrop={onDrop}
     >
-      {/* Absolutely positioned against the aside, not laid out in the scrolling column below,
-          so the handle stays reachable on a long panel. */}
-      <div
-        className="dialogue-panel__resizer"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Dialogue panel width"
-        aria-valuenow={Math.round(band?.width ?? MIN_PANEL_WIDTH)}
-        aria-valuemin={MIN_PANEL_WIDTH}
-        aria-valuemax={Math.round(band?.max ?? MIN_PANEL_WIDTH)}
-        tabIndex={0}
-        data-resizing={resizing ? 'true' : undefined}
-        onPointerDown={beginResize}
-        onPointerMove={moveResize}
-        onPointerUp={endResize}
-        onPointerCancel={cancelResize}
-        onKeyDown={stepResize}
-      />
-      <div className="dialogue-panel__content">
+      <>
         <header className="dialogue-panel__header">
           <h2 className="panel-title">Dialogue</h2>
           <button type="button" className="button" onClick={onClose}>
@@ -231,34 +213,35 @@ export function DialoguePanel({
         />
 
         <DialogueQuestLinks dialogue={dialogue} quests={project.quests} />
-      </div>
-      {/* Discard, keep the picture only, or confirm the learned glyphs — nothing is written to
-          media/ until confirmed, so discarding costs one setState. */}
-      {captureState.kind === 'learning' && (
-        <GlyphLearner
-          tiles={captureState.tiles}
-          cancelLabel="Discard the capture"
-          onCancel={() =>
-            setCaptureState({
-              kind: 'done',
-              message: 'Discarded. No picture and no line were written.',
-            })
-          }
-          keepPicture={{
-            label: 'Keep the picture only',
-            onKeep: () => void write(captureState.profile, captureState.frame, null),
-          }}
-          onConfirm={(learned) =>
-            onGlyphsLearned(
-              captureState.profile,
-              captureState.glyphs,
-              captureState.frame,
-              learned,
-            )
-          }
-        />
-      )}
-    </aside>
+
+        {/* Discard, keep the picture only, or confirm the learned glyphs — nothing is written to
+            media/ until confirmed, so discarding costs one setState. */}
+        {captureState.kind === 'learning' && (
+          <GlyphLearner
+            tiles={captureState.tiles}
+            cancelLabel="Discard the capture"
+            onCancel={() =>
+              setCaptureState({
+                kind: 'done',
+                message: 'Discarded. No picture and no line were written.',
+              })
+            }
+            keepPicture={{
+              label: 'Keep the picture only',
+              onKeep: () => void write(captureState.profile, captureState.frame, null),
+            }}
+            onConfirm={(learned) =>
+              onGlyphsLearned(
+                captureState.profile,
+                captureState.glyphs,
+                captureState.frame,
+                learned,
+              )
+            }
+          />
+        )}
+      </>
+    </SidePanel>
   )
 }
 
@@ -508,12 +491,4 @@ function mergeOptionLabel(dialogue: Dialogue): string {
   if (shown !== '') return `${when} — ${shown}`
   return `${when} — ${dialogue.media.length === 1 ? '1 picture' : `${dialogue.media.length} pictures`}`
 }
-
-// Intersection type avoids an `as` cast — CSSProperties has no index signature for `--*`.
-function panelWidthStyle(
-  width: number,
-): CSSProperties & Record<'--dialogue-panel-width', string> {
-  return { '--dialogue-panel-width': `${width}px` }
-}
-
 

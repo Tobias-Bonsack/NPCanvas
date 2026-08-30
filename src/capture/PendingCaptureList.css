@@ -1,14 +1,10 @@
-/* Mirrors `.map-list`/`.zone-list` in MapScreen.css — the same sidebar rhythm, its own file
-   because this list is the one the issue asked to keep separate. One capture on screen at a
-   time (#108): the frame/count/strip trio mirrors `MediaGallery.css` for the same reason
-   `MediaGallery` has them — alternatives to page between, not a list read top to bottom. */
+/* One capture on screen at a time (#108): the frame/count/strip trio mirrors `MediaGallery.css`
+   for the same reason `MediaGallery` has them — alternatives to page between, not a list read
+   top to bottom. */
 .pending-capture-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-bottom: var(--space-5);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border);
 }
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */

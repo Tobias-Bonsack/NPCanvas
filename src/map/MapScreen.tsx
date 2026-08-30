@@ -4,8 +4,6 @@ import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
-import { CaptureRecorder } from '../capture/CaptureRecorder.tsx'
-import { PendingCaptureList } from '../capture/PendingCaptureList.tsx'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
 import { questIndexFor } from '../project/derived.ts'
@@ -22,6 +20,7 @@ import type {
   Zone,
 } from '../project/types.ts'
 import { CanvasDisplayDialog } from './CanvasDisplayDialog.tsx'
+import { CapturesPanel } from './CapturesPanel.tsx'
 import type { Rect } from './geometry.ts'
 import type { MapDragPreview, ZoneDragPreview } from './MapCanvas.tsx'
 import { MapCanvas } from './MapCanvas.tsx'
@@ -281,14 +280,6 @@ export function MapScreen({
       <div className="map-screen__body" ref={bodyRef}>
         <aside className="map-screen__sidebar">
           <h1 className="visually-hidden">Canvas</h1>
-          <CaptureRecorder />
-          <PendingCaptureList
-            project={project}
-            armedCaptureId={armedCaptureId}
-            onArm={onArmCapture}
-            currentCaptureId={currentCaptureId}
-            onSelect={setCurrentCaptureId}
-          />
           <div className="map-screen__tools">
             <button type="button" className="button" onClick={() => setDisplayDialogOpen(true)}>
               Display…
@@ -367,7 +358,7 @@ export function MapScreen({
             />
           </MapCanvas>
         </div>
-        {selectedDialogue !== null && (
+        {selectedDialogue !== null ? (
           <DialoguePanel
             project={project}
             dialogue={selectedDialogue}
@@ -378,6 +369,17 @@ export function MapScreen({
             autoFocusNpc={autoFocusDialogueId === selectedDialogue.id}
             onAutoFocusConsumed={onAutoFocusConsumed}
             openedFromPin={pinClickId === selectedDialogue.id}
+            width={panelWidth}
+            onWidthChange={setPanelWidth}
+            measureAvailableWidth={measureAvailableWidth}
+          />
+        ) : (
+          <CapturesPanel
+            project={project}
+            armedCaptureId={armedCaptureId}
+            onArm={onArmCapture}
+            currentCaptureId={currentCaptureId}
+            onSelect={setCurrentCaptureId}
             width={panelWidth}
             onWidthChange={setPanelWidth}
             measureAvailableWidth={measureAvailableWidth}

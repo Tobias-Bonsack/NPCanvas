@@ -110,7 +110,7 @@ export function CaptureRecorder(): ReactElement {
 
   return (
     <div className="capture-recorder">
-      <h2 className="map-list__heading micro-label">Captures</h2>
+      <h2 className="micro-label">Captures</h2>
       <div className="capture-recorder__watch">
         <WatcherStatus watch={watch} pendingCaptures={pendingCaptures} />
         <div className="capture-recorder__triggers">

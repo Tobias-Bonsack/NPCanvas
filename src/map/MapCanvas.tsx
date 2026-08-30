@@ -644,7 +644,8 @@ function handleCanvasClick(
           mapId: map.id,
           position: canvasToMapLocal(map, canvasPoint),
         })
-        selectDialogue(dialogueId)
+        // No selectDialogue here — the queue stays on screen and pages to the next waiting
+        // capture instead of swapping to the panel for the one just placed.
         onDialoguePlaced(dialogueId)
         return
       }

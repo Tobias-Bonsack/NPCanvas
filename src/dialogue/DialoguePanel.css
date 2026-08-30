@@ -1,86 +1,11 @@
-/* A sibling of the canvas, not an overlay on it: the map has to stay visible and pannable
-   while a line is being written. The width is the user's — dragged on the handle at the left
-   edge, see `panel-width.ts` — and everything below is only what it does when nobody has
-   dragged it: `--dialogue-panel-width` is what the two breakpoints redefine, so an inline
-   style setting the same property beats all three and the stylesheet keeps working untouched.
-   See the note on `.map-screen__sidebar` in MapScreen.css, which the same problem was named
-   after. */
+/* `.side-panel` (SidePanel.css) supplies the width/flex/position/border shell this shares with
+   CapturesPanel. Only the drop-target feedback is specific to a dialogue being written. */
 .dialogue-panel {
-  --dialogue-panel-width: 22rem;
-  width: var(--dialogue-panel-width);
-  /* The same band `clampPanelWidth` enforces, expressed for the case it never sees: a *window*
-     resize moves the available width with no pointermove to re-clamp against it. `min-width`
-     wins the conflict at very narrow windows, which is the degenerate case that module pins. */
-  min-width: 14rem;
-  max-width: calc(100% - 40rem);
-  flex: none;
-  /* The containing block for the handle, which must not scroll with the column beside it. */
-  position: relative;
-  display: flex;
-  min-height: 0;
-  border-left: 1px solid var(--border);
-  background: var(--surface-1);
   /* Always present, transparent until drop-target below — see the rule there for why an
      outline rather than a border, and #96 for why transparent-to-colour rather than absent. */
   outline: 2px solid transparent;
   outline-offset: -2px;
   transition: outline-color var(--duration-fast) var(--ease-standard);
-}
-
-/* The panel's actual content, and the part that scrolls. Separate from the `<aside>` so the
-   resize handle can span the panel's full height without riding the scroll. */
-.dialogue-panel__content {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  overflow-y: auto;
-  padding: var(--space-4);
-}
-
-/* Straddles the seam, so the grab area is where the eye already sees the edge. Wider than the
-   1px border it sits on: a hairline is not a pointer target. */
-.dialogue-panel__resizer {
-  position: absolute;
-  inset-block: 0;
-  left: -4px;
-  width: 9px;
-  z-index: 6;
-  touch-action: none;
-  user-select: none;
-  cursor: col-resize;
-}
-
-.dialogue-panel__resizer:hover,
-.dialogue-panel__resizer[data-resizing='true'] {
-  background: var(--accent);
-}
-
-.dialogue-panel__resizer:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: 1px;
-}
-
-@media (max-width: 72rem) {
-  .dialogue-panel {
-    --dialogue-panel-width: 18rem;
-  }
-}
-
-@media (max-width: 40rem) {
-  .dialogue-panel {
-    --dialogue-panel-width: 14rem;
-  }
-}
-
-/* Nothing in the column may shrink. A flex child compressed below its content does not scroll,
-   it *overlaps* the next one — which is what several media did to the form, collapsing the date,
-   the tags and the text body into the media heading. The column scrolls; its sections keep the
-   height their content asks for. */
-.dialogue-panel__content > * {
-  flex: none;
 }
 
 /* The whole panel is the drop zone, so the feedback is on the whole panel. An outline rather
