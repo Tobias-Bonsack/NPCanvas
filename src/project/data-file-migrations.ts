@@ -21,16 +21,17 @@ import {
   readPixelRect,
   readPositiveNumber,
   readCaptureProfileId,
-  readProjectFileV10,
+  readProjectFileV11,
   readQuestId,
   readQuestsV3,
   readQuestStatus,
   readRelevanceTag,
+  readRecorderBindings,
   readString,
   readUniqueArray,
   SchemaError,
 } from './data-file.ts'
-import { newMediaId } from './ids.ts'
+import { asRelevanceTagId, newMediaId } from './ids.ts'
 import type {
   CaptureProfile,
   CaptureProfileV5,
@@ -38,6 +39,7 @@ import type {
   CaptureProfileV8,
   DialogueV3,
   DialogueV4,
+  DialogueV10,
   GameMap,
   GameMapV1,
   Glyph,
@@ -52,6 +54,7 @@ import type {
   ProjectFileV8,
   ProjectFileV9,
   ProjectFileV10,
+  ProjectFileV11,
   Quest,
   QuestV2,
   RelevanceSlugV4,
@@ -214,41 +217,49 @@ export function readVersionedProjectFile(raw: Record<string, unknown>): ProjectF
   const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
   switch (schemaVersion) {
     case 1:
-      return migrateV9(
-        migrateV8(
-          migrateV7(
-            migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+      return migrateV10(
+        migrateV9(
+          migrateV8(
+            migrateV7(
+              migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(readProjectFileV1(raw))))))),
+            ),
           ),
         ),
       )
     case 2:
-      return migrateV9(
-        migrateV8(
-          migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+      return migrateV10(
+        migrateV9(
+          migrateV8(
+            migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(migrateV2(readProjectFileV2(raw))))))),
+          ),
         ),
       )
     case 3:
-      return migrateV9(
-        migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))),
+      return migrateV10(
+        migrateV9(
+          migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(migrateV3(readProjectFileV3(raw))))))),
+        ),
       )
     case 4:
-      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw)))))))
+      return migrateV10(migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(migrateV4(readProjectFileV4(raw))))))))
     case 5:
-      return migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw))))))
+      return migrateV10(migrateV9(migrateV8(migrateV7(migrateV6(migrateV5(readProjectFileV5(raw)))))))
     case 6:
-      return migrateV9(migrateV8(migrateV7(migrateV6(readProjectFileV6(raw)))))
+      return migrateV10(migrateV9(migrateV8(migrateV7(migrateV6(readProjectFileV6(raw))))))
     case 7:
-      return migrateV9(migrateV8(migrateV7(readProjectFileV7(raw))))
+      return migrateV10(migrateV9(migrateV8(migrateV7(readProjectFileV7(raw)))))
     case 8:
-      return migrateV9(migrateV8(readProjectFileV8(raw)))
+      return migrateV10(migrateV9(migrateV8(readProjectFileV8(raw))))
     case 9:
-      return migrateV9(readProjectFileV9(raw))
+      return migrateV10(migrateV9(readProjectFileV9(raw)))
     case 10:
-      return readProjectFileV10(raw)
+      return migrateV10(readProjectFileV10(raw))
+    case 11:
+      return readProjectFileV11(raw)
     default:
       throw new SchemaError(
         'schemaVersion',
-        `1, 2, 3, 4, 5, 6, 7, 8, 9 or 10, but found ${String(schemaVersion)}`,
+        `1, 2, 3, 4, 5, 6, 7, 8, 9, 10 or 11, but found ${String(schemaVersion)}`,
       )
   }
 }
@@ -561,4 +572,64 @@ function dropBattleRect(profile: CaptureProfileV8): CaptureProfile {
 // V9 had no `RecorderBinding`; V10 just adds the empty list, same shape as `migrateV6`.
 function migrateV9(file: ProjectFileV9): ProjectFileV10 {
   return { ...file, schemaVersion: 10, recorderBindings: [] }
+}
+
+/** Frozen V10 reader — used by the V10-to-V11 migration. */
+function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10 {
+  const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
+  const tagOrder = relevanceTags.map((tag) => tag.id)
+
+  // Helper to read relevance tags like readRelevanceV5 does
+  const readRelevanceForV10 = (value: unknown, path: string): readonly string[] => {
+    const tagArray = readArray(value, path)
+    const found = new Set(
+      tagArray.map((tag, index) => asRelevanceTagId(readString(tag, `${path}[${index}]`))),
+    )
+    const known = tagOrder.filter((id) => found.has(id))
+    const unknown = [...found].filter((id) => !tagOrder.includes(id))
+    return [...known, ...unknown]
+  }
+
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) => {
+    const dialogueRaw = readObject(item, `dialogues[${index}]`)
+    return {
+      ...readDialogueCommon(dialogueRaw, `dialogues[${index}]`, readRelevanceForV10),
+      text: readString(dialogueRaw.text, `dialogues[${index}].text`),
+      media: readMedia(dialogueRaw.media, `dialogues[${index}].media`),
+    }
+  })
+  assertUniqueIds(dialogues, 'dialogues')
+  const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
+    readPendingCapture(item, path, tagOrder),
+  )
+  return {
+    schemaVersion: 10,
+    ...readCommonFields(raw),
+    maps: readUniqueArray(raw, 'maps', readGameMap),
+    dialogues: dialogues as unknown as DialogueV10[],
+    quests: readQuestsV3(raw),
+    captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
+    relevanceTags,
+    glyphs: readGlyphs(raw.glyphs, 'glyphs'),
+    pendingCaptures,
+    recorderBindings: readRecorderBindings(raw.recorderBindings, 'recorderBindings'),
+  }
+}
+
+function migrateV10(file: ProjectFileV10): ProjectFileV11 {
+  return {
+    ...file,
+    schemaVersion: 11,
+    dialogues: file.dialogues.map((dialogue) => ({
+      id: dialogue.id,
+      mapId: dialogue.mapId,
+      npcName: dialogue.npcName,
+      position: dialogue.position,
+      text: dialogue.text,
+      media: dialogue.media,
+      spokenAt: dialogue.spokenAt,
+      relevance: dialogue.relevance,
+      references: [],
+    })),
+  }
 }

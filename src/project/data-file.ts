@@ -33,7 +33,6 @@ import type {
   Point,
   Polygon,
   ProjectFile,
-  ProjectFileV10,
   ProjectRepairs,
   Quest,
   QuestId,
@@ -50,7 +49,7 @@ import { QUEST_STATUSES, RECORDER_ACTIONS } from './types.ts'
 /** The document written to `<project>/data.json` when a folder is first connected. */
 export function createEmptyProject(name: string): ProjectFile {
   return {
-    schemaVersion: 10,
+    schemaVersion: 11,
     projectName: name,
     savedAt: new Date().toISOString(),
     maps: [],
@@ -396,7 +395,7 @@ function readRecorderBinding(value: unknown, path: string): RecorderBinding {
  * At most one binding per action, mirroring the reducer's own invariant — the first naming of an
  * action wins, so a hand-edited duplicate collapses rather than rejecting the whole document.
  */
-function readRecorderBindings(value: unknown, path: string): RecorderBinding[] {
+export function readRecorderBindings(value: unknown, path: string): RecorderBinding[] {
   const bindings = readArray(value, path).map((binding, index) =>
     readRecorderBinding(binding, `${path}[${index}]`),
   )
@@ -475,10 +474,14 @@ export function readDialogue(
   tagOrder: readonly RelevanceTagId[],
 ): Dialogue {
   const raw = readObject(value, path)
+  const references = (raw.references !== undefined ? readArray(raw.references, `${path}.references`) : []).map(
+    (ref, index) => readDialogueId(ref, `${path}.references[${index}]`),
+  )
   return {
     ...readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder)),
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
+    references,
   }
 }
 
@@ -575,11 +578,20 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
   // no current tag need dropping, and readRelevanceV5 trails those after the known ones.
   const tagIds = new Set<RelevanceTagId>(file.relevanceTags.map((tag) => tag.id))
   let relevance = 0
+  let dialogueReferences = 0
   const dialogues = survivingDialogues.map((dialogue) => {
-    const kept = dialogue.relevance.filter((id) => tagIds.has(id))
-    if (kept.length === dialogue.relevance.length) return dialogue
-    relevance += dialogue.relevance.length - kept.length
-    return { ...dialogue, relevance: kept }
+    const keptRelevance = dialogue.relevance.filter((id) => tagIds.has(id))
+    const keptReferences = dialogue.references.filter((id) => dialogueIds.has(id) && id !== dialogue.id)
+    const relevanceChanged = keptRelevance.length !== dialogue.relevance.length
+    const referencesChanged = keptReferences.length !== dialogue.references.length
+    if (!relevanceChanged && !referencesChanged) return dialogue
+    if (relevanceChanged) relevance += dialogue.relevance.length - keptRelevance.length
+    if (referencesChanged) dialogueReferences += dialogue.references.length - keptReferences.length
+    return {
+      ...dialogue,
+      relevance: keptRelevance,
+      references: keptReferences,
+    }
   })
 
   // A pending capture carries no `mapId`, so it has nothing to be orphaned from — only its
@@ -593,7 +605,7 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
 
   const droppedDialogues = file.dialogues.length - dialogues.length
   const droppedZones = file.zones.length - zones.length
-  if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0 && relevance === 0) {
+  if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0 && relevance === 0 && dialogueReferences === 0) {
     return { file, repairs: { kind: 'none' } }
   }
   return {
@@ -604,6 +616,7 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
       zones: droppedZones,
       questDialogueIds,
       relevance,
+      dialogueReferences,
     },
   }
 }
@@ -662,7 +675,7 @@ export function readCommonFields(
  * than to any profile. Every version before it lives in `data-file-migrations.ts`, read only by
  * `readVersionedProjectFile` there.
  */
-export function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10 {
+export function readProjectFileV11(raw: Record<string, unknown>): ProjectFile {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
   const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
@@ -673,7 +686,7 @@ export function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10
     readPendingCapture(item, path, tagOrder),
   )
   return {
-    schemaVersion: 10,
+    schemaVersion: 11,
     ...readCommonFields(raw),
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,

@@ -75,6 +75,7 @@ function dialogue(id: string, mapId: MapId): Dialogue {
     media: [],
     spokenAt: '2026-08-14T10:00:00.000Z',
     relevance: [],
+      references: [],
   }
 }
 

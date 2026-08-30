@@ -67,6 +67,8 @@ export type Action =
   | { kind: 'dialogue/media-reordered'; dialogueId: DialogueId; mediaId: MediaId; toIndex: number }
   | { kind: 'dialogue/spoken-at-set'; dialogueId: DialogueId; spokenAt: string }
   | { kind: 'dialogue/relevance-set'; dialogueId: DialogueId; relevance: readonly RelevanceTagId[] }
+  | { kind: 'dialogue/reference-added'; dialogueId: DialogueId; referenceId: DialogueId }
+  | { kind: 'dialogue/reference-removed'; dialogueId: DialogueId; referenceId: DialogueId }
   | { kind: 'dialogue/deleted'; dialogueId: DialogueId }
   | { kind: 'dialogue/merged'; intoId: DialogueId; fromId: DialogueId }
   | { kind: 'quest/added'; quest: Quest }
@@ -405,17 +407,41 @@ function applyAction(state: AppState, action: Action): AppState {
       return replaceIn(state, 'dialogues', target, { ...target, relevance })
     }
 
+    case 'dialogue/reference-added': {
+      if (state.kind !== 'ready') return state
+      const target = findById(state.project, 'dialogues', action.dialogueId)
+      if (target === null) return state
+      if (action.dialogueId === action.referenceId) return state
+      if (findById(state.project, 'dialogues', action.referenceId) === null) return state
+      if (target.references.includes(action.referenceId)) return state
+      return replaceIn(state, 'dialogues', target, {
+        ...target,
+        references: [...target.references, action.referenceId],
+      })
+    }
+
+    case 'dialogue/reference-removed': {
+      if (state.kind !== 'ready') return state
+      const target = findById(state.project, 'dialogues', action.dialogueId)
+      if (target === null || !target.references.includes(action.referenceId)) return state
+      return replaceIn(state, 'dialogues', target, {
+        ...target,
+        references: target.references.filter((id) => id !== action.referenceId),
+      })
+    }
+
     case 'dialogue/deleted': {
       if (state.kind !== 'ready') return state
       const { project } = state
       if (!project.dialogues.some((dialogue) => dialogue.id === action.dialogueId)) return state
 
       const removed = new Set<DialogueId>([action.dialogueId])
+      const remaining = project.dialogues.filter((dialogue) => dialogue.id !== action.dialogueId)
       return {
         ...state,
         project: {
           ...project,
-          dialogues: project.dialogues.filter((dialogue) => dialogue.id !== action.dialogueId),
+          dialogues: pruneDialogueReferences(remaining, removed),
           quests: pruneQuestDialogues(project.quests, removed),
         },
         selection: dropDeletedSelection(state.selection, {
@@ -447,15 +473,20 @@ function applyAction(state: AppState, action: Action): AppState {
           [...into.relevance, ...from.relevance],
           project.relevanceTags,
         ),
+        references: normalizeReferences([...into.references, ...from.references]),
       }
 
       return {
         ...state,
         project: {
           ...project,
-          dialogues: project.dialogues
-            .filter((dialogue) => dialogue.id !== action.fromId)
-            .map((dialogue) => (dialogue.id === action.intoId ? merged : dialogue)),
+          dialogues: repointDialogueReferences(
+            project.dialogues
+              .filter((dialogue) => dialogue.id !== action.fromId)
+              .map((dialogue) => (dialogue.id === action.intoId ? merged : dialogue)),
+            action.fromId,
+            action.intoId,
+          ),
           quests: repointQuestDialogues(project.quests, action.fromId, action.intoId),
         },
         selection: { kind: 'dialogue', id: action.intoId },
@@ -754,6 +785,7 @@ function applyAction(state: AppState, action: Action): AppState {
         media: target.media,
         spokenAt: target.spokenAt,
         relevance: target.relevance,
+        references: [],
       }
       return {
         ...state,
@@ -987,6 +1019,10 @@ function normalizeRelevance(
   return tags.map((tag) => tag.id).filter((id) => chosen.has(id))
 }
 
+function normalizeReferences(ids: readonly DialogueId[]): DialogueId[] {
+  return [...new Set(ids)]
+}
+
 function isSameRelevance(a: readonly RelevanceTagId[], b: readonly RelevanceTagId[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index])
 }
@@ -1021,6 +1057,31 @@ function pruneDialogueRelevance(
       ? { ...dialogue, relevance: dialogue.relevance.filter((id) => !removed.has(id)) }
       : dialogue,
   )
+}
+
+function pruneDialogueReferences(
+  dialogues: Dialogue[],
+  removed: ReadonlySet<DialogueId>,
+): Dialogue[] {
+  return dialogues.map((dialogue) =>
+    dialogue.references.some((id) => removed.has(id))
+      ? { ...dialogue, references: dialogue.references.filter((id) => !removed.has(id)) }
+      : dialogue,
+  )
+}
+
+// The merge counterpart to pruneDialogueReferences: repoint references when a dialogue merges.
+// Drop self-references created by the merge (A pointed at B, B merges into A).
+function repointDialogueReferences(dialogues: Dialogue[], from: DialogueId, into: DialogueId): Dialogue[] {
+  return dialogues.map((dialogue) => {
+    if (!dialogue.references.includes(from)) return dialogue
+    const references: DialogueId[] = []
+    for (const id of dialogue.references) {
+      const next = id === from ? into : id
+      if (next !== dialogue.id && !references.includes(next)) references.push(next)
+    }
+    return { ...dialogue, references }
+  })
 }
 
 type RemovedIds = {

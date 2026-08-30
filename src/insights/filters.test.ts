@@ -22,6 +22,7 @@ function dialogue(id: string, overrides: Partial<Dialogue> = {}): Dialogue {
     media: [],
     spokenAt: '2026-08-14T10:00:00.000Z',
     relevance: [],
+      references: [],
     ...overrides,
   }
 }
@@ -52,6 +53,7 @@ const UNNAMED = dialogue('unnamed', {
   npcName: '',
   text: 'Someone muttering about the debt',
   relevance: [],
+      references: [],
   spokenAt: '2026-08-14T08:00:00.000Z',
 })
 const BROKEN = dialogue('broken', { npcName: 'Tomas', spokenAt: 'not a date' })

@@ -658,6 +658,7 @@ function handleCanvasClick(
         media: [],
         spokenAt: new Date().toISOString(),
         relevance: [],
+        references: [],
       }
       dispatch({ kind: 'dialogue/added', dialogue })
       selectDialogue(dialogue.id)

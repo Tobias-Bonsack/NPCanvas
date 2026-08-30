@@ -80,7 +80,12 @@ export type Dialogue = {
   spokenAt: string
   /** Deduplicated, stored in `project.relevanceTags` order. */
   relevance: RelevanceTagId[]
+  /** Other lines this one points at — untyped, directed, stored. */
+  references: DialogueId[]
 }
+
+/** Frozen V10 shape, used by older ProjectFileVN types until migration. */
+export type DialogueV10 = Omit<Dialogue, 'references'>
 
 /**
  * A conversation the watcher recorded before anyone said where it happened — every `Dialogue`
@@ -262,7 +267,7 @@ export type ProjectFileV5 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV10[]
   quests: Quest[]
   captureProfiles: CaptureProfileV5[]
   relevanceTags: RelevanceTag[]
@@ -275,7 +280,7 @@ export type ProjectFileV6 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV10[]
   quests: Quest[]
   captureProfiles: CaptureProfileV7[]
   relevanceTags: RelevanceTag[]
@@ -289,7 +294,7 @@ export type ProjectFileV7 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV10[]
   quests: Quest[]
   captureProfiles: CaptureProfileV7[]
   relevanceTags: RelevanceTag[]
@@ -304,7 +309,7 @@ export type ProjectFileV8 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV10[]
   quests: Quest[]
   captureProfiles: CaptureProfileV8[]
   relevanceTags: RelevanceTag[]
@@ -319,7 +324,7 @@ export type ProjectFileV9 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
-  dialogues: Dialogue[]
+  dialogues: DialogueV10[]
   quests: Quest[]
   captureProfiles: CaptureProfile[]
   relevanceTags: RelevanceTag[]
@@ -334,6 +339,22 @@ export type ProjectFileV10 = {
   savedAt: string
   maps: GameMap[]
   zones: Zone[]
+  dialogues: DialogueV10[]
+  quests: Quest[]
+  captureProfiles: CaptureProfile[]
+  relevanceTags: RelevanceTag[]
+  glyphs: Glyph[]
+  pendingCaptures: PendingCapture[]
+  recorderBindings: RecorderBinding[]
+}
+
+/** V11 adds `references` to dialogues — see `Dialogue.references`. */
+export type ProjectFileV11 = {
+  schemaVersion: 11
+  projectName: string
+  savedAt: string
+  maps: GameMap[]
+  zones: Zone[]
   dialogues: Dialogue[]
   quests: Quest[]
   captureProfiles: CaptureProfile[]
@@ -344,7 +365,7 @@ export type ProjectFileV10 = {
 }
 
 /** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV10
+export type ProjectFile = ProjectFileV11
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document — counts, not
@@ -359,6 +380,7 @@ export type ProjectRepairs =
       zones: number
       questDialogueIds: number
       relevance: number
+      dialogueReferences: number
     }
 
 // ---- in-memory app state ----
