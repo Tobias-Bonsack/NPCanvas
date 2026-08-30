@@ -38,13 +38,8 @@ describe('relevancePinBackground', () => {
       const fill = relevancePinBackground(hues)
       const lastStop = /(\d+(?:\.\d+)?)%\)$/.exec(fill)
       expect(lastStop).not.toBeNull()
-      // Floating-point division of 100 by the band count does not always land on the exact
-      // literal "100", so the end of the gradient is checked numerically instead.
-      expect(Number(lastStop?.[1])).toBeCloseTo(100)
-      // One `hsl(` per band actually drawn — real bands cap at six, so a count past that still
-      // shows only six, the last of them the overflow marker rather than a dropped or
-      // duplicated real one.
-      expect(fill.split('hsl(').length - 1).toBe(Math.min(count, 6))
+      expect(Number(lastStop?.[1])).toBeCloseTo(100) // floating-point, not always the literal "100"
+      expect(fill.split('hsl(').length - 1).toBe(Math.min(count, 6)) // caps at six, incl. overflow marker
     }
   })
 

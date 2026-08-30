@@ -61,8 +61,6 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    // Both profiles learned `fc8282fc80808000`; the second called it `p`. Profiles are appended in
-    // the order they were created, so the earlier answer is the one with the readings behind it.
     expect(result.file.glyphs.filter((glyph) => glyph.bits === 'fc8282fc80808000')).toEqual([
       { char: 'P', bits: 'fc8282fc80808000' },
     ])
@@ -188,7 +186,6 @@ describe('parseProjectFile: V9 migration', () => {
 
     expect(result.file.schemaVersion).toBe(10)
     expect(result.file.recorderBindings).toEqual([])
-    // Everything else survives untouched.
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
   })
@@ -238,7 +235,6 @@ describe('parseProjectFile: V6 migration', () => {
 
     expect(result.file.schemaVersion).toBe(10)
     expect(result.file.pendingCaptures).toEqual([])
-    // Everything else survives untouched.
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.dialogues).toHaveLength(4)
   })
@@ -350,8 +346,7 @@ describe('parseProjectFile: V2 migration', () => {
       QUEST_HUES[1],
       QUEST_HUES[2],
     ])
-    // Everything but the added hue survives the migration untouched.
-    expect(result.file.quests.map((quest) => ({ ...quest, hue: undefined }))).toEqual(
+    expect(result.file.quests.map((quest) => ({ ...quest, hue: undefined }))).toEqual( // rest untouched
       (before.quests as Record<string, unknown>[]).map((quest) => ({ ...quest, hue: undefined })),
     )
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
@@ -435,8 +430,7 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
 
-    // `savedAt` is restamped by every write by design, so it is the one field allowed to
-    // differ — everything else, including the ids the migration minted, must survive.
+    // savedAt is restamped on every write, the one field allowed to differ here.
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))

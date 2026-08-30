@@ -7,10 +7,8 @@ const SETTLE_TICKS = 3
 const HELLO: BoxReading = { kind: 'text', text: 'HELLO' }
 const HELLO_THERE: BoxReading = { kind: 'text', text: 'HELLO THERE' }
 const EMPTY: BoxReading = { kind: 'empty' }
-/** The same box on a frame where one tile could not be named — the arrow, or a new character. */
-const HELLO_HELD: BoxReading = { kind: 'held', signature: 'HELLO', unreadable: 1 }
+const HELLO_HELD: BoxReading = { kind: 'held', signature: 'HELLO', unreadable: 1 } // HELLO with one unnamed tile
 
-/** Feeds one reading `times` times over, and returns every settled box it produced. */
 function feed(
   state: SettleState,
   reading: BoxReading,
@@ -34,8 +32,7 @@ function feedAll(
 }
 
 describe('nextSettle', () => {
-  it('says nothing while the box is still typing itself out', () => {
-    // What a console does: one more character per frame, so every tick reads a longer transcript.
+  it('says nothing while the box is still typing itself out, one more character per frame', () => {
     let state = NOTHING_SEEN
     for (const text of ['H', 'HE', 'HEL', 'HELL', 'HELLO']) {
       const step = nextSettle(state, { kind: 'text', text }, SETTLE_TICKS)
@@ -85,8 +82,7 @@ describe('nextSettle', () => {
     expect(blanked.state.signature).toBeNull()
   })
 
-  it('reads the same line again once the box has closed in between', () => {
-    // Two NPCs saying the same sentence is two lines, and the gap is the only thing that says so.
+  it('reads the same line again once the box has closed in between, as two NPCs saying the same sentence must', () => {
     const first = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS)
     const gap = nextSettle(first.state, EMPTY, SETTLE_TICKS)
     const again = feed(gap.state, HELLO, SETTLE_TICKS)
@@ -98,10 +94,9 @@ describe('nextSettle', () => {
     expect(settled).toEqual([HELLO_HELD])
   })
 
+  // Alternates held/text like an unlearned continuation arrow blinking; without the high-water
+  // rule this would reset the count every tick and the box would never settle.
   it('settles through a blinking tile the alphabet cannot name yet', () => {
-    // The continuation arrow before it has been learned: one frame holds it, the next does not,
-    // and the transcript is the same either way. Without the high-water rule this alternation
-    // would reset the count on every tick and the box would never settle at all.
     const { settled } = feedAll(NOTHING_SEEN, [
       HELLO_HELD,
       HELLO,
@@ -110,13 +105,10 @@ describe('nextSettle', () => {
       HELLO_HELD,
       HELLO,
     ])
-    // Written rather than held: the frames where the arrow was dark could be read whole.
-    expect(settled).toEqual([HELLO])
+    expect(settled).toEqual([HELLO]) // written, not held: the arrow-dark frames could be read whole
   })
 
   it('starts over when a box that could not be read grows another unnamed tile', () => {
-    // A box typing itself out in characters the alphabet cannot name: the transcript stands still
-    // at what is legible, and only the count says the box is still filling.
     const typing: BoxReading[] = [
       { kind: 'held', signature: 'HELLO', unreadable: 1 },
       { kind: 'held', signature: 'HELLO', unreadable: 2 },
@@ -165,9 +157,7 @@ describe('boxReadingFrom', () => {
     expect(reading).toEqual({ kind: 'held', signature: 'HELLO', unreadable: 1 })
   })
 
-  it('counts every unnamed tile, not every distinct bitmap', () => {
-    // `readTextBox` deduplicates `unknown` by bitmap, so a line of three unnamed `e`s is one entry
-    // and three tiles — and it is the three that says the box is still filling.
+  it('counts every unnamed tile, not every distinct bitmap deduplicated by readTextBox', () => {
     const reading = boxReadingFrom({
       text: '',
       unknown: [{ column: 2, row: 0, bits: '00ff00ff00ff00ff', context: '▯▯▯' }],

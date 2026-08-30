@@ -15,20 +15,14 @@ import {
   toGlyphBits,
 } from './glyph-matcher.ts'
 
-// Every frame here is built from bitmaps rather than loaded from a screenshot: a fixture image
-// could only be checked by eye, while a synthetic one states what the answer has to be.
-
-/** Deliberately not an integer, and not far from what an emulator window actually produces. */
-const SCALE = 7.1875
+const SCALE = 7.1875 // deliberately not an integer, near what an emulator window actually produces
 const NATIVE_WIDTH = 64
 const NATIVE_HEIGHT = 32
-/** The console screen sits somewhere inside a larger captured window, as it does in practice. */
-const SCREEN_ORIGIN = { x: 13, y: 9 }
+const SCREEN_ORIGIN = { x: 13, y: 9 } // console screen sits inside a larger captured window
 const FRAME_WIDTH = 480
 const FRAME_HEIGHT = 248
 
-/** An SGB palette: the box is off-white and blue-tinted, the glyphs blue-black rather than black. */
-const FIELD: Pixel = [232, 236, 248]
+const FIELD: Pixel = [232, 236, 248] // SGB palette: off-white/blue-tinted box, blue-black glyphs
 const INK: Pixel = [40, 48, 88]
 
 type Pixel = [number, number, number]
@@ -66,8 +60,7 @@ const SHARP_S = bitmap([
   '........',
 ])
 
-/** Pokémon's blinking continuation arrow: a tile, and not a character. */
-const ARROW = bitmap([
+const ARROW = bitmap([ // Pokémon's blinking continuation arrow: a tile, not a character
   '........',
   '........',
   '........',
@@ -98,9 +91,7 @@ describe('sampleNative', () => {
     expect(Array.from(bits)).toEqual(Array.from(native.ink))
   })
 
-  it('samples the centre of a native pixel, not its edge', () => {
-    // A single ink pixel is 7.1875 frame pixels wide; sampling an edge would land in the field
-    // beside it and lose the pixel entirely.
+  it('samples the centre of a native pixel, not its edge, where a 7.1875-wide ink pixel would be lost', () => {
     const native = blankNative()
     setPixel(native, 17, 5)
     const frame = toFrame(native)
@@ -177,9 +168,7 @@ describe('binarise', () => {
     expect(Array.from(bits)).toEqual(Array.from(binarise(sampled, threshold)))
   })
 
-  it('zeroes a reused destination rather than keeping a stale bit past the region', () => {
-    // A wide rect binarised first, then a reused destination asked for a narrower one: the bytes
-    // the narrower rect no longer covers must not still read `1` from the first call.
+  it('zeroes a reused destination rather than keeping a stale bit from a wider prior call', () => {
     const wide = blankNative()
     drawTile(wide, D, 0, 0)
     const wideSampled = sampleNative(toFrame(wide), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
@@ -216,8 +205,6 @@ describe('readTiles', () => {
 
     const grid = readTiles(bits, NATIVE_WIDTH, { x: 0, y: 0, width: 40, height: 20 })
 
-    // 5 columns × 2 rows: the last cell's index is `columns * rows - 1`, whose column and row
-    // `index % columns` / `Math.floor(index / columns)` derive back to.
     expect(grid.columns).toBe(5)
     expect(grid.rows).toBe(2)
   })
@@ -258,8 +245,8 @@ describe('matchGlyph', () => {
     expect(matchGlyph(flipBits(D, [[4, 2]]), ALPHABET)).toBe(null)
   })
 
-  // The bitmaps a Yellow capture actually produced. Under a four-bit tolerance an alphabet holding
-  // `P` and `e` but not these read "PPOPESSOP!" for "PROFESSOR!" — the regression this pins.
+  // Regression: under a four-bit tolerance, an alphabet holding `P`/`e` but not these read
+  // "PPOPESSOP!" for "PROFESSOR!" — bitmaps a real Yellow capture produced.
   it('refuses a character close to one it knows instead of reading that one', () => {
     const known: Glyph[] = [
       { char: 'P', bits: 'fc8282fc80808000' },
@@ -272,8 +259,7 @@ describe('matchGlyph', () => {
     }
   })
 
-  // The Gen 1 font's own `o` and `c` are one pixel apart, and both have to stay readable.
-  it('matches a bit-exact tile with a candidate one bit away', () => {
+  it('matches a bit-exact tile with a candidate one bit away, as Gen 1\'s own o/c one-pixel gap requires', () => {
     const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
     expect(matchGlyph(tile, [...ALPHABET, nearlyD])?.char).toBe('D')
@@ -299,9 +285,7 @@ describe('matchGlyph', () => {
     expect(matchGlyph(tile, alphabet)?.char).toBe('D')
   })
 
-  it('hits after the cached index is replaced by an equal-valued but differently-identified array', () => {
-    // Two calls with equal-but-distinct arrays exercise the module-level cache the way a newly
-    // learned tile would: `mergeGlyphs` always returns a fresh array, never mutates in place.
+  it('hits after the cached index is replaced by an equal-valued but differently-identified array, as mergeGlyphs always returns', () => {
     expect(matchGlyph(tile, [...ALPHABET])?.char).toBe('D')
     expect(matchGlyph(tile, [...ALPHABET])?.char).toBe('D')
 
@@ -319,9 +303,7 @@ describe('forgetGlyph', () => {
     ])
   })
 
-  it('reaches a tile that was wrongly marked as not text — the case re-learning cannot', () => {
-    // Such a glyph matches silently from then on and never lands in `unknown`, so the learner
-    // would never ask about it again. Forgetting it is the only way back to being asked.
+  it('reaches a tile wrongly marked as not text, which re-learning cannot since it never lands in unknown again', () => {
     const forgotten = forgetGlyph([...ALPHABET], ARROW)
     expect(forgotten.some((glyph) => glyph.bits === ARROW)).toBe(false)
   })
@@ -334,10 +316,8 @@ describe('forgetGlyph', () => {
     ])
   })
 
-  it('hands back the same array when the bitmap is not in the alphabet', () => {
+  it('hands back the identical array reference when the bitmap is not in the alphabet, so the reducer costs it no undo step', () => {
     const alphabet = [...ALPHABET]
-    // Reference equality, not a deep match: it is what lets the reducer tell a removal of nothing
-    // from a real one, and cost it no undo step.
     expect(forgetGlyph(alphabet, '0000000000000000')).toBe(alphabet)
   })
 
@@ -401,15 +381,13 @@ describe('readTextBox', () => {
     expect(reading.unknown).toMatchObject([{ column: 2, row: 0, bits: SHARP_S, context: 'DU▯' }])
   })
 
-  it('asks about a repeated character once, and still counts both tiles', () => {
+  it('asks about a repeated character once, and still counts both tiles for box-settle.ts to read', () => {
     const native = blankNative()
     write(native, 0, 'DUU', { D, U })
     const reading = readTextBox(toFrame(native), profile(), [{ char: 'D', bits: D }])
 
     expect(reading.unknown.map((tile) => tile.column)).toEqual([1])
     expect(reading.unknown[0].bits).toBe(U)
-    // One question, two tiles: `box-settle.ts` reads the count to tell a box that is still filling
-    // in an unnamed character from one that has come to rest.
     expect(reading.unreadable).toBe(2)
   })
 
@@ -471,9 +449,7 @@ describe('readTextBox', () => {
       ALPHABET,
     )
 
-    // The second tile of the rect falls entirely outside the native image and reads as a space,
-    // which the final trim then drops.
-    expect(reading).toEqual({ text: 'D', unknown: [], unreadable: 0 })
+    expect(reading).toEqual({ text: 'D', unknown: [], unreadable: 0 }) // 2nd tile off-image reads space, trimmed
   })
 })
 
@@ -510,8 +486,7 @@ describe('readTextBox caching', () => {
     const testProfile = profile({ id: asCaptureProfileId('cache-test-3') })
     const first = readTextBox(toFrame(native), testProfile, ALPHABET)
 
-    // Column 6, row 3 sits well outside TEXT_RECT (tile columns 1..5, row 1).
-    drawTile(native, ARROW, 6, 3)
+    drawTile(native, ARROW, 6, 3) // outside TEXT_RECT (tile columns 1..5, row 1)
     const second = readTextBox(toFrame(native), testProfile, ALPHABET)
 
     expect(second).toBe(first)
@@ -574,15 +549,13 @@ describe('readTextBox scratch reuse', () => {
     expect(second.text).toBe('UD')
   })
 
-  it('keeps an unknown tile\'s own bytes after a later read reuses the scratch buffers', () => {
+  it('keeps an unknown tile\'s own bytes after an unrelated read reuses the scratch buffers', () => {
     const testProfile = profile({ id: asCaptureProfileId('scratch-test-2') })
     const native = blankNative()
     write(native, 0, 'Dß', { D, ß: SHARP_S })
     const first = readTextBox(toFrame(native), testProfile, [{ char: 'D', bits: D }])
     const firstUnknownBits = first.unknown[0]?.bits
 
-    // A second, unrelated read through the same profile — and therefore the same reused scratch
-    // buffers — must not retroactively change what the first read already reported.
     const other = blankNative()
     write(other, 0, 'UU', { U })
     readTextBox(toFrame(other), testProfile, ALPHABET)
@@ -604,10 +577,7 @@ describe('readTextBox scratch reuse', () => {
       nativeHeight: NATIVE_HEIGHT * 2,
       screenRect: { x: SCREEN_ORIGIN.x, y: SCREEN_ORIGIN.y, width: NATIVE_WIDTH * SCALE, height: NATIVE_HEIGHT * SCALE },
     })
-    // A profile this different from the synthetic frame's own console screen reads as background
-    // rather than throwing — the point of this case is that switching scratch dimensions works at
-    // all, not what it transcribes.
-    expect(() => readTextBox(toFrame(native), large, ALPHABET)).not.toThrow()
+    expect(() => readTextBox(toFrame(native), large, ALPHABET)).not.toThrow() // dimension mismatch reads as background, not a crash
   })
 })
 
@@ -667,7 +637,6 @@ function mustParse(bits: string): Uint8Array {
   return rows
 }
 
-/** One glyph stamped at a tile position on the console screen. */
 function drawTile(image: NativeImage, bits: string, column: number, row: number): void {
   const rows = mustParse(bits)
   for (let y = 0; y < 8; y++) {
@@ -677,7 +646,7 @@ function drawTile(image: NativeImage, bits: string, column: number, row: number)
   }
 }
 
-/** A line of text inside the text rect, by character, with a space meaning an untouched tile. */
+/** A space in `text` leaves the corresponding tile untouched. */
 function write(image: NativeImage, line: number, text: string, font: Record<string, string>): void {
   Array.from(text).forEach((char, index) => {
     const bits = font[char]
@@ -686,10 +655,7 @@ function write(image: NativeImage, line: number, text: string, font: Record<stri
   })
 }
 
-/**
- * The native image as a captured frame: nearest-neighbour upscaled by a non-integer factor and
- * painted in two palette colours, which is what an emulator window hands the capture API.
- */
+/** The native image nearest-neighbour upscaled by a non-integer factor, as an emulator window hands the capture API. */
 function toFrame(image: NativeImage): PixelBuffer {
   const data = new Uint8ClampedArray(FRAME_WIDTH * FRAME_HEIGHT * 4)
   for (let y = 0; y < FRAME_HEIGHT; y++) {
@@ -699,9 +665,7 @@ function toFrame(image: NativeImage): PixelBuffer {
       const inside =
         nativeX >= 0 && nativeX < image.width && nativeY >= 0 && nativeY < image.height
       const isInk = inside && image.ink[nativeY * image.width + nativeX] === 1
-      // Outside the screen is the emulator window's own chrome — dark, and deliberately not one
-      // of the two box colours, so a screen rect that was off by a pixel would show up as noise.
-      const colour: Pixel = isInk ? INK : inside ? FIELD : [16, 16, 16]
+      const colour: Pixel = isInk ? INK : inside ? FIELD : [16, 16, 16] // window chrome, not one of the box colours
       const offset = (y * FRAME_WIDTH + x) * 4
       data[offset] = colour[0]
       data[offset + 1] = colour[1]
@@ -712,8 +676,7 @@ function toFrame(image: NativeImage): PixelBuffer {
   return { width: FRAME_WIDTH, height: FRAME_HEIGHT, data }
 }
 
-/** A sub-rectangle of a frame, starting at `origin` and running to the frame's far edge — what
- * `grabFrame`'s crop hands `sampleNative` once `origin` is not `{ x: 0, y: 0 }`. */
+/** What `grabFrame`'s crop hands `sampleNative` once `origin` is not `{ x: 0, y: 0 }`. */
 function cropFrame(frame: PixelBuffer, origin: { x: number; y: number }): PixelBuffer {
   const width = frame.width - origin.x
   const height = frame.height - origin.y

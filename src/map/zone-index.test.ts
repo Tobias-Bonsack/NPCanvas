@@ -45,8 +45,6 @@ function dialogue(id: string, mapId: MapId, position: Point): Dialogue {
   }
 }
 
-// Two maps that share no canvas at all — the layout every import produces, and the one under
-// which membership is the map-local question it always was.
 const HARBOUR_MAP = gameMap(HARBOUR, { origin: { x: 0, y: 0 } })
 const CAVES_MAP = gameMap(CAVES, { origin: { x: 1000, y: 0 } })
 const MAPS = [HARBOUR_MAP, CAVES_MAP]
@@ -75,7 +73,6 @@ describe('indexDialoguesByZone', () => {
   })
 
   it('never matches a zone on a map lying elsewhere on the canvas, however the numbers line up', () => {
-    // The same map-local point, on a map whose canvas footprint is nowhere near those zones.
     const elsewhere = dialogue('d1', CAVES, { x: 20, y: 20 })
     expect(indexDialoguesByZone([elsewhere], [TOWN, SHOP], MAPS).get(elsewhere.id)).toEqual([])
   })
@@ -111,25 +108,18 @@ describe('indexDialoguesByZone', () => {
   })
 })
 
-/**
- * The bug this whole canvas-space rule exists for: an interior imported as its own map and dropped
- * onto the town it stands in. Every pin inside it was heard in that town, and the old map-local
- * rule answered "outside any zone" for all of them.
- */
+// The bug canvas-space membership exists for: an interior imported as its own map and dropped onto
+// the town it stands in, where the old map-local rule answered "outside every zone" for every pin.
 describe('indexDialoguesByZone: maps overlaid on other maps', () => {
   const OVERWORLD = asMapId('overworld')
   const HOUSE = asMapId('house')
 
   const OVERWORLD_MAP = gameMap(OVERWORLD, { origin: { x: 0, y: 0 }, size: 400 })
-  // Dropped onto the market at half size, so one of its own pixels is half a canvas unit: canvas
-  // (100,100)-(200,200).
-  const HOUSE_MAP = gameMap(HOUSE, { origin: { x: 100, y: 100 }, scale: 0.5, size: 200 })
+  const HOUSE_MAP = gameMap(HOUSE, { origin: { x: 100, y: 100 }, scale: 0.5, size: 200 }) // canvas (100,100)-(200,200)
   const OVERLAID = [OVERWORLD_MAP, HOUSE_MAP]
 
   const MARKET = zone('market', OVERWORLD, { x: 100, y: 100, width: 150, height: 150 })
-  // The whole house, in the house's own coordinates. Larger than the market as written — 40000
-  // against 22500 — and smaller than it on the canvas, which is the comparison that decides.
-  const KITCHEN = zone('kitchen', HOUSE, { x: 0, y: 0, width: 200, height: 200 })
+  const KITCHEN = zone('kitchen', HOUSE, { x: 0, y: 0, width: 200, height: 200 }) // raw area 40000 > market's 22500, but smaller on canvas
 
   it('gives a pin on the overlaid map the zone underneath it', () => {
     const indoors = dialogue('indoors', HOUSE, { x: 100, y: 100 })
@@ -147,8 +137,7 @@ describe('indexDialoguesByZone: maps overlaid on other maps', () => {
   })
 
   it('reads through the overlay in both directions, because a pin is only ever a point', () => {
-    // Under the house, on the overworld: the same canvas point, so the same two zones.
-    const outdoors = dialogue('outdoors', OVERWORLD, { x: 150, y: 150 })
+    const outdoors = dialogue('outdoors', OVERWORLD, { x: 150, y: 150 }) // same canvas point as `indoors` above
     expect(indexDialoguesByZone([outdoors], [MARKET, KITCHEN], OVERLAID).get(outdoors.id)).toEqual([
       KITCHEN.id,
       MARKET.id,
@@ -156,9 +145,7 @@ describe('indexDialoguesByZone: maps overlaid on other maps', () => {
   })
 
   it('stops at the edge of the zone, not at the edge of the overlaid map', () => {
-    // A zone the house only partly covers: canvas (0,0)-(150,150) against the house's
-    // (100,100)-(200,200). A pin in the uncovered corner of the house is outside it, which is
-    // what makes this per pin rather than per map.
+    // Zone covers canvas (0,0)-(150,150); the house is (100,100)-(200,200) — only partly overlapping.
     const corner = zone('corner', OVERWORLD, { x: 0, y: 0, width: 150, height: 150 })
     const indoors = dialogue('indoors', HOUSE, { x: 190, y: 190 }) // canvas (195,195)
     expect(indexDialoguesByZone([indoors], [corner], OVERLAID).get(indoors.id)).toEqual([])
@@ -167,11 +154,8 @@ describe('indexDialoguesByZone: maps overlaid on other maps', () => {
   })
 })
 
-/**
- * Three screens ask the same question of the same three arrays, and `App` unmounts the view on
- * every route change — so the cache is what makes navigating between them free. Identity in,
- * identity out; anything else recomputes.
- */
+// Three screens ask the same question of the same three arrays across route-change remounts, so
+// the cache (identity in, identity out) is what makes navigating between them free.
 describe('indexDialoguesByZone: caching', () => {
   const ZONES = [TOWN, SHOP]
   const DIALOGUES = [dialogue('d1', HARBOUR, { x: 20, y: 20 })]
@@ -191,23 +175,18 @@ describe('indexDialoguesByZone: caching', () => {
   it('serves the same answer it computed, not merely an equal one', () => {
     const other = [dialogue('d2', HARBOUR, { x: 90, y: 90 })]
     const first = indexDialoguesByZone(DIALOGUES, ZONES, MAPS)
-    // A different question in between: the one slot now describes that one instead.
-    indexDialoguesByZone(other, ZONES, MAPS)
+    indexDialoguesByZone(other, ZONES, MAPS) // a different question in between
     const again = indexDialoguesByZone(DIALOGUES, ZONES, MAPS)
     expect(again).not.toBe(first)
     expect([...again]).toEqual([...first])
   })
 })
 
-/**
- * The incremental path exists only to be indistinguishable from the definition it replaces, so
- * every case here compares it against a full build of the same input rather than against a
- * hand-written expectation.
- */
+// The incremental path must be indistinguishable from the definition it replaces, so every case
+// compares it against a full rebuild rather than a hand-written expectation.
 describe('reindexMovedZone', () => {
   const INTERIOR = asMapId('interior')
-  // Laid over the town, clear of the shop until the shop is dragged onto it: canvas (40,40)-(60,60).
-  const INTERIOR_MAP = gameMap(INTERIOR, { origin: { x: 40, y: 40 }, size: 20 })
+  const INTERIOR_MAP = gameMap(INTERIOR, { origin: { x: 40, y: 40 }, size: 20 }) // canvas (40,40)-(60,60), clear of the shop
   const DRAG_MAPS = [...MAPS, INTERIOR_MAP]
 
   const CAVE = zone('cave', CAVES, { x: 0, y: 0, width: 100, height: 100 })
@@ -231,8 +210,8 @@ describe('reindexMovedZone', () => {
     const offsets: Point[] = [
       { x: 0, y: 0 },
       { x: 5, y: 5 },
-      // Onto the interior map, whose pin is on neither the shop's map nor the shop's coordinates.
-      { x: 35, y: 35 },
+      { x: 35, y: 35 }, // onto the interior map, sharing neither the shop's map nor its coordinates
+
       { x: 70, y: 70 },
       { x: -40, y: -40 },
       { x: 480, y: 480 },
@@ -255,8 +234,7 @@ describe('reindexMovedZone', () => {
 
   it('re-inserts the zone where its area puts it, not wherever it left from', () => {
     const previous = indexDialoguesByZone(DIALOGUES, ZONES, DRAG_MAPS)
-    // Out of the pin, then back onto it: the small zone has to come first again.
-    const away = reindexMovedZone(previous, DIALOGUES, shopAt({ x: 60, y: 60 }), DRAG_MAPS, SHOP.id)
+    const away = reindexMovedZone(previous, DIALOGUES, shopAt({ x: 60, y: 60 }), DRAG_MAPS, SHOP.id) // out of the pin
     expect(away.get(DIALOGUES[0].id)).toEqual([TOWN.id])
     const back = reindexMovedZone(away, DIALOGUES, shopAt({ x: 0, y: 0 }), DRAG_MAPS, SHOP.id)
     expect(back.get(DIALOGUES[0].id)).toEqual([SHOP.id, TOWN.id])
@@ -264,8 +242,7 @@ describe('reindexMovedZone', () => {
 
   it('returns the previous index itself when the move changed no membership', () => {
     const previous = indexDialoguesByZone(DIALOGUES, ZONES, DRAG_MAPS)
-    // A pixel of travel, with every pin far from the edge it would cross.
-    expect(reindexMovedZone(previous, DIALOGUES, shopAt({ x: 1, y: 1 }), DRAG_MAPS, SHOP.id)).toBe(
+    expect(reindexMovedZone(previous, DIALOGUES, shopAt({ x: 1, y: 1 }), DRAG_MAPS, SHOP.id)).toBe( // a pixel of travel, no edge crossed
       previous,
     )
   })

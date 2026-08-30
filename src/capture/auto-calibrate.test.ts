@@ -9,9 +9,6 @@ import {
 } from './auto-calibrate.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 
-// Frames are built here rather than loaded: a fixture screenshot could only be checked by eye,
-// while a synthetic upscale states what the pitch and the origin have to come back as.
-
 const NATIVE_WIDTH = 64
 const NATIVE_HEIGHT = 64
 const FRAME_WIDTH = 640
@@ -49,8 +46,7 @@ describe('edgeEnergy', () => {
     const region = { x: ORIGIN.x, y: ORIGIN.y, width: NATIVE_WIDTH * SCALE, height: NATIVE_HEIGHT * SCALE }
 
     const energy = edgeEnergy(frame, region, 'x')
-    // The 8th native boundary, and a column two frame pixels inside the run before it.
-    const boundary = Math.round(8 * SCALE)
+    const boundary = Math.round(8 * SCALE) // the 8th native boundary
 
     expect(energy[boundary]).toBeGreaterThan(0)
     expect(energy[boundary - 2]).toBe(0)
@@ -74,8 +70,7 @@ describe('fitLattice', () => {
     const energy = new Float64Array(600)
     for (let k = 0; k < 80; k++) energy[Math.round(k * 7.1875)] = 100
 
-    // 3.59 is exactly half the answer, and answers just as strongly without this rule.
-    expect(fitLattice(energy, 3, 9)?.pitch).toBeCloseTo(7.1875, 2)
+    expect(fitLattice(energy, 3, 9)?.pitch).toBeCloseTo(7.1875, 2) // not its 3.59 half-harmonic
   })
 
   it('refuses a signal that does not repeat', () => {
@@ -116,8 +111,7 @@ describe('detectScreenRect', () => {
 
   it('is not thrown off by a second window beside the screen', () => {
     const frame = frameOf(patterned(), SCALE, SCALE)
-    // A flat panel to the right of the emulator: inside the content bounds, and on no lattice.
-    fill(frame, { x: 520, y: 40, width: 100, height: 300 }, [90, 90, 110])
+    fill(frame, { x: 520, y: 40, width: 100, height: 300 }, [90, 90, 110]) // flat panel, no lattice
 
     const detected = detectScreenRect(frame, NATIVE_WIDTH, NATIVE_HEIGHT)
 
@@ -131,9 +125,7 @@ describe('detectScreenRect', () => {
 
   it('places the origin past a title bar the content bounds swallowed', () => {
     const frame = frameOf(patterned(), SCALE, SCALE)
-    // The strip an emulator's own window puts above its output — flat, and therefore on no
-    // lattice. Anchoring the origin at the content bounds would start the screen four native
-    // pixels early, which is the failure this window search exists to prevent.
+    // A title-bar strip above the content bounds; anchoring there would start the screen early.
     fill(frame, { x: ORIGIN.x, y: ORIGIN.y - 15, width: 460, height: 15 }, [70, 70, 80])
 
     const detected = detectScreenRect(frame, NATIVE_WIDTH, NATIVE_HEIGHT)
@@ -145,9 +137,7 @@ describe('detectScreenRect', () => {
   it('measures a screen the source scaled smoothly, off its curvature', () => {
     const detected = detectScreenRect(smoothFrame(patterned(), SCALE, SCALE), NATIVE_WIDTH, NATIVE_HEIGHT)
 
-    // Interpolation leaves the first difference flat, so this can only have come from `ramp` —
-    // and the two combs sit half a native pixel apart, which the origin has to account for.
-    expect(detected?.horizontal.signal).toBe('ramp')
+    expect(detected?.horizontal.signal).toBe('ramp') // interpolation leaves the first diff flat
     expect(detected?.vertical.signal).toBe('ramp')
     expect(detected?.horizontal.lattice.pitch).toBeCloseTo(SCALE, 2)
     expect(detected?.screenRect).toEqual({
@@ -176,9 +166,7 @@ describe('detectTextRect', () => {
   it('finds the box by its border and stays inside it', () => {
     const rect = detectTextRect(nativeWithTextBox())
 
-    // The border sits on native rows 39 and 63 and columns 7 and 56, so the whole tiles strictly
-    // inside it are two rows starting at 40 and six columns starting at 8 — never the border's own.
-    expect(rect).toEqual({ x: 8, y: 40, width: 48, height: 16 })
+    expect(rect).toEqual({ x: 8, y: 40, width: 48, height: 16 }) // whole tiles strictly inside the border
   })
 
   it('finds nothing in an empty screen', () => {
@@ -190,19 +178,12 @@ describe('detectTextRect', () => {
 
 // ---- synthetic frames ----
 
-/**
- * A native image with content on all four edges, so its bounding box is the screen itself.
- *
- * The border is the *bright* colour on purpose: an emulator draws its output against dark window
- * chrome, so the screen's own outline is the strongest edge in the frame — which is what
- * `latticeOrigin` anchors on, and what a border painted almost the colour of the chrome would take
- * away.
- */
+// Content on all four edges (bright, against dark window chrome) so the bounding box is the
+// screen itself and every native pixel boundary is a candidate boundary somewhere.
 function patterned(): (x: number, y: number) => Pixel {
   return (x, y) => {
     const onEdge = x === 0 || y === 0 || x === NATIVE_WIDTH - 1 || y === NATIVE_HEIGHT - 1
     if (onEdge) return FIELD
-    // Deliberately busy: every native pixel boundary should be a candidate boundary somewhere.
     return (x * 7 + y * 5) % 3 === 0 ? INK : FIELD
   }
 }
@@ -229,13 +210,11 @@ function nativeWithTextBox(): PixelBuffer {
       ((x === left || x === right) && y >= top && y <= bottom)
     if (onBorder) return INK
     const inside = x > left && x < right && y > top && y < bottom
-    // A sparse scatter standing in for text: enough ink to be a line, not enough to be a wall.
-    if (inside && x % 4 === 1 && y % 5 === 2) return INK
+    if (inside && x % 4 === 1 && y % 5 === 2) return INK // sparse text-like scatter, not a wall
     return FIELD
   })
 }
 
-/** The native image nearest-neighbour upscaled onto window chrome, as a capture delivers it. */
 function frameOf(
   paint: (x: number, y: number) => Pixel,
   scaleX: number,
@@ -253,10 +232,7 @@ function frameOf(
   return frame
 }
 
-/**
- * The same upscale, interpolated rather than repeated — what a window scaled by the compositor,
- * or by an emulator that filters its output, actually delivers.
- */
+// Interpolated rather than repeated, as a compositor-scaled or filtered emulator window delivers.
 function smoothFrame(
   paint: (x: number, y: number) => Pixel,
   scaleX: number,
@@ -292,14 +268,8 @@ function clampNative(value: number, bound: number): number {
   return Math.min(bound - 1, Math.max(0, value))
 }
 
-/**
- * A repeatable generator with no structure in it — xorshift32, not a linear congruential one.
- *
- * The distinction is the whole point of the frame this feeds: an LCG's low bits cycle with short
- * periods, so a frame painted from them holds a lattice, and a test that expects such a frame to be
- * refused is testing nothing. Measured, this generator's frames score around 1 for prominence at
- * every size, which is what a shuffle of noise should score.
- */
+// xorshift32, not an LCG — an LCG's low bits cycle with short periods, holding a lattice a
+// "refuse this noise" test would then wrongly pass.
 function noise(seed: number): () => number {
   let state = seed >>> 0
   return () => {

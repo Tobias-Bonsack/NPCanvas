@@ -1,15 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { dispatch, getState, subscribe } from './store.ts'
 
-/**
- * The contract every `toBe(state)` assertion in `reducer.test.ts` exists to serve: a reducer
- * that returns its input reference must not wake a single subscriber. Without it those tests
- * pin an equality nothing observes, and a React tree re-renders on every rejected edit.
- *
- * Tested through the real module rather than a fabricated store: it is the module-level
- * singleton the app dispatches into, and a copy would prove nothing about it. The store starts
- * `disconnected`, where every document action is a no-op, so these need no project at all.
- */
+// Pins the contract every `toBe(state)` assertion in reducer.test.ts relies on: a reducer returning
+// its input reference must not wake a subscriber. Tested against the real module-level store,
+// which starts `disconnected` (every document action a no-op), so no project setup is needed.
 describe('dispatch: notifying subscribers', () => {
   it('does not notify when reduce returns the identical state', () => {
     let notified = 0
@@ -35,8 +29,7 @@ describe('dispatch: notifying subscribers', () => {
     expect(getState()).toEqual({ kind: 'loading', directoryName: 'Harbour' })
     expect(notified).toBe(1)
 
-    // The same action again is the same state by value but a new object, so it notifies: the
-    // store compares references and never inspects what changed.
+    // Same action again: equal by value, new object, so it notifies (reference compare only).
     dispatch({ kind: 'project/loading', directoryName: 'Harbour' })
     expect(notified).toBe(2)
 
@@ -46,19 +39,9 @@ describe('dispatch: notifying subscribers', () => {
   })
 })
 
-/**
- * Autosave's listener dispatches `save/pending` synchronously the moment it sees a document
- * edit, so re-entrancy is not a hypothetical here: it happens on every keystroke that lands.
- */
-/**
- * Autosave's listener dispatches `save/pending` synchronously the moment it sees a document
- * edit, so re-entrancy is not a hypothetical here: it happens on every edit that lands.
- *
- * Every listener is unsubscribed in a `finally`, because the store is the app's real singleton
- * and a listener leaked by a failing assertion would run inside every test after it.
- */
+// Re-entrancy is not hypothetical: autosave's listener dispatches `save/pending` synchronously on
+// every edit. Listeners unsubscribe in `finally` since the store is the app's real singleton.
 describe('dispatch: re-entrancy', () => {
-  /** What the store holds, in a form a listener can record and a test can read back. */
   function label(): string {
     const state = getState()
     return state.kind === 'loading' ? `loading:${state.directoryName}` : state.kind
@@ -70,7 +53,6 @@ describe('dispatch: re-entrancy', () => {
     let dispatched = false
     try {
       unsubscribes.push(subscribe(() => seen.push(`first ${label()}`)))
-      // The middle one dispatches, as autosave's listener does.
       unsubscribes.push(
         subscribe(() => {
           if (dispatched) return
@@ -82,9 +64,7 @@ describe('dispatch: re-entrancy', () => {
 
       dispatch({ kind: 'project/loading', directoryName: 'Harbour' })
 
-      // Both listeners saw Harbour in the first pass and Cliffs in the second. Run nested, the
-      // one registered after the dispatcher would have seen Cliffs while the one before it saw
-      // Harbour — one change, two different answers, in the same pass.
+      // Nested, "last" would see Cliffs while "first" saw Harbour — two answers in one pass.
       expect(seen).toEqual([
         'first loading:Harbour',
         'last loading:Harbour',
@@ -117,7 +97,6 @@ describe('dispatch: re-entrancy', () => {
 
       dispatch({ kind: 'project/loading', directoryName: 'Harbour' })
 
-      // Two changes, two notifications — not three, and not one nested inside the other.
       expect(notified).toBe(2)
     } finally {
       for (const unsubscribe of unsubscribes) unsubscribe()
@@ -139,7 +118,6 @@ describe('dispatch: re-entrancy', () => {
       dispatch({ kind: 'project/loading', directoryName: 'Harbour' })
       expect(seen).toEqual(['joiner'])
 
-      // Subscribed from the next change on, which is the only sane reading of "subscribe".
       dispatch({ kind: 'project/loading', directoryName: 'Cliffs' })
       expect(seen).toEqual(['joiner', 'joiner', 'latecomer'])
     } finally {

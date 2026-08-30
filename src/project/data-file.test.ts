@@ -3,10 +3,8 @@ import { MAX_MAP_SCALE, MIN_MAP_SCALE } from '../map/canvas-layout.ts'
 import type { ParseResult } from './data-file.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
-// A document exercising every branch of the reader: a line with no pictures, all three media
-// kinds, a polygon, a quest and the four relevance tags. Rebuilt per test so a mutation cannot
-// leak into the next case. Tag ids deliberately match the old V4 slugs, which is what lets
-// `v4Document` below reuse these dialogues' `relevance` arrays verbatim.
+// Exercises every reader branch; rebuilt per test to avoid cross-test mutation. Tag ids match the
+// old V4 slugs so `v4Document` below can reuse these dialogues' `relevance` arrays verbatim.
 export function validDocument(): Record<string, unknown> {
   return {
     schemaVersion: 5,
@@ -156,8 +154,7 @@ describe('parseProjectFile', () => {
     const roundTripped = parseProjectFile(serializeProject(result.file))
     expect(roundTripped.ok).toBe(true)
     if (!roundTripped.ok) return
-    // Everything but `savedAt` survives; `savedAt` is restamped on every write by design.
-    expect({ ...roundTripped.file, savedAt: '' }).toEqual({ ...result.file, savedAt: '' })
+    expect({ ...roundTripped.file, savedAt: '' }).toEqual({ ...result.file, savedAt: '' }) // savedAt is restamped on every write
   })
 
   it('tolerates unknown extra keys and drops them on the next write', () => {
@@ -217,10 +214,7 @@ export function v4Document(): Record<string, unknown> {
   return data
 }
 
-/**
- * A V3 document: one exclusive content slot per dialogue, and no capture profiles. All four old
- * kinds, because the V3→V4 migration has a branch per kind.
- */
+/** A V3 document: one exclusive content slot per dialogue, all four old kinds, no capture profiles. */
 export function v3Document(): Record<string, unknown> {
   const data = v4Document()
   data.schemaVersion = 3
@@ -655,8 +649,7 @@ describe('serializeProject', () => {
     expect(written.ok).toBe(true)
     if (!written.ok) return
     expect(written.file.savedAt).not.toBe(parsed.file.savedAt)
-    // ISO 8601 sorts chronologically, so string comparison is a real time comparison.
-    expect(written.file.savedAt >= before).toBe(true)
+    expect(written.file.savedAt >= before).toBe(true) // ISO 8601 sorts chronologically
   })
 })
 
@@ -777,10 +770,9 @@ describe('parseProjectFile: identity', () => {
     ['dialogues', 'dialogue-1'],
     ['quests', 'quest-1'],
     ['relevanceTags', 'out-of-world'],
-  ])('rejects two %s sharing an id, naming the id', (key, id) => {
+  ])('rejects two %s sharing an id, naming the id of the appended duplicate', (key, id) => {
     const data = validDocument()
     const records = data[key] as Record<string, unknown>[]
-    // The duplicate is appended, so the message points at the copy rather than the original.
     data[key] = [...records, { ...records[0] }]
     expect(rejectionMessage(data)).toBe(
       `${key}[${String(records.length)}].id: expected an id not already used, but "${id}" is`,
@@ -824,8 +816,6 @@ describe('parseProjectFile: documents that are not documents', () => {
   })
 
   it('names the missing field when a V2 document is hand-bumped to V3', () => {
-    // The message *is* the versioning scheme working: V2 quests carry no hue, so claiming to
-    // be V3 asks the V3 reader for a field the writer never wrote, and it says which.
     const data = v2Document()
     data.schemaVersion = 3
     expect(rejectionMessage(data)).toBe('quests[0].hue: expected a finite number')
@@ -840,7 +830,6 @@ describe('parseProjectFile: documents that are not documents', () => {
 })
 
 describe('parseProjectFile: repairs dangling references rather than rejecting', () => {
-  /** Fails the test if the document is rejected, so every repair case asserts on a real file. */
   function repaired(data: unknown): Extract<ParseResult, { ok: true }> {
     const result = parseProjectFile(JSON.stringify(data))
     if (!result.ok) throw new Error(`expected the document to parse, but: ${result.message}`)
@@ -862,7 +851,6 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       'dialogue-3',
       'dialogue-4',
     ])
-    // 'dialogue-1' went with the dialogue it named; 'dialogue-4' survives untouched.
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-4'])
     expect(result.repairs).toEqual({
       kind: 'repaired',
@@ -923,9 +911,8 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     })
   })
 
-  it('counts every dropped record when a whole map is missing', () => {
+  it('counts every dropped record when the document\'s one map is missing, dangling every zone and dialogue at once', () => {
     const data = validDocument()
-    // The one map the document has, gone: every zone and every dialogue dangles at once.
     data.maps = []
 
     const result = repaired(data)
@@ -966,8 +953,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
   it('does not reject over a file name only a dropped record still claims', () => {
     const data = validDocument()
     const dialogues = data.dialogues as Record<string, unknown>[]
-    // A copy-pasted block, pointing at a map that is gone *and* at a file another dialogue
-    // owns. Uniqueness is checked after the repair, so the surviving document decides.
+    // Points at a gone map *and* a file another dialogue owns — uniqueness is checked post-repair.
     dialogues.push({
       ...dialogues[2],
       id: 'dialogue-5',

@@ -48,7 +48,6 @@ function ready(
   }
 }
 
-/** Narrows a reduced state back to `ready`, so an assertion stays one expression. */
 function readyOf(state: AppState): ReadyState {
   if (state.kind !== 'ready') throw new Error(`expected ready, got ${state.kind}`)
   return state
@@ -162,8 +161,6 @@ function twoMapProject(): ProjectFile {
       dialogue('dialogue-forest', forest.id),
     ],
     quests: [quest('quest-1', ['dialogue-harbour', 'dialogue-forest'])],
-    // Fixed rather than the random ids `createEmptyProject` seeds, so a relevance test can name
-    // an id and know exactly which tag it addresses.
     relevanceTags: [OUT_OF_WORLD, WORLDBUILDING, PEOPLEBUILDING, OTHER],
   }
 }
@@ -313,8 +310,6 @@ describe('reduce: connection actions', () => {
     })
   })
 
-  // Closing the picker is the same event either way; what it means is not. A project already
-  // open must survive it — that is the whole difference between a first connect and a switch.
   it('keeps an open project when the folder picker is cancelled', () => {
     const state = ready()
     expect(reduce(state, { kind: 'project/pick-cancelled' })).toBe(state)
@@ -435,8 +430,6 @@ describe('reduce: selection actions', () => {
   })
 })
 
-// The store skips notifying subscribers when `reduce` returns the same reference, so
-// reference identity — not deep equality — is the contract being asserted here.
 describe('reduce: no-ops return the identical state reference', () => {
   it('for a connection action that changes nothing', () => {
     const unsupported: AppState = { kind: 'unsupported' }
@@ -455,8 +448,6 @@ describe('reduce: no-ops return the identical state reference', () => {
       failed,
     )
 
-    // The same wording out of a different cause is a different failure: the banner offers a
-    // permission prompt for one and a plain retry for the other, so it must not be collapsed.
     expect(
       reduce(failed, { kind: 'save/failed', message: 'disk full', failure: 'permission' }),
     ).not.toBe(failed)
@@ -534,9 +525,7 @@ describe('reduce: map placement', () => {
     ).toBe(state)
   })
 
-  // The origin moves with the scale, which is what makes a nudge read as adjustment rather
-  // than as the map drifting off towards the bottom right.
-  it('scales a map about its centre', () => {
+  it('scales a map about its centre, moving the origin with it', () => {
     const next = reduce(ready(twoMapProject()), {
       kind: 'map/scaled',
       mapId: asMapId('harbour'),
@@ -575,8 +564,7 @@ describe('reduce: map placement', () => {
   })
 })
 
-// The cascade is the reason `map/deleted` is one action rather than three: autosave writes
-// whatever the store holds after any single dispatch.
+// One action, not three: autosave writes whatever the store holds after any single dispatch.
 describe('reduce: map/deleted cascade', () => {
   it('removes the map with its zones and dialogues, and leaves the other map intact', () => {
     const next = reduce(ready(twoMapProject()), { kind: 'map/deleted', mapId: asMapId('harbour') })
@@ -861,10 +849,7 @@ describe('reduce: dialogue field edits', () => {
     ).toBe(state)
   })
 
-  // The media actions are the ones dispatched *after* an await: the file is written, and only
-  // then does the reducer see the dialogue. A pin deleted in between makes every one of these a
-  // no-op, which is what the import path has to detect to clean up the file it just wrote.
-  it('ignores every media action naming a dialogue that does not exist', () => {
+  it('ignores every media action naming a dialogue that does not exist, as import must detect after a mid-await deletion', () => {
     const state = ready(projectWithMedia(['a']))
     const gone = asDialogueId('nope')
     const actions: readonly Action[] = [
@@ -991,7 +976,6 @@ describe('reduce: pending captures', () => {
       captureId: asPendingCaptureId('capture-1'),
       relevance: [OTHER.id, WORLDBUILDING.id],
     })
-    // Normalized into the project's own tag order, exactly like `dialogue/relevance-set`.
     expect(tagged.kind === 'ready' && tagged.project.pendingCaptures[0].relevance).toEqual([
       WORLDBUILDING.id,
       OTHER.id,
@@ -1067,8 +1051,7 @@ describe('reduce: pending captures', () => {
       text: 'The tide took it.',
       relevance: [WORLDBUILDING.id],
     })
-    // The medium's fileName is unchanged — placement moves no file in media/.
-    expect(newDialogue && newDialogue.media).toEqual(capture.media)
+    expect(newDialogue && newDialogue.media).toEqual(capture.media) // fileName unchanged, no file moved
 
     const undone = reduce(placed, { kind: 'history/undo' })
     expect(undone.kind === 'ready' && undone.project.pendingCaptures).toEqual([capture])
@@ -1140,7 +1123,6 @@ describe('reduce: zone actions', () => {
       ],
     })
     expect(readyOf(moved).project.zones[0].polygon[0]).toEqual({ x: 5, y: 5 })
-    // Reference identity, not deep equality: the point is that nothing was rewritten.
     expect(readyOf(moved).project.dialogues).toBe(before)
   })
 
@@ -1208,9 +1190,7 @@ describe('reduce: quests', () => {
     expect(edited(noted).name).toBe('The missing ledger')
   })
 
-  // Recolouring never touches the status, and marking a quest done never touches its stored
-  // hue: `questAccentHue` is what draws a done quest green, so reopening restores its colour.
-  it('recolours a quest without disturbing its status', () => {
+  it('recolours a quest without disturbing its status, and marking a quest done keeps its stored hue', () => {
     const recoloured = reduce(ready(twoMapProject()), { kind: 'quest/hue-set', questId, hue: 265 })
     expect(edited(recoloured).hue).toBe(265)
     expect(edited(recoloured).status).toBe('open')
@@ -1238,7 +1218,6 @@ describe('reduce: quests', () => {
       dialogueId: asDialogueId('dialogue-forest'),
     })
     expect(edited(attached).dialogueIds).toEqual(['dialogue-harbour', 'dialogue-forest'])
-    // Attaching what is already attached must not duplicate the id, nor wake autosave.
     expect(
       reduce(attached, {
         kind: 'quest/dialogue-attached',
@@ -1248,9 +1227,7 @@ describe('reduce: quests', () => {
     ).toBe(attached)
   })
 
-  // The other half of the no-dangling-ids invariant; `dialogue/deleted` and `map/deleted` own
-  // the removal half, and together they are what let a reader resolve every id it finds.
-  it('refuses to attach a dialogue that does not exist', () => {
+  it('refuses to attach a dialogue that does not exist, so every id a reader finds resolves', () => {
     const state = ready(twoMapProject())
     expect(
       reduce(state, { kind: 'quest/dialogue-attached', questId, dialogueId: asDialogueId('nope') }),
@@ -1362,21 +1339,18 @@ describe('reduce: relevance tags', () => {
       OTHER.id,
       WORLDBUILDING.id,
     ])
-    // A single-tag dialogue has nothing to reorder, so it keeps its exact reference.
-    expect(state.project.dialogues.find((d) => d.id === forestId)).toBe(
+    expect(state.project.dialogues.find((d) => d.id === forestId)).toBe( // nothing to reorder in a single-tag dialogue
       before.dialogues.find((d) => d.id === forestId),
     )
   })
 
-  it('returns the same dialogues array reference when no dialogue’s order actually changed', () => {
+  it('returns the same dialogues array reference when neither dialogue carries the reordered tag', () => {
     const before = twoMapProject()
     const next = reduce(ready(before), {
       kind: 'relevance-tag/reordered',
       tagId: PEOPLEBUILDING.id,
       toIndex: 0,
     })
-    // Neither dialogue carries any tag at all, so reordering the vocabulary changes nothing
-    // about them.
     expect(readyOf(next).project.dialogues).toBe(before.dialogues)
   })
 
@@ -1424,9 +1398,8 @@ describe('reduce: relevance tags', () => {
     expect(
       reduce(state, { kind: 'relevance-tag/hue-set', tagId: asRelevanceTagId('missing'), hue: 1 }),
     ).toBe(state)
-    // Already at index 1, so this is a no-op reorder rather than a round trip to the same place.
     expect(
-      reduce(state, { kind: 'relevance-tag/reordered', tagId: current.id, toIndex: 1 }),
+      reduce(state, { kind: 'relevance-tag/reordered', tagId: current.id, toIndex: 1 }), // already at index 1
     ).toBe(state)
     expect(
       reduce(state, {
@@ -1444,7 +1417,6 @@ describe('reduce: relevance tags', () => {
 describe('reduce: npc/renamed', () => {
   const HARBOUR = asMapId('harbour')
 
-  /** Four lines: two by Mara, one by a near-miss name, one with no speaker recorded. */
   function npcProject(): ProjectFile {
     return {
       ...createEmptyProject('Harbour'),
@@ -1631,7 +1603,6 @@ describe('reduce: the project alphabet', () => {
     const next = reduce(state, { kind: 'glyphs/learned', glyphs: [A] })
 
     expect(glyphsOf(next)).toEqual([A])
-    // Both profiles read with it, because neither owns anything to read with.
     expect(readyOf(next).project.captureProfiles).toEqual(state.project.captureProfiles)
   })
 
@@ -1763,7 +1734,6 @@ describe('reduce: recorder bindings', () => {
 })
 
 describe('reduce: dialogue/merged', () => {
-  /** Two lines of one NPC, in the order they were heard, with a quest naming the second. */
   function split(): ReadyState {
     const map = gameMap('map-1')
     const first: Dialogue = {
@@ -2157,9 +2127,7 @@ describe('reduce: history', () => {
       captureId: asPendingCaptureId('capture-1'),
       text: 'Hi',
     })
-    // Something else happens between the two recordings, as it does whenever a player is not
-    // pressing the two record triggers back to back with nothing at all in between.
-    const between = reduce(original, {
+    const between = reduce(original, { // an unrelated edit lands between the two recordings
       kind: 'zone/renamed',
       zoneId: asZoneId('zone-harbour'),
       name: 'Renamed',
@@ -2180,9 +2148,7 @@ describe('reduce: history', () => {
   it('bounds the undo stack, dropping the oldest step past the limit', () => {
     let state = withTwoDialogues()
     const ids = [asDialogueId('dialogue-1'), asDialogueId('dialogue-2')]
-    // Alternating the target defeats coalescing (each push's key differs from the last), so
-    // every one of the 150 edits below is its own step.
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < 150; i++) { // alternating the target defeats coalescing
       state = readyOf(
         reduce(state, {
           kind: 'dialogue/text-set',

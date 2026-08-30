@@ -73,9 +73,7 @@ describe('decideOnStoreChange', () => {
     })
   })
 
-  it('adopts rather than schedules after a disconnect cleared the baseline', () => {
-    // The sequence that used to write one project into another folder: leave `ready`, load a
-    // second project, and the first change back must not be read as an edit of the first.
+  it('adopts rather than schedules after a disconnect cleared the baseline, so a project switch is never read as an edit', () => {
     expect(decideOnStoreChange({ kind: 'loading', directoryName: 'Caves' }, HARBOUR)).toEqual({
       kind: 'drop',
     })
@@ -90,9 +88,7 @@ describe('decideOnWrite', () => {
 
   it('queues at most one follow-up while a write is in flight', () => {
     expect(decideOnWrite(ready(HARBOUR), true)).toEqual({ kind: 'queue' })
-    // A second change during the same write asks again and gets the same answer — the flag it
-    // sets is a boolean, so the follow-up count cannot grow past one.
-    expect(decideOnWrite(ready({ ...HARBOUR, zones: [] }), true)).toEqual({ kind: 'queue' })
+    expect(decideOnWrite(ready({ ...HARBOUR, zones: [] }), true)).toEqual({ kind: 'queue' }) // a second change during the same write, still just `queue`
   })
 
   it('queues even when the project has gone away, so the follow-up re-decides', () => {
@@ -121,15 +117,11 @@ describe('nextDebounceMs', () => {
   })
 
   it('caps a debounce re-armed every 300 ms so the write happens no later than MAX_UNSAVED_MS after the first edit', () => {
-    // A watcher settling a box every 300 ms re-arms the debounce on every one of these calls —
-    // `autosave.ts`'s `scheduleWrite` calls this again on every edit, always against the *first*
-    // edit of the streak. The loop below is that same re-arming, one 300 ms tick at a time.
     const editIntervalMs = 300
     for (let now = 0; now <= MAX_UNSAVED_MS + DEBOUNCE_MS; now += editIntervalMs) {
       const wait = nextDebounceMs(0, now)
       if (wait <= editIntervalMs) {
-        // The timer armed at `now` fires before the next edit would arrive — this is the write.
-        expect(now + wait).toBeLessThanOrEqual(MAX_UNSAVED_MS)
+        expect(now + wait).toBeLessThanOrEqual(MAX_UNSAVED_MS) // timer armed at `now` fires before the next edit would arrive
         return
       }
     }
@@ -137,8 +129,6 @@ describe('nextDebounceMs', () => {
   })
 
   it('resets to the full debounce once the streak of unwritten edits starts over', () => {
-    // A quiet period ends the streak — `autosave.ts` clears `oldestUnwrittenEditAt` once the
-    // document reaches disk, so the next edit is a fresh "first edit" with its own deadline.
     const laterEditAt = MAX_UNSAVED_MS * 3
     expect(nextDebounceMs(laterEditAt, laterEditAt)).toBe(DEBOUNCE_MS)
   })
@@ -189,10 +179,7 @@ describe('needsFlushOnHide', () => {
     expect(needsFlushOnHide(ready(HARBOUR, { kind: 'pending' }))).toBe(true)
   })
 
-  it('does not flush during a write, unlike the unload warning', () => {
-    // `saving` means the in-flight write already carries the document the store holds — an edit
-    // landing mid-write would have moved this to `pending`. Flushing here only queues a
-    // byte-identical second write and swallows the first one's `save/saved`.
+  it('does not flush during a write, unlike the unload warning, since flushing would queue a byte-identical second write', () => {
     const saving = ready(HARBOUR, { kind: 'saving' })
     expect(needsFlushOnHide(saving)).toBe(false)
     expect(hasUnsavedEdits(saving)).toBe(true)

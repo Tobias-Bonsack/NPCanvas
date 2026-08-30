@@ -47,7 +47,6 @@ describe('worldToScreen / screenToWorld', () => {
   })
 })
 
-// The whole point of zoomAt: whatever was under the cursor stays under the cursor.
 describe('zoomAt', () => {
   it('leaves the world point under the anchor unchanged', () => {
     const anchors: readonly Point[] = [
@@ -95,15 +94,12 @@ describe('clampScale', () => {
   })
 })
 
-// The fit leaves FIT_MARGIN of the container empty on each side, so the binding dimension
-// lands 4% in from both edges rather than flush against them.
 describe('fitRectToContainer', () => {
-  it('centres a rect in a container wider than the rect aspect', () => {
+  it('centres a rect in a container wider than the rect aspect, landing FIT_MARGIN in from the binding edges', () => {
     const rect = { x: 0, y: 0, width: 1000, height: 1000 }
     const container = { width: 800, height: 400 }
     const viewport = fitRectToContainer(rect, container)
 
-    // Height is the binding dimension: 400 / 1000, less the margin on each side.
     expect(viewport.scale).toBeCloseTo(0.368, 9)
     expectClose(worldToScreen(viewport, { x: 500, y: 500 }), { x: 400, y: 200 })
     expectClose(worldToScreen(viewport, { x: 0, y: 0 }), { x: 216, y: 16 })
@@ -130,10 +126,7 @@ describe('fitRectToContainer', () => {
     expectClose(worldToScreen(viewport, { x: 2000, y: 500 }), { x: 400, y: 400 })
   })
 
-  // A map fitted flush to the frame reads as clipped, so the fit must stay inside it on
-  // every side — including the dimension that binds.
-  it('leaves a margin on the binding dimension, so a fitted rect never touches the frame', () => {
-    // Same aspect as the container, so both dimensions bind and both must clear the frame.
+  it('leaves a margin on the binding dimension, so a fitted rect never touches the frame, even at matching aspect', () => {
     const rect = { x: 0, y: 0, width: 1000, height: 500 }
     const container = { width: 800, height: 400 }
     const viewport = fitRectToContainer(rect, container)
@@ -142,9 +135,7 @@ describe('fitRectToContainer', () => {
     expectClose(worldToScreen(viewport, { x: 1000, y: 500 }), { x: 768, y: 384 })
   })
 
-  // The canvas is shared, so `mapsBounds` may start anywhere — a fit that assumed an origin
-  // of 0,0 would put the maps off screen by exactly the bounds offset.
-  it('honours a rect that does not start at the origin, including negative coordinates', () => {
+  it('honours a rect that does not start at the origin, including negative coordinates, unlike a fit assuming origin 0,0', () => {
     const rect = { x: -3000, y: 500, width: 1000, height: 1000 }
     const container = { width: 800, height: 400 }
     const viewport = fitRectToContainer(rect, container)

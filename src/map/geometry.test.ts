@@ -51,7 +51,6 @@ describe('rectBetween', () => {
 
 describe('inflate', () => {
   it('grows by a fraction of its own size, not by an absolute margin', () => {
-    // 10% of 100 is 10 a side; 10% of 20 is 2 a side. The same margin, two different distances.
     expect(inflate({ x: 0, y: 0, width: 100, height: 20 }, 0.1)).toEqual({
       x: -10,
       y: -2,
