@@ -14,6 +14,9 @@ export function CanvasDisplayDialog({
   trail,
   onToggleTrail,
   trailDisabled,
+  references,
+  onToggleReferences,
+  referencesDisabled,
   onClose,
 }: {
   questFilter: boolean
@@ -22,6 +25,9 @@ export function CanvasDisplayDialog({
   trail: boolean
   onToggleTrail: () => void
   trailDisabled: boolean
+  references: boolean
+  onToggleReferences: () => void
+  referencesDisabled: boolean
   onClose: () => void
 }): ReactElement {
   const ref = useAlertDialogFocus(onClose)
@@ -67,6 +73,21 @@ export function CanvasDisplayDialog({
           onClick={onToggleTrail}
         >
           Time trail
+        </button>
+
+        <button
+          type="button"
+          className="reference-toggle button"
+          aria-pressed={references}
+          disabled={referencesDisabled}
+          title={
+            referencesDisabled
+              ? 'No line points at another yet'
+              : 'Draw an arrow from a line to what it points at'
+          }
+          onClick={onToggleReferences}
+        >
+          References
         </button>
 
         <footer className="panel-footer">

@@ -16,7 +16,7 @@ function at(local: string): Dialogue {
     media: [],
     spokenAt: new Date(local).toISOString(),
     relevance: [],
-      references: [],
+    references: [],
   }
 }
 

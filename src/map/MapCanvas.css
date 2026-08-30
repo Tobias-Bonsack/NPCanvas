@@ -355,6 +355,53 @@
   stroke-linejoin: round;
 }
 
+/* ---- reference edges ---- */
+
+/* Drawn the same way the trail is, in canvas space, for the same reason — see reference-path.ts
+   and ReferenceLayer.tsx. */
+.reference-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.reference-layer__svg {
+  position: absolute;
+  display: block;
+  overflow: visible;
+}
+
+/* Both widths and the arrowhead's counter-scale follow .trail-layer's own — no vector-effect,
+   for the reason measured there. */
+.reference-layer__halo,
+.reference-layer__path {
+  stroke-linecap: round;
+}
+
+.reference-layer__halo {
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: calc(5px / (var(--map-zoom) * var(--map-scale)));
+}
+
+.reference-layer__path {
+  stroke: var(--reference);
+  stroke-width: calc(3px / (var(--map-zoom) * var(--map-scale)));
+}
+
+.reference-layer__arrow {
+  fill: var(--reference);
+  transform-box: view-box;
+  transform-origin: 0 0;
+  transform: var(--arrow-place) scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.65);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
 /* ---- pins ---- */
 
 /* A zero-size layer: it exists only to give the pins a positioning context that is not

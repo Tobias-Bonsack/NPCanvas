@@ -22,7 +22,7 @@ function dialogue(id: string, spokenAt: string): Dialogue {
     media: [],
     spokenAt,
     relevance: [],
-      references: [],
+    references: [],
   }
 }
 

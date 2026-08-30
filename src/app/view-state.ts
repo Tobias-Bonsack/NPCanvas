@@ -21,6 +21,8 @@ export type CanvasViewState = {
   questFilter: boolean
   /** Whether the chronological trail is drawn through the pins — see `TrailLayer`. */
   trail: boolean
+  /** Whether a dialogue's stored references are drawn on the canvas — see `ReferenceLayer`. */
+  references: boolean
   /** `null` until the canvas has fitted itself once — see `MapCanvas`'s `initialViewport`. */
   viewport: Viewport | null
   /** `null` until the panel's resize handle is dragged once — the width the stylesheet gives it. */
@@ -46,6 +48,7 @@ export const INITIAL_VIEW_STATE: ViewState = {
     tool: { kind: 'inspect' },
     questFilter: false,
     trail: false,
+    references: true,
     viewport: null,
     panelWidth: null,
   },

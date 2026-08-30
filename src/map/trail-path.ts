@@ -37,18 +37,23 @@ export type TrailArrow = { point: Point; angle: number }
 // Below this, atan2(0,0) would plant a meaningless arrow for two lines logged at one point.
 const MIN_SEGMENT = 1e-3
 
+// Shared with reference-path.ts's edges — one rule for "midpoint, atan2 angle in degrees, skip
+// anything shorter than MIN_SEGMENT", not one copy per layer that draws a directed segment.
+export function segmentArrow(from: Point, to: Point): TrailArrow | null {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  if (Math.hypot(dx, dy) < MIN_SEGMENT) return null
+  return {
+    point: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
+    angle: (Math.atan2(dy, dx) * 180) / Math.PI,
+  }
+}
+
 export function trailArrows(vertices: readonly TrailVertex[]): readonly TrailArrow[] {
   const arrows: TrailArrow[] = []
   for (let index = 1; index < vertices.length; index++) {
-    const from = vertices[index - 1].point
-    const to = vertices[index].point
-    const dx = to.x - from.x
-    const dy = to.y - from.y
-    if (Math.hypot(dx, dy) < MIN_SEGMENT) continue
-    arrows.push({
-      point: { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 },
-      angle: (Math.atan2(dy, dx) * 180) / Math.PI,
-    })
+    const arrow = segmentArrow(vertices[index - 1].point, vertices[index].point)
+    if (arrow !== null) arrows.push(arrow)
   }
   return arrows
 }

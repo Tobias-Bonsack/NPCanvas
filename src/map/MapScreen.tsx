@@ -30,6 +30,7 @@ import { MapImportButton } from './MapImportButton.tsx'
 import { MapList } from './MapList.tsx'
 import type { PinDragPreview } from './PinLayer.tsx'
 import { PinLayer } from './PinLayer.tsx'
+import { ReferenceLayer } from './ReferenceLayer.tsx'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { TrailLayer } from './TrailLayer.tsx'
 import { ZoneLayer } from './ZoneLayer.tsx'
@@ -59,7 +60,7 @@ export function MapScreen({
 }): ReactElement {
   // Tool, quest filter and viewport are lifted to App so a switch away and back leaves the
   // canvas as it was. Setters below are stable functional updates, not closures over viewState.
-  const { tool, questFilter, trail, viewport, panelWidth } = viewState
+  const { tool, questFilter, trail, references, viewport, panelWidth } = viewState
 
   const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
   const [currentCaptureId, setCurrentCaptureId] = useState<PendingCaptureId | null>(null)
@@ -91,6 +92,10 @@ export function MapScreen({
   )
   const toggleTrail = useCallback(
     () => onViewStateChange((prev) => ({ ...prev, trail: !prev.trail })),
+    [onViewStateChange],
+  )
+  const toggleReferences = useCallback(
+    () => onViewStateChange((prev) => ({ ...prev, references: !prev.references })),
     [onViewStateChange],
   )
   const setViewport = useCallback(
@@ -277,6 +282,9 @@ export function MapScreen({
           trail={trail}
           onToggleTrail={toggleTrail}
           trailDisabled={project.dialogues.length < 2}
+          references={references}
+          onToggleReferences={toggleReferences}
+          referencesDisabled={!project.dialogues.some((dialogue) => dialogue.references.length > 0)}
           onClose={() => setDisplayDialogOpen(false)}
         />
       )}
@@ -319,6 +327,14 @@ export function MapScreen({
             />
             {trail && (
               <TrailLayer
+                maps={placedMaps}
+                dialogues={project.dialogues}
+                highlighted={highlighted}
+                pinDrag={pinDrag}
+              />
+            )}
+            {references && (
+              <ReferenceLayer
                 maps={placedMaps}
                 dialogues={project.dialogues}
                 highlighted={highlighted}

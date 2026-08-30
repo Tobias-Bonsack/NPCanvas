@@ -28,7 +28,7 @@ function dialogue(id: string, mapId: MapId, spokenAt: string, position: Point): 
     media: [],
     spokenAt,
     relevance: [],
-      references: [],
+    references: [],
   }
 }
 

@@ -21,7 +21,8 @@
    subject, rather than every one of them reading as --accent. The text stays full-strength
    rather than the base's muted-until-hover, and the fade is a touch lighter when disabled. */
 .quest-filter,
-.trail-toggle {
+.trail-toggle,
+.reference-toggle {
   width: 100%;
   font-size: var(--text-sm);
   color: var(--text);
@@ -45,8 +46,16 @@
   border-color: var(--trail);
 }
 
+.reference-toggle[aria-pressed='true'],
+.reference-toggle[aria-pressed='true']:hover {
+  color: var(--ink-on-hue);
+  background: var(--reference);
+  border-color: var(--reference);
+}
+
 .quest-filter:disabled,
-.trail-toggle:disabled {
+.trail-toggle:disabled,
+.reference-toggle:disabled {
   opacity: 0.45;
 }
 

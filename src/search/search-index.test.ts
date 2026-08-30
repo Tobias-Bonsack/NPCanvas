@@ -18,7 +18,7 @@ function dialogue(id: string, npcName: string, text: string, mapId: MapId = OVER
     media: [],
     spokenAt: '2026-08-15T10:00:00.000Z',
     relevance: [],
-      references: [],
+    references: [],
   }
 }
 
