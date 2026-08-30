@@ -474,13 +474,19 @@ export function readDialogue(
   tagOrder: readonly RelevanceTagId[],
 ): Dialogue {
   const raw = readObject(value, path)
+  const common = readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder))
   const references = (raw.references !== undefined ? readArray(raw.references, `${path}.references`) : []).map(
     (ref, index) => readDialogueId(ref, `${path}.references[${index}]`),
   )
   return {
-    ...readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder)),
+    id: common.id,
+    mapId: common.mapId,
+    npcName: common.npcName,
+    position: common.position,
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
+    spokenAt: common.spokenAt,
+    relevance: common.relevance,
     references,
   }
 }
