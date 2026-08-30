@@ -10,21 +10,13 @@ import type { DragGesture } from '../map/drag-gesture.ts'
 import { beginDrag, cancelDrag, commitDrag, moveDrag } from '../map/drag-gesture.ts'
 import { MIN_CANVAS_WIDTH, MIN_PANEL_WIDTH, clampPanelWidth } from './panel-width.ts'
 
-/**
- * What a resize gesture snapshots at pointerdown: the width the panel actually had — which may
- * have come from the stylesheet rather than from a previous drag — and the width the panel and
- * the canvas share. Both are re-measured per gesture, because the window can be resized between
- * two of them.
- */
+// Both fields are re-measured per gesture, since the window can be resized between two of them.
 type PanelResizeData = { startWidth: number; availableWidth: number }
 
-/** One press of an arrow key on the handle, in CSS pixels. */
 const PANEL_WIDTH_STEP = 32
 
 type PanelResizeApi = {
-  /** True for the duration of a drag — the handle and the panel's own Escape listener both read it. */
   resizing: boolean
-  /** What the handle announces: the panel's current width and the widest it may grow to. */
   band: { width: number; max: number } | null
   beginResize: (event: ReactPointerEvent<HTMLDivElement>) => void
   moveResize: (event: ReactPointerEvent<HTMLDivElement>) => void
@@ -33,28 +25,21 @@ type PanelResizeApi = {
   stepResize: (event: ReactKeyboardEvent<HTMLDivElement>) => void
 }
 
-/**
- * The panel's left-edge resize handle: a drag, an arrow-key step, and an Escape that withdraws
- * a drag in progress back to the width it started from.
- */
 export function usePanelResize(
   asideRef: RefObject<HTMLElement | null>,
   onWidthChange: (width: number) => void,
   measureAvailableWidth: () => number,
 ): PanelResizeApi {
-  // The resize gesture's own bookkeeping lives in a ref, exactly as every other drag in this
-  // repo does; only the flag the handle and the Escape listener read is state, so a pointermove
-  // costs one render of the panel and nothing else.
+  // Bookkeeping lives in a ref, as every drag in this repo does — only the flag the handle and
+  // Escape listener read is state.
   const resizeRef = useRef<DragGesture<PanelResizeData> | null>(null)
   const [resizing, setResizing] = useState(false)
 
-  // What the handle announces. Measured rather than assumed, because the panel's width may come
-  // from the stylesheet, from one of its two media queries, or from a drag, and the maximum
-  // moves whenever the window does. Deliberately *not* what the clamp reads — a gesture measures
-  // for itself at pointerdown, since a number cached here would clamp against a stale window.
+  // Measured, not assumed — width may come from the stylesheet, a media query, or a drag.
+  // Deliberately not what the clamp reads: a gesture measures for itself at pointerdown.
   const [band, setBand] = useState<{ width: number; max: number } | null>(null)
   const measureBand = useRef<() => void>(() => {})
-  // No dependency list: every render is a chance the panel changed width, and returning the
+  // No dependency list — every render is a chance the panel changed width, and returning the
   // previous object when nothing moved is what stops the setState from looping.
   useEffect(() => {
     const measure = (): void => {
@@ -85,7 +70,7 @@ export function usePanelResize(
     beginDrag(resizeRef, event, { startWidth, availableWidth: measureAvailableWidth() })
   }
 
-  // The handle is on the *left* edge, so travel to the left widens the panel — hence `-dx`.
+  // Handle is on the left edge, so travel to the left widens the panel — hence -dx.
   function moveResize(event: ReactPointerEvent<HTMLDivElement>): void {
     const move = moveDrag(resizeRef, event)
     if (move === null) return
@@ -103,11 +88,7 @@ export function usePanelResize(
     onWidthChange(clampPanelWidth(data.startWidth, data.availableWidth))
   }
 
-  /**
-   * The platform withdrew the gesture, so the width goes back to the one the press started
-   * from — a cancel is not a shorter pointerup. Escape mid-drag is the same terminal, and the
-   * effect below is where it lands: there is no pointer event for a key press.
-   */
+  // A cancel is not a shorter pointerup — the width goes back to where the press started.
   function cancelResize(event: ReactPointerEvent<HTMLDivElement>): void {
     const gesture = resizeRef.current
     if (!cancelDrag(resizeRef, event)) return

@@ -13,26 +13,20 @@ import { currentDialogue, dispatch } from '../project/store.ts'
 import type { CaptureProfile, Dialogue, DialogueId, Glyph, ProjectFile } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 
-/** The in-page shortcut, and the words for it — the emulator has the keyboard the rest of the time. */
 const CAPTURE_KEY = 'Enter'
 export const CAPTURE_SHORTCUT = 'Ctrl+Enter'
 
-/**
- * One press of the capture button, as the panel sees it.
- *
- * `learning` holds the frame that raised the question, because the emulator has moved on by the
- * time the characters are typed in — and it is the state that makes "nothing is written until the
- * box can be read whole" true, rather than a rule the handler is trusted to follow.
- */
+// `learning` holds the frame that raised the question, since the emulator has moved on by the
+// time the tiles are typed in — the state itself is what makes "nothing written until the box
+// reads whole" true, not a rule the handler must remember to follow.
 export type CaptureState =
   | { kind: 'idle' }
   | { kind: 'capturing' }
   | {
       kind: 'learning'
-      /** The capture stays with the profile it started under, whatever the bar switches to. */
+      // The capture stays with the profile and alphabet it started under, whatever the bar
+      // switches to — glyphs includes tiles just typed in that the store hasn't handed back yet.
       profile: CaptureProfile
-      /** And with the alphabet it started under, for the same reason — including the tiles just
-          typed in, which the store has not handed back yet. */
       glyphs: readonly Glyph[]
       frame: ImageData
       tiles: readonly UnknownTile[]
@@ -40,7 +34,6 @@ export type CaptureState =
   | { kind: 'done'; message: string }
   | { kind: 'failed'; message: string }
 
-/** Whether a press is in flight or a learner is up over its frame — the disabled condition for both the button and the shortcut. */
 export function isCaptureBusy(state: CaptureState): boolean {
   return state.kind === 'capturing' || state.kind === 'learning'
 }
@@ -48,20 +41,12 @@ export function isCaptureBusy(state: CaptureState): boolean {
 export type CaptureApi = {
   captureState: CaptureState
   setCaptureState: (state: CaptureState) => void
-  /** A press is in flight, or a learner is up over its frame — disables the button and the shortcut. */
   busy: boolean
-  /** Why a capture cannot run right now, in a sentence naming the fix — `null` when it can. */
   blocker: string | null
-  /** The learner overlay is up — the panel stands its own Escape-to-close handler down while it is. */
   learning: boolean
-  /**
-   * One press: the frame becomes a picture on the pin and the new part of the box becomes text.
-   *
-   * An unreadable tile stops the chain here, before anything is written — a dialogue must never
-   * end up holding a picture beside half a sentence.
-   */
+  // An unreadable tile stops the chain here, before anything is written.
   capture: () => Promise<void>
-  /** `transcript === null` is a box that could not be read whole: the picture is kept, the line is not. */
+  // transcript === null is a box that couldn't be read whole: the picture is kept, the line isn't.
   write: (target: CaptureProfile, frame: ImageData, transcript: string | null) => Promise<void>
   onGlyphsLearned: (
     target: CaptureProfile,
@@ -71,22 +56,12 @@ export type CaptureApi = {
   ) => void
 }
 
-/**
- * The panel's capture button: one press against the live capture source, the `GlyphLearner`
- * handoff when a tile cannot be read, and the `Ctrl+Enter` shortcut that drives the same press
- * from the keyboard.
- *
- * `dialogueId` and `dialogue` are both taken — never only the id — because `write` falls back to
- * the prop when the store has nothing under that id, exactly as it always has.
- *
- * CRITICAL: `write` reads the dialogue to append to through `currentDialogue(dialogueId)`, taken
- * fresh *after* every `await`, never through a `dialogue` closed over before one. `capture-to-
- * dialogue.ts`'s own `captureIntoDialogue` depends on the same guarantee one layer down — see its
- * comment around `currentDialogue` — because encoding and writing a PNG takes long enough for a
- * second capture (the watcher ticking mid-press, or a held frame being replayed) to have finished
- * its own append first, and computing this one from a pre-await snapshot would overwrite it
- * silently.
- */
+// dialogueId and dialogue are both taken (never only the id) because write falls back to the
+// prop when the store has nothing under that id.
+//
+// write reads the dialogue to append to through currentDialogue(dialogueId), taken fresh after
+// every await, never a pre-await `dialogue` closure — encoding/writing a PNG takes long enough
+// for a second capture to finish its own append first, which a stale snapshot would overwrite.
 export function useCapture(
   project: ProjectFile,
   dialogueId: DialogueId,
@@ -95,8 +70,7 @@ export function useCapture(
 ): CaptureApi {
   const [captureState, setCaptureState] = useState<CaptureState>({ kind: 'idle' })
 
-  // A warning or an error belongs to the capture that produced it, and would otherwise hang over
-  // whichever dialogue the user selected next.
+  // A warning/error belongs to the capture that produced it, not whichever dialogue is next.
   useEffect(() => {
     setCaptureState({ kind: 'idle' })
   }, [dialogueId])
@@ -140,9 +114,8 @@ export function useCapture(
   ): Promise<void> {
     setCaptureState({ kind: 'capturing' })
     try {
-      // The document as it stands now, not as this render saw it: the line field is a draft
-      // that `capture` only just flushed, and a learner can stand open for minutes while the
-      // panel keeps taking edits. Appending to the render's copy would undo both.
+      // The document as it stands now, not as this render saw it — a learner can stand open
+      // for minutes while the panel keeps taking edits.
       const into = currentDialogue(dialogueId) ?? dialogue
       const result = await captureIntoDialogue(into, target, frame, transcript)
       setCaptureState({ kind: 'done', message: describeCapture(result) })
@@ -158,9 +131,8 @@ export function useCapture(
     learned: Glyph[],
   ): void {
     dispatch({ kind: 'glyphs/learned', glyphs: learned })
-    // The store's own copy arrives on the next render and the transcript is wanted now, so the
-    // grown alphabet is applied here through the same merge the reducer just ran — as CaptureBar
-    // does. Re-read rather than assumed complete: two glyphs learned one bit apart stay ambiguous.
+    // The store's copy arrives next render but the transcript is wanted now, so the grown
+    // alphabet is applied here through the same merge the reducer just ran, as CaptureBar does.
     const grown = mergeGlyphs(alphabet, learned)
     const reading = readTextBox(frame, target, grown)
     if (reading.unknown.length > 0) {
@@ -176,8 +148,7 @@ export function useCapture(
     void write(target, frame, reading.text)
   }
 
-  // The handler closes over `capture`, so it is a new function on every keystroke in the line
-  // field. A ref keeps the window binding stable while the shortcut still runs the current one.
+  // capture is a new function every render; the ref keeps the window binding stable.
   const captureRef = useRef(capture)
   useEffect(() => {
     captureRef.current = capture
@@ -186,8 +157,7 @@ export function useCapture(
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== CAPTURE_KEY || !event.ctrlKey || event.altKey || event.shiftKey) return
-      // The panel's line field is a textarea, where the default would be a newline in the very
-      // text this is about to append to.
+      // The line field is a textarea; the default would be a newline in the text being appended.
       event.preventDefault()
       void captureRef.current()
     }

@@ -18,30 +18,20 @@ import {
   formatBucketStart,
 } from './timeline-buckets.ts'
 
-// viewBox units — and, since `useChartWidth` feeds the svg's own measured width back in as its
-// viewBox width, one viewBox unit *is* one real CSS pixel. See the comment on `chart-width.ts`.
+// viewBox units, and (per chart-width.ts) one viewBox unit is one real CSS pixel.
 const DEFAULT_WIDTH = 720
 const PLOT_X = 30
 const PLOT_TOP = 10
 const PLOT_HEIGHT = 120
 const AXIS_Y = PLOT_TOP + PLOT_HEIGHT
 const HEIGHT = AXIS_Y + 22
-/** Roughly this many axis labels, whatever the bucket count — more and they collide. */
 const AXIS_TICKS = 8
-/** A bar never grows past this, however few buckets there are. */
 const MAX_BAR_WIDTH = 40
 
-/** A brush in progress. Both ends are bucket indices, and `from` may be after `to`. */
 type Brush = { from: number; to: number }
 
-/**
- * The collection along the time axis: when each thing was heard, where the dense sessions are,
- * and what was going on during one.
- *
- * The dialogues handed in are filtered by *everything except the date range*. That is what makes
- * brushing work like a brush: selecting a fortnight highlights it in place instead of re-scaling
- * the axis to the fortnight and leaving nothing to drag back out of.
- */
+// `dialogues` is filtered by everything except the date range, so brushing highlights a
+// selection in place instead of re-scaling the axis to it.
 export function Timeline({
   dialogues,
   zonesById,
@@ -60,23 +50,14 @@ export function Timeline({
   relevanceTags: readonly RelevanceTag[]
   filter: DialogueFilter
   onChange: (filter: DialogueFilter) => void
-  /**
-   * The open bucket's `start` instant, not an index — lifted to `App` so it survives a switch
-   * away and back. Keyed on the instant rather than a position in `buckets` because that array
-   * is rebuilt from `dialogues` on every filter change other than the date range (see the note
-   * above): an index surviving that rebuild would silently point at a different bucket than the
-   * one the user actually opened.
-   */
+  // The open bucket's start instant, not an index — buckets rebuilds on most filter changes.
   active: number | null
   onActiveChange: (active: number | null) => void
-  /** The grain to read the axis at; `null` is Auto, which `autoBucketUnit` answers. */
   unit: BucketUnit | null
   onUnitChange: (unit: BucketUnit | null) => void
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const derived = useMemo(() => autoBucketUnit(dialogues), [dialogues])
-  // Everything below — the buckets, the captions, the labels, the accessible names — reads the
-  // *resolved* unit, so the picker and the axis can never describe different things.
   const resolvedUnit = unit ?? derived
   const buckets = useMemo(
     () => bucketDialogues(dialogues, resolvedUnit),
@@ -84,28 +65,21 @@ export function Timeline({
   )
   const segmentKeysList = useMemo(() => segmentKeys(relevanceTags), [relevanceTags])
   const colors = useMemo(() => segmentColor(relevanceTags), [relevanceTags])
-  // A brush in flight cannot outlive the pointer gesture that draws it, so unlike `active` it
-  // stays local — there is nothing to restore across a view switch.
+  // Local, not lifted like `active` — a brush can't outlive the pointer gesture that draws it.
   const [brush, setBrush] = useState<Brush | null>(null)
-  // A keyboard-drawn range in progress — the Shift+arrow equivalent of `brush`. Also local: it
-  // is exactly as ephemeral, just built one bucket at a time instead of one pointermove at a
-  // time. `null` means no range is being built, whether or not a bucket is merely focused.
+  // A keyboard-drawn range in progress (Shift+arrow); null means no range is being built.
   const [rangeAnchor, setRangeAnchor] = useState<number | null>(null)
 
   const plotWidth = Math.max(width - PLOT_X - 8, 0)
   const hasRange = filter.from !== null || filter.to !== null
   const activeIndex = active === null ? -1 : buckets.findIndex((bucket) => bucket.start === active)
-  // Tab reaches exactly one bucket — whichever is open, or the first if none is yet. Moving the
-  // roving position (below) is what "focus follows the active bucket" already gets for free.
   const rovingIndex = activeIndex === -1 ? 0 : activeIndex
 
   function clearRange(): void {
     onChange({ ...filter, from: null, to: null })
   }
 
-  // Escape aborts a pointer-drawn brush in progress. Bound while brushing rather than always,
-  // and keyed on whether a brush exists rather than the brush itself, so this does not
-  // resubscribe on every pointermove of the drag it is watching for the end of.
+  // Keyed on whether a brush exists, not the brush itself, so this doesn't resubscribe per move.
   const brushing = brush !== null
   useEffect(() => {
     if (!brushing) return
@@ -129,8 +103,6 @@ export function Timeline({
         onClearRange={clearRange}
       >
         <p className="insights__empty hint-text">
-          {/* Two ways to have no axis, and they call for different fixes: widen the filter, or
-              go and repair a spokenAt that will not parse. */}
           {dialogues.length === 0
             ? 'Nothing to place on a timeline — no dialogue matches the filter.'
             : 'Nothing to place on a timeline — no dialogue here carries a readable date.'}
@@ -139,18 +111,14 @@ export function Timeline({
     )
   }
 
-  // A bucket's height is its tag occurrences, exactly as the breakdown's bars are, so the two
-  // panels are the same measurement seen along two different axes — and every label below says
-  // so, rather than mixing in a count of *dialogues*, which a doubly tagged line would disagree
-  // with.
+  // A bucket's height is tag occurrences (as in the breakdown panel below), not dialogue count,
+  // since a doubly tagged line would disagree with the latter.
   const tallies = buckets.map((bucket) => tallyOf(bucket.dialogues, relevanceTags))
   const tallest = tallies.reduce((max, each) => Math.max(max, totalOf(each.counts)), 0)
   const scale = tallest === 0 ? 0 : PLOT_HEIGHT / tallest
   const slot = plotWidth / buckets.length
   const from = filter.from === null ? null : Date.parse(filter.from)
   const to = filter.to === null ? null : Date.parse(filter.to)
-  // The pointer brush and a keyboard-drawn range are the same kind of thing to draw — whichever
-  // is in progress (never both) is what the highlight rect below shows.
   const keyboardRange: Brush | null =
     rangeAnchor === null ? null : { from: rangeAnchor, to: rovingIndex }
   const visibleBrush = brush ?? keyboardRange
@@ -169,8 +137,7 @@ export function Timeline({
   function commit(range: Brush): void {
     const lo = buckets[Math.min(range.from, range.to)]
     const hi = buckets[Math.max(range.from, range.to)]
-    // The bucket's end is exclusive and the filter's bound is inclusive, so the range stops one
-    // millisecond short of the next bucket rather than swallowing its first line.
+    // The bucket's end is exclusive, the filter's bound inclusive — stop one ms short.
     onChange({
       ...filter,
       from: new Date(lo.start).toISOString(),
@@ -268,8 +235,6 @@ export function Timeline({
           </text>
         ))}
 
-        {/* One surface over the whole plot handles hover and brushing: the bars underneath take
-            no pointer events, so a one-pixel bar is still as easy to hit as a wide one. */}
         <rect
           className="timeline__surface"
           x={PLOT_X}
@@ -284,19 +249,15 @@ export function Timeline({
           }}
           onPointerMove={(event) => {
             const index = indexAt(event)
-            // `onActiveChange` writes into the lifted view state as a whole new object every
-            // call — see `InsightsScreen`'s `setTimelineActive` — so calling it unconditionally
-            // on every pointermove re-renders the detail pane, and re-announces its live region,
-            // for every pixel crossed inside the bucket already open.
+            // Skips redundant onActiveChange calls, which would otherwise re-render the detail
+            // pane and re-announce its live region on every pixel crossed.
             if (buckets[index].start !== active) onActiveChange(buckets[index].start)
             setBrush((current) => (current === null ? null : { ...current, to: index }))
           }}
           onPointerUp={(event) => {
             event.currentTarget.releasePointerCapture(event.pointerId)
-            // A press and release with no movement is a click — it has already inspected the
-            // bucket above, through the same `onActiveChange` a hover would trigger, and must
-            // not *also* narrow the date filter. Only an actual drag, spanning more than one
-            // bucket, commits a range.
+            // A click (no movement) already inspected the bucket via onActiveChange and must
+            // not also narrow the date filter — only an actual multi-bucket drag commits.
             if (brush !== null && brush.from !== brush.to) commit(brush)
             setBrush(null)
           }}
@@ -323,7 +284,6 @@ const UNIT_NOTE: Record<BucketUnit, string> = {
   month: 'One bar per month that holds something.',
 }
 
-/** The frame, so the empty state and the chart carry the same heading and the same controls. */
 function TimelinePanel({
   unit,
   selected,
@@ -373,17 +333,10 @@ const GRAIN_LABEL: Record<BucketUnit, string> = {
   month: 'Month',
 }
 
-/** `null` first, then the ladder — the order the buttons sit in and the arrows travel. */
 const GRAIN_OPTIONS: readonly (BucketUnit | null)[] = [null, ...BUCKET_UNITS]
 
-/**
- * The grain is the reader's to choose: comparing two evenings wants hours and comparing two
- * months wants months, from the same lines, and no derivation from the data answers both.
- *
- * A mutually exclusive set, so `radiogroup`/`radio` and a roving tabindex — the same shape as
- * `MapScreen`'s `ToolPicker`, and for the same reason: Tab lands once, on whichever is checked,
- * and the arrows move selection and focus together.
- */
+// radiogroup/radio with a roving tabindex, as in MapScreen's ToolPicker: Tab lands once, on
+// whichever is checked, and the arrows move selection and focus together.
 function GrainPicker({
   selected,
   derived,
@@ -417,8 +370,6 @@ function GrainPicker({
           className="grain-picker__button segmented-button"
           aria-checked={option === selected}
           tabIndex={option === selected ? 0 : -1}
-          // Auto names the unit it currently resolves to, so the control and the axis below can
-          // never be read as claiming different grains.
           aria-label={option === null ? `Auto — currently ${derived}` : undefined}
           onClick={() => onChange(option)}
           onKeyDown={(event) => onKeyDown(event, index)}
@@ -457,15 +408,12 @@ function TimelineBar({
   width: number
   scale: number
   outside: boolean
-  /** Whether this is the one bucket Tab reaches — see `rovingIndex`. */
   roving: boolean
   onOpen: () => void
   onKeyDown: (event: ReactKeyboardEvent<SVGGElement>) => void
 }): ReactElement {
-  // A gap only where there is room for one; below that the bars merge into a continuous band,
-  // which is the honest reading of "more buckets than pixels". Capped and centred in its slot at
-  // the other end: one lonely bucket stretched across the whole plot reads as a solid backdrop
-  // rather than as a single measurement.
+  // No gap when there's no room for one (bars merge into a band); capped at the other end so a
+  // lonely bucket doesn't stretch across the whole plot as a solid backdrop.
   const barWidth = Math.min(Math.max(width - (width > 4 ? 1.5 : 0), 0.5), MAX_BAR_WIDTH)
   const left = x + (width - barWidth) / 2
   const label = `${describeBucket(bucket, unit)}: ${totalOf(counts)}`
@@ -477,15 +425,10 @@ function TimelineBar({
       className="timeline__bucket"
       data-outside={outside ? '' : undefined}
       role="button"
-      // One tab stop for the whole set of buckets — see `rovingIndex` — with the arrow keys
-      // moving both the roving position and the visible focus together, the same pattern
-      // `MapScreen`'s `ToolPicker` uses for its radiogroup.
       tabIndex={roving ? 0 : -1}
       onFocus={onOpen}
       onKeyDown={onKeyDown}
     >
-      {/* The sole source of this bucket's accessible name — see the identical note in
-          RelevanceBreakdown.tsx. An `aria-label` here would have said the same thing twice. */}
       <title>{label}</title>
       {keys.map((segment) => {
         const count = counts.get(segment) ?? 0
@@ -539,9 +482,6 @@ function BucketDetail({
         {capitalize(describeBucket(bucket, unit))}
         <span className="count-pill">{bucket.dialogues.length}</span>
       </h3>
-      {/* Polite, not assertive, and a one-line summary rather than the rows below: an assertive
-          region would interrupt a screen reader mid-sentence, and reading out up to twelve full
-          dialogue rows on every bucket change is not what "announce what changed" means. */}
       <p className="visually-hidden" aria-live="polite">
         {bucket.dialogues.length} {bucket.dialogues.length === 1 ? 'dialogue' : 'dialogues'} in{' '}
         {describeBucket(bucket, unit)}
@@ -565,14 +505,12 @@ function BucketDetail({
   )
 }
 
-/** A bucket is in range if any part of it is: a range that cuts a bucket still selected it. */
 function intersectsRange(bucket: TimeBucket, from: number | null, to: number | null): boolean {
   if (from !== null && !Number.isNaN(from) && bucket.end <= from) return false
   if (to !== null && !Number.isNaN(to) && bucket.start > to) return false
   return true
 }
 
-/** Evenly spaced tick indices, always including the first bucket. */
 function axisTicks(count: number): number[] {
   const step = Math.max(1, Math.ceil(count / AXIS_TICKS))
   const indices: number[] = []
@@ -584,17 +522,14 @@ function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
-/** `ArrowRight` moves forward, `ArrowLeft` back; anything else is `null` — see `MapScreen`'s
- *  near-identical `arrowStep` for the tool picker's radiogroup. Shared here by the bars and the
- *  grain picker. Up/Down are left alone: both are one-dimensional rows, and claiming the vertical
- *  arrows would fight the page's own scrolling. */
+// Up/Down deliberately unhandled — both rows are one-dimensional, and claiming vertical arrows
+// would fight the page's own scrolling.
 function arrowStep(key: string): number | null {
   if (key === 'ArrowRight') return 1
   if (key === 'ArrowLeft') return -1
   return null
 }
 
-/** The DOM id a bucket's `<g>` is found by when an arrow key moves the roving focus onto it. */
 function bucketElementId(bucket: TimeBucket): string {
   return `timeline-bucket-${bucket.start}`
 }

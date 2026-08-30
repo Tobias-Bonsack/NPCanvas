@@ -5,78 +5,46 @@ import type { AppState, ProjectFile } from '../project/types.ts'
 // without triggering `visibilitychange` still loses under a second of work.
 export const DEBOUNCE_MS = 800
 
-/**
- * The most a debounce may ever delay a write past the **first** unwritten edit.
- *
- * `DEBOUNCE_MS` alone assumes edits arrive in a burst that ends — the case it was tuned for. A
- * watcher recording is not a burst: it settles a box roughly every 300 ms for as long as the
- * conversation runs (`SETTLE_TICKS` × `POLL_MS` in `capture-watch.ts`), and each box re-arms the
- * 800 ms timer before it can fire, so the one situation the app is *designed* to leave running
- * unattended is the one situation in which nothing reaches disk. Sixteen or so boxes of a
- * scrolling conversation, still far less than a lost minute — and far less than the whole
- * conversation a crash or a discarded tab would cost without a ceiling.
- */
+// The most a debounce may ever delay a write past the first unwritten edit. DEBOUNCE_MS alone
+// assumes a burst that ends — but a watcher recording re-arms it roughly every 300ms
+// (capture-watch.ts) for as long as the conversation runs, so without this ceiling the one
+// situation the app is designed to leave unattended is the one where nothing reaches disk.
 export const MAX_UNSAVED_MS = 5000
 
-/**
- * How long a debounce armed now may still wait, given when the oldest unwritten edit landed.
- *
- * Never past `MAX_UNSAVED_MS` from that edit: past the deadline this is `0`, which the caller
- * reads as "write immediately" rather than arming a zero-length timer specially.
- */
+// Never past MAX_UNSAVED_MS from the oldest unwritten edit — past the deadline this is 0,
+// which the caller reads as "write immediately".
 export function nextDebounceMs(oldestUnwrittenEditAt: number, now: number): number {
   const deadline = oldestUnwrittenEditAt + MAX_UNSAVED_MS
   return Math.max(0, Math.min(DEBOUNCE_MS, deadline - now))
 }
 
-/**
- * Autosave's decisions, split out of the module that owns the timers and the IO so they can be
- * tested at all — see CLAUDE.md § Testing scope. Only the decision moves; nothing here reads a
- * clock, touches a timer, or writes a file.
- *
- * Two functions rather than one because the debounce sits between them: a store change decides
- * whether a write is *coming*, and the write, when it comes due, decides against a store that
- * has had 800 ms to move on. Folding them together would make every keystroke during an
- * in-flight write queue a follow-up immediately instead of debouncing first.
- */
+// Split from the module that owns the timers/IO so the decisions can be tested at all (see
+// CLAUDE.md § Testing scope) — nothing here reads a clock, touches a timer, or writes a file.
+// Two functions, not one, because the debounce sits between them: a store change decides
+// whether a write is coming, and the write later decides against a store that moved on.
 
-/** What a store change means. Carries the document, so the caller cannot adopt the wrong one. */
 type ChangeDecision =
-  /** Not connected. Drop the pending write — it must not land in a folder the user has left. */
   | { kind: 'drop' }
-  /**
-   * Freshly loaded. Adopt it as the baseline and write nothing: it is already on disk, and
-   * writing it back would be a spurious save on every connect.
-   */
   | { kind: 'adopt'; project: ProjectFile }
-  /** Same document, different app state — a selection or the save state itself. */
   | { kind: 'ignore' }
-  /** A real edit. Debounce a write. */
   | { kind: 'schedule'; project: ProjectFile }
 
-/** What a write attempt should do. `write` carries exactly the document to put on disk. */
 type WriteDecision =
-  /**
-   * A write is already running. At most one follow-up ever queues: it re-reads the current
-   * document when it runs, so any number of edits during this write collapse into that pass.
-   */
+  // At most one follow-up ever queues — it re-reads the current document when it runs, so any
+  // number of edits during this write collapse into that pass.
   | { kind: 'queue' }
-  /** Nothing to write — the project was disconnected between the schedule and now. */
   | { kind: 'skip' }
   | { kind: 'write'; project: ProjectFile }
 
-/**
- * `previous` is the document the last decision adopted, or `null` when none is adopted —
- * which is both the state before the first load and the state after a disconnect.
- */
+// previous is null both before the first load and after a disconnect.
 export function decideOnStoreChange(
   state: AppState,
   previous: ProjectFile | null,
 ): ChangeDecision {
   if (state.kind !== 'ready') return { kind: 'drop' }
   if (previous === null) return { kind: 'adopt', project: state.project }
-  // Reference identity, not a deep compare: the reducer returns the same object for every
-  // action that did not touch the document, which is what makes this cheap and exact.
+  // Reference identity, not a deep compare — the reducer returns the same object for every
+  // action that didn't touch the document.
   if (previous === state.project) return { kind: 'ignore' }
   return { kind: 'schedule', project: state.project }
 }
@@ -87,11 +55,8 @@ export function decideOnWrite(state: AppState, writeInFlight: boolean): WriteDec
   return { kind: 'write', project: state.project }
 }
 
-/**
- * Whether the store holds edits that are not on disk — what the unload warning asks. `failed`
- * counts, and counts most: it is the one state where the edits are *guaranteed* absent from the
- * folder, and the one the warning used to skip entirely.
- */
+// What the unload warning asks. `failed` counts — it's the state where the edits are
+// guaranteed absent from the folder.
 export function hasUnsavedEdits(state: AppState): boolean {
   if (state.kind !== 'ready') return false
   switch (state.save.kind) {
@@ -108,18 +73,9 @@ export function hasUnsavedEdits(state: AppState): boolean {
   }
 }
 
-/**
- * Whether hiding the tab should start a write now — a narrower question than `hasUnsavedEdits`,
- * and the reason the two are not one function.
- *
- * `saving` is excluded: the document in the store is already the one being written, because an
- * edit landing mid-write moves the state to `pending`. Flushing there only sets `writeQueued`,
- * which suppresses the in-flight write's `save/saved` and then rewrites byte-identical JSON.
- *
- * `failed` is included, and is the whole point: there is no debounce timer left after a failed
- * write, so the old timer-based guard skipped exactly the state whose edits were known to be
- * only in memory — on the last event a discarded tab ever fires.
- */
+// Narrower than hasUnsavedEdits. `saving` is excluded — the store already holds the document
+// being written, since an edit mid-write moves state to `pending` instead. `failed` is
+// included because no debounce timer survives a failed write.
 export function needsFlushOnHide(state: AppState): boolean {
   if (state.kind !== 'ready') return false
   switch (state.save.kind) {

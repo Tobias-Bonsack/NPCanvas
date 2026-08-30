@@ -7,17 +7,10 @@ import type { Dialogue, Quest, QuestId } from '../project/types.ts'
 import { nextQuestHue, questAccentStyle } from './quest-style.ts'
 import './DialogueQuestLinks.css'
 
-/** Whether the "attach to existing" search is open. Component state, never the store. */
 type LinkMode = { kind: 'idle' } | { kind: 'attaching' }
 
-/**
- * Quests, from the dialogue's side. The board builds a quest after the fact; in practice the
- * user notices "this is a lead" while logging the line, so the same two verbs have to be
- * reachable from the panel the line is being written in.
- *
- * Creating navigates to the board rather than editing a name here: a quest's name and note
- * belong to one form, and duplicating it would give the same field two implementations.
- */
+// Creating navigates to the board rather than editing a name here — a quest's name and note
+// belong to one form.
 export function DialogueQuestLinks({
   dialogue,
   quests,
@@ -38,8 +31,6 @@ export function DialogueQuestLinks({
       id: newQuestId(),
       name: '',
       status: 'open',
-      // Linked at creation, so the quest is never briefly an empty thread the user has to
-      // remember to fill — which is the whole difference between this and the board's button.
       dialogueIds: [dialogueId],
       note: '',
       hue: nextQuestHue(quests),
@@ -115,11 +106,7 @@ export function DialogueQuestLinks({
   )
 }
 
-/**
- * Open quests first, then done ones. A quest being attached to is almost always one still in
- * progress, and sorting is what keeps the panel from making the user read past finished
- * threads to find it.
- */
+// Open quests first, then done ones — a quest being attached to is almost always in progress.
 function QuestPicker({
   quests,
   exclude,
@@ -141,16 +128,12 @@ function QuestPicker({
         !attached.has(quest.id) &&
         (needle === '' || questName(quest).toLowerCase().includes(needle)),
     )
-    // Stable within a status: `sort` is stable, so document order survives inside each group.
     return [...candidates].sort((a, b) => statusRank(a) - statusRank(b))
   }, [quests, attached, query])
 
   return (
-    // Escape is claimed here, on the picker itself, rather than only on the search input: the
-    // picker is a sub-control of the dialogue panel, and `DialoguePanel`'s own Escape-to-close
-    // listener is bound on `window`, which only ever sees a bubbled key that nothing closer
-    // stopped. Without `stopPropagation` here, one Escape would close the picker *and* the
-    // panel underneath it, however focus happened to be sitting inside this box.
+    // stopPropagation so Escape closes only this picker, not DialoguePanel's window-bound
+    // Escape-to-close listener too.
     <div
       className="dialogue-quests__picker"
       onKeyDown={(event) => {
@@ -200,7 +183,6 @@ function statusRank(quest: Quest): number {
   return quest.status === 'open' ? 0 : 1
 }
 
-/** A quest created from a dialogue starts nameless, and a blank row is nothing to click on. */
 function questName(quest: Quest): string {
   const trimmed = quest.name.trim()
   return trimmed === '' ? 'Untitled quest' : trimmed

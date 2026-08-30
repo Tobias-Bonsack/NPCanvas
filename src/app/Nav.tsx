@@ -22,16 +22,12 @@ export function Nav({
   directoryName,
   onReviewSaveFailure,
 }: {
-  /** The connected folder, named here because it is the only place the app says which project
-   * is open — and the switch below is the only way to open a different one. */
   directoryName: string
-  /** Reopens a save-failure banner the user dismissed. Without it, dismissing the banner would
-   * take the retry away with it and leave the failure with no action at all. */
+  // Reopens a save-failure banner the user dismissed, so dismissing it doesn't lose the retry.
   onReviewSaveFailure: () => void
 }): ReactElement {
   const active = useRoute()
-  // Its own subscription, not a prop: a save cycle then re-renders this indicator and nothing
-  // else. `App` deliberately subscribes to the state *without* `save` for the same reason.
+  // Its own subscription, not a prop — a save cycle then re-renders only this indicator.
   const save = useSaveState()
   const history = useHistoryState()
   return (
@@ -52,9 +48,8 @@ export function Nav({
       </ul>
       {history !== null && <HistoryControls history={history} />}
       <ProjectSwitch directoryName={directoryName} />
-      {/* One region for the whole session, its contents swapped underneath. A live region only
-          announces what changes *inside* it — mounting one that already holds the new text says
-          nothing at all, which is what a per-state `role="status"` would have done. */}
+      {/* One region for the whole session, contents swapped underneath — a live region only
+          announces changes inside it, so a fresh per-state region would announce nothing. */}
       <div className="nav__save-region" role="status">
         {save !== null && <SaveIndicator save={save} onReview={onReviewSaveFailure} />}
       </div>
@@ -62,13 +57,9 @@ export function Nav({
   )
 }
 
-/**
- * Undo/redo, both as a Ctrl/Cmd+Z-family shortcut and as buttons whose disabled state mirrors
- * the stacks. No target check on the shortcut — Ctrl+Z fires even while a text field has focus,
- * which is deliberate: the reducer coalesces a burst of keystrokes into one step (see
- * `coalesceKeyFor` in reducer.ts), so app-level undo already behaves like the field's own undo
- * would, and a native browser undo racing it against a different snapshot is worse.
- */
+// No target check on the shortcut — Ctrl+Z fires even in a text field, deliberately: the
+// reducer coalesces a burst of keystrokes into one step, so this already behaves like the
+// field's own undo, and a native browser undo racing it against a different snapshot is worse.
 function HistoryControls({ history }: { history: History }): ReactElement {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -106,20 +97,13 @@ function HistoryControls({ history }: { history: History }): ReactElement {
   )
 }
 
-/**
- * Which folder is open, and the way to open another one.
- *
- * The order inside the handler is the whole subtlety. `saveNow()` is synchronous, so the
- * pending edit is on its way to the *current* folder before the picker exists — and opening
- * the new project leaves `ready`, which drops any debounce still waiting. The picker is then
- * the first `await`, which is what `showDirectoryPicker` requires of its user gesture.
- */
+// saveNow() is synchronous so the pending edit is on its way to the current folder before the
+// picker exists; the picker is then the first await, as showDirectoryPicker's gesture requires.
 function ProjectSwitch({ directoryName }: { directoryName: string }): ReactElement {
   async function onSwitch(): Promise<void> {
     saveNow()
     const opened = await connectToNewDirectory()
-    // Ids in the hash belong to the project that has just been closed, so the switch lands on
-    // a bare canvas rather than a link into a document that no longer contains it.
+    // Ids in the hash belong to the project just closed, so land on a bare canvas instead.
     if (opened) navigate({ kind: 'canvas', dialogueId: null, focus: null }, { replace: true })
   }
 
@@ -136,15 +120,12 @@ function ProjectSwitch({ directoryName }: { directoryName: string }): ReactEleme
   )
 }
 
-// Intl rather than a date library: the timestamp only ever needs a wall clock, and the
-// user's own locale is the right format for it. See CLAUDE.md § Dependencies.
 const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
   minute: '2-digit',
   second: '2-digit',
 })
 
-/** Exhaustive over `SaveState`; the `ReactElement` return type rejects a new variant. */
 function SaveIndicator({ save, onReview }: { save: SaveState; onReview: () => void }): ReactElement {
   switch (save.kind) {
     case 'saved':
@@ -169,8 +150,7 @@ function SaveIndicator({ save, onReview }: { save: SaveState; onReview: () => vo
       )
 
     case 'failed':
-      // The reason and the action live in the banner, which is where they fit; this stays the
-      // persistent marker, and clicking it brings the banner back after a dismissal.
+      // The reason and action live in the banner; this stays the persistent marker.
       return (
         <p className="nav__save hint-text" data-state="failed">
           <button type="button" className="nav__save-review button" onClick={onReview}>

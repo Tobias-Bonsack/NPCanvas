@@ -11,15 +11,8 @@ import { Timeline } from './Timeline.tsx'
 import { applyFilter, isEmptyFilter } from './filters.ts'
 import './InsightsScreen.css'
 
-/**
- * The third-priority view: the collection along every axis that is not position on the map.
- *
- * The filter, the open dossier and the open timeline bucket are lifted to `App` — not store
- * state, still transient view state like the canvas viewport and the active tool (see
- * CLAUDE.md § Store scope), just held one level higher so a view switch does not lose them.
- * `filter` lives here rather than inside `FilterBar` so every panel below reads the same
- * narrowed set, and so a chart segment can write back into it.
- */
+// filter, dossierKey and timelineActive are lifted to App as view state (see CLAUDE.md § Store
+// scope) so a view switch doesn't lose them, and so a chart segment can write back into filter.
 export function InsightsScreen({
   project,
   viewState,
@@ -36,14 +29,11 @@ export function InsightsScreen({
     onViewStateChange({ ...viewState, dossierKey })
   const setTimelineActive = (timelineActive: InsightsViewState['timelineActive']): void =>
     onViewStateChange({ ...viewState, timelineActive })
-  // Changing the grain closes the open bucket in the same update: `timelineActive` is an instant
-  // matched against a bucket's `start`, and an hour's start is not a day's, so it would point at
-  // nothing after the switch. One update, so the pair can never be seen half-applied.
+  // Changing the grain closes the open bucket in the same update — timelineActive is an instant
+  // matched against a bucket's start, which an hour and a day disagree on.
   const setTimelineUnit = (timelineUnit: InsightsViewState['timelineUnit']): void =>
     onViewStateChange({ ...viewState, timelineUnit, timelineActive: null })
 
-  // Locations are derived here exactly as the canvas and the board derive them — and through
-  // the same cached index, so arriving on this screen rebuilds nothing.
   const zoneIndex = useMemo(
     () => indexDialoguesByZone(project.dialogues, project.zones, project.maps),
     [project.dialogues, project.zones, project.maps],
@@ -52,9 +42,8 @@ export function InsightsScreen({
     () => applyFilter(project.dialogues, filter, zoneIndex),
     [project.dialogues, filter, zoneIndex],
   )
-  // The timeline is the control for the date range, so it sees everything *except* that range:
-  // a brush has to stay draggable after it has been drawn, and an axis rescaled to the selection
-  // would leave nothing to drag back out of.
+  // The timeline sees everything except the date range, so a brush stays draggable after
+  // it's drawn instead of rescaling the axis to the selection.
   const undated = useMemo(
     () => applyFilter(project.dialogues, { ...filter, from: null, to: null }, zoneIndex),
     [project.dialogues, filter, zoneIndex],
@@ -73,8 +62,6 @@ export function InsightsScreen({
       </header>
 
       {project.dialogues.length === 0 ? (
-        // The full FilterBar over zero dialogues is a large control surface with nothing to
-        // control — see #45 — so it waits for the first dialogue along with everything else here.
         <p className="insights__empty hint-text">
           Nothing logged yet. Pin a dialogue on the{' '}
           <a href={formatRoute({ kind: 'canvas', dialogueId: null, focus: null })}>canvas</a> and

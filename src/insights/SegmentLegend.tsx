@@ -12,14 +12,8 @@ type TextureShape =
   | 'checkerboard'
   | 'verticals'
 
-/**
- * The shapes a tagged segment cycles through, in the order the app's original four tags used
- * them — a palette indexed by *position* in `project.relevanceTags`, not by name, so today's
- * four tags keep drawing exactly as they did before a project could create, rename or reorder
- * its own tags. `untagged` keeps its own shape outside this palette (`verticals`, via
- * `shapeForSegment` below), so it can never collide with a real tag's texture. Past the sixth
- * tag the palette simply repeats — a documented degradation, not a blank swatch.
- */
+// Indexed by position in project.relevanceTags, not by name. untagged keeps its own shape
+// ('verticals', via shapeForSegment) so it never collides. Past the sixth tag the palette repeats.
 const TAG_SHAPES: readonly TextureShape[] = [
   'diagonal',
   'counter-diagonal',
@@ -34,11 +28,8 @@ function shapeForSegment(segment: SegmentKey, index: number): TextureShape {
   return TAG_SHAPES[index % TAG_SHAPES.length]
 }
 
-/**
- * A texture per segment, so a chart survives being read by someone who cannot tell the hues
- * apart — and printed in greyscale. The shapes differ in *kind* (diagonal, counter-diagonal,
- * dots, grid, crosshatch, checkerboard, verticals), not merely in density.
- */
+// A texture per segment so a chart survives being read greyscale, or by someone who can't tell
+// hues apart — shapes differ in kind, not merely density.
 function SegmentPattern({ id, shape }: { id: string; shape: TextureShape }): ReactElement {
   const ink = 'rgba(0, 0, 0, 0.34)'
   return (
@@ -64,11 +55,8 @@ function SegmentPattern({ id, shape }: { id: string; shape: TextureShape }): Rea
   )
 }
 
-/**
- * Every pattern for one chart. The prefix exists because ids are document-global: two charts
- * on the same screen defining the same segment's pattern twice would both resolve to whichever
- * rendered first, and a third chart with a different palette would then silently inherit it.
- */
+// idPrefix keeps two charts on the same screen from resolving to whichever pattern def
+// rendered first — ids are document-global.
 export function SegmentDefs({
   idPrefix,
   tags,
@@ -89,7 +77,6 @@ export function SegmentDefs({
   )
 }
 
-/** What the colours mean, once per panel — the same swatch the bars are painted with. */
 export function SegmentLegend({ tags }: { tags: readonly RelevanceTag[] }): ReactElement {
   const labels = segmentLabel(tags)
   const colors = segmentColor(tags)
@@ -111,6 +98,5 @@ export function SegmentLegend({ tags }: { tags: readonly RelevanceTag[] }): Reac
   )
 }
 
-/** Unreachable in practice — every key in `segmentKeys(tags)` has an entry in `segmentColor(tags)`
- *  by construction — but a `Map` lookup is still typed as possibly missing. */
+// Unreachable in practice, but a Map lookup is typed as possibly missing.
 const UNKNOWN_FILL = 'transparent'

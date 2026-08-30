@@ -11,27 +11,14 @@ import { newRelevanceTagId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, RelevanceTag, RelevanceTagId } from '../project/types.ts'
 
-/**
- * What a tag's drag carries; `DragGesture` owns the pointer bookkeeping. `toIndex` is advanced
- * by each move rather than read back from the `dragPreview` state at commit time — a commit can
- * land in the same tick as the move that produced it, before React has re-rendered with the new
- * state, and reading stale state there would dispatch the *previous* target index. Mirrors
- * `PinLayer`'s `PinDragGesture.position`, which is live for the same reason.
- */
+// toIndex is advanced by each move rather than read back from dragPreview at commit time — a
+// commit can land in the same tick as the move that produced it, before React re-renders.
 type TagDragData = { id: RelevanceTagId; startIndex: number; rowHeight: number; toIndex: number }
 
-/** The live target position of the tag being dragged — component state, never the store; see
- *  the comment on `PinLayer`'s own `PinDrag` for why a dispatch per move is the wrong shape. */
 type TagDragPreview = { id: RelevanceTagId; toIndex: number }
 
-/** Only a fallback if a row's own measured height is somehow unavailable at drag start. */
 const DEFAULT_ROW_HEIGHT = 32
 
-/**
- * The relevance vocabulary, as a list a user edits — mounted on the settings screen (#90), since
- * editing the vocabulary is the project telling the app what words it uses, not a reading of the
- * vocabulary the way the filter chips and the breakdown panel on insights are.
- */
 export function RelevanceTagList({
   relevanceTags,
   dialogues,
@@ -39,9 +26,8 @@ export function RelevanceTagList({
   relevanceTags: readonly RelevanceTag[]
   dialogues: readonly Dialogue[]
 }): ReactElement {
-  // The drag gesture's own bookkeeping lives in a ref, exactly as `PinLayer`'s does; only the
-  // live preview it produces is state, so a pointermove costs a re-render of this list and
-  // nothing else.
+  // Bookkeeping lives in a ref, as in PinLayer — only the live preview is state, so a
+  // pointermove costs a re-render of this list and nothing else.
   const dragRef = useRef<DragGesture<TagDragData> | null>(null)
   const [dragPreview, setDragPreview] = useState<TagDragPreview | null>(null)
 
@@ -52,8 +38,7 @@ export function RelevanceTagList({
       hue: nextRelevanceHue(relevanceTags),
     }
     dispatch({ kind: 'relevance-tag/added', tag })
-    // Straight into renaming (below, `RelevanceTagRow` opens on an empty name): a nameless tag
-    // in a list is nothing to click on.
+    // RelevanceTagRow opens straight into renaming when a tag's name is empty.
   }
 
   function onHandlePointerDown(
@@ -86,12 +71,7 @@ export function RelevanceTagList({
     }
   }
 
-  /**
-   * The platform withdrew the gesture, so the list snaps back to the document's own order and
-   * nothing is dispatched — a cancel is not a shorter pointerup. Escape mid-drag is the same
-   * terminal: there is no pointer event for a key press, so it clears the ref by hand rather
-   * than through `drag-gesture.ts`'s own cancel path.
-   */
+  // A cancel is not a shorter pointerup — nothing is dispatched and the list snaps back.
   function onHandlePointerCancel(event: ReactPointerEvent<HTMLButtonElement>): void {
     if (cancelDrag(dragRef, event)) setDragPreview(null)
   }
@@ -108,8 +88,6 @@ export function RelevanceTagList({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [dragging])
 
-  // The order this list actually renders in: the document's own, with the dragged tag at its
-  // live target position. Identical to `relevanceTags` whenever no drag is in flight.
   const orderedTags = useMemo(() => {
     if (dragPreview === null) return relevanceTags
     const from = relevanceTags.findIndex((tag) => tag.id === dragPreview.id)
@@ -138,8 +116,7 @@ export function RelevanceTagList({
       ) : (
         <ul className="relevance-tag-list__items">
           {orderedTags.map((tag) => {
-            // The tag's real position, not its live preview slot — what the Move buttons and
-            // their disabled state must agree with, since a click is never mid-drag.
+            // Real position, not the live preview slot, since a click is never mid-drag.
             const index = relevanceTags.indexOf(tag)
             return (
               <li
@@ -169,11 +146,7 @@ export function RelevanceTagList({
   )
 }
 
-/**
- * One tag's row — rename and delete are both `EditableRow`'s. Colour is not: it is its own,
- * untouched third mode (see the issue's non-goals), tracked locally beside `EditableRow`'s own
- * state rather than folded into it.
- */
+// Colour is its own mode, tracked locally beside EditableRow's rename/delete state.
 function RelevanceTagRow({
   tag,
   index,
@@ -186,9 +159,7 @@ function RelevanceTagRow({
   onMove,
 }: {
   tag: RelevanceTag
-  /** This tag's position in the document's own order — never the live drag preview. */
   index: number
-  /** How many tags there are, so the last row's "Move down" can disable itself. */
   count: number
   dialogues: readonly Dialogue[]
   onHandlePointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void
@@ -197,10 +168,8 @@ function RelevanceTagRow({
   onHandlePointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void
   onMove: (toIndex: number) => void
 }): ReactElement {
-  // A tag created nameless (see `createTag`) opens straight into renaming — a blank tag in a
-  // list is nothing to click on. Seeded only on the first render, exactly like `useState`'s own
-  // lazy initializer: `relevance-tag/renamed` never commits an empty trimmed name, so an
-  // existing tag can never re-acquire a blank one later and re-trigger this.
+  // Seeded only on the first render, like useState's lazy initializer — relevance-tag/renamed
+  // never commits an empty trimmed name, so an existing tag can't re-acquire a blank one later.
   const editable = useEditableRow(tag.name === '' ? 'rename' : 'idle')
   const [colouring, setColouring] = useState(false)
   const triggerRef = useRowFocus(colouring ? 'colour' : editable.mode === 'idle' ? null : editable.mode)
@@ -235,8 +204,6 @@ function RelevanceTagRow({
   }
 
   if (colouring) {
-    // The swatches carry the raw hue: a relevance tag has no status that overrides its colour,
-    // unlike a quest's, so there is nothing else the palette would need to show instead.
     return (
       <div className="relevance-tag-list__palette" role="group" aria-label={`Colour of ${tagLabel(tag)}`}>
         {RELEVANCE_HUES.map((hue) => (
@@ -262,8 +229,7 @@ function RelevanceTagRow({
 
   return (
     <>
-      {/* Pointer-only: a keyboard user reorders with the Move buttons below instead, which
-          is why this carries no keydown handling of its own. */}
+      {/* Pointer-only — a keyboard user reorders with the Move buttons below instead. */}
       <button
         type="button"
         className="relevance-tag-list__handle"
@@ -329,7 +295,6 @@ function RelevanceTagRow({
   )
 }
 
-/** A tag created but not yet named is nothing to click on — same fallback `questName` gives. */
 function tagLabel(tag: RelevanceTag): string {
   const trimmed = tag.name.trim()
   return trimmed === '' ? 'Untitled tag' : trimmed

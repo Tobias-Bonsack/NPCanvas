@@ -9,7 +9,6 @@ import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
 import { emptyTally, segmentColor, segmentKeys, segmentLabel, tally, totalOf } from './relevance-segments.ts'
 
-/** What clicking a row's segment narrows to — the row's own axis, whichever chart it is in. */
 type RowTarget =
   | { kind: 'zones'; zones: readonly ZoneScope[] }
   | { kind: 'npcs'; npcKeys: readonly string[] }
@@ -17,21 +16,15 @@ type RowTarget =
 type BreakdownRow = {
   key: string
   label: string
-  /** Distinct dialogues, which is what the row is sorted and labelled by. */
   dialogues: number
   counts: Map<SegmentKey, number>
   target: RowTarget
 }
 
-/** Beyond this many NPCs the chart stops being readable, so the tail becomes one "Other" bar. */
 const NPC_LIMIT = 15
 
-/**
- * Where relevance actually lives: which regions and which people the tagged lines came from.
- *
- * Both charts read the *filtered* dialogues, so clicking a segment drills down rather than
- * showing a chart of something the rest of the screen is not looking at.
- */
+// Both charts read the filtered dialogues, so clicking a segment drills down rather than
+// showing a chart of something the rest of the screen isn't looking at.
 export function RelevanceBreakdown({
   dialogues,
   zones,
@@ -58,8 +51,8 @@ export function RelevanceBreakdown({
       target.kind === 'zones'
         ? { ...filter, zones: target.zones }
         : { ...filter, npcKeys: target.npcKeys }
-    // "Untagged" cannot be expressed as a relevance value — an empty array means "no opinion",
-    // not "no tags" — so that segment narrows the row axis only, and clears any tag filter.
+    // "Untagged" isn't expressible as a relevance value (empty means "no opinion", not "no
+    // tags"), so that segment narrows the row axis only and clears any tag filter.
     onChange({ ...narrowed, relevance: segment === 'untagged' ? [] : [segment] })
   }
 
@@ -97,11 +90,7 @@ export function RelevanceBreakdown({
   )
 }
 
-// One coordinate system for both charts, in viewBox units — and, since `useChartWidth` feeds
-// the SVG's own measured width back in as its viewBox width, one viewBox unit *is* one real
-// CSS pixel: the scale factor a `width: 100%` svg would otherwise apply to its viewBox is
-// pinned at 1, so `.insights__row-label`'s `font-size` paints at its literal size no matter how
-// the two-column layout in InsightsScreen.css squeezes the container.
+// viewBox units, and (per useChartWidth) one viewBox unit is one real CSS pixel.
 const DEFAULT_WIDTH = 720
 const LABEL_WIDTH = 168
 const TOTAL_WIDTH = 44
@@ -109,7 +98,6 @@ const GAP = 10
 const BAR_X = LABEL_WIDTH + GAP
 const ROW_HEIGHT = 22
 const ROW_PITCH = 30
-/** Below this a count label does not fit inside its segment and is left to the tooltip. */
 const LABEL_MIN_SEGMENT = 24
 
 function BreakdownChart({
@@ -128,8 +116,7 @@ function BreakdownChart({
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const height = Math.max(rows.length * ROW_PITCH, ROW_PITCH)
   const barWidth = Math.max(width - BAR_X - TOTAL_WIDTH - GAP, 0)
-  // A single row must still fill the bar rather than being drawn as a sliver of an imagined
-  // larger maximum, so the scale is the largest row, never a fixed ceiling.
+  // Scale is the largest row, never a fixed ceiling, so a single row still fills the bar.
   const widest = rows.reduce((max, row) => Math.max(max, totalOf(row.counts)), 0)
   const keys = useMemo(() => segmentKeys(tags), [tags])
   const labels = useMemo(() => segmentLabel(tags), [tags])
@@ -188,7 +175,6 @@ function BreakdownBar({
   labels: ReadonlyMap<SegmentKey, string>
   colors: ReadonlyMap<SegmentKey, string>
   y: number
-  /** The chart's own measured width — where the row's total count is printed. */
   width: number
   barWidth: number
   scale: number
@@ -221,11 +207,6 @@ function BreakdownBar({
               onSelect(row.target, segment)
             }}
           >
-            {/* The sole source of the accessible name — an SVG `<title>` as the first child of a
-                graphics element with an interactive role is enough on its own; pairing it with
-                an identical `aria-label` was two copies of the same string to keep in sync for
-                nothing, since `aria-label` would have won the name computation anyway. Kept
-                specifically for the native hover tooltip, which nothing else here provides. */}
             <title>{label}</title>
             <rect
               x={left}
@@ -261,13 +242,8 @@ function BreakdownBar({
   )
 }
 
-/**
- * A row label clipped to fit `maxWidth`, by actually measuring the rendered glyphs
- * (`getComputedTextLength`) rather than guessing from a character count — a wide capital in a
- * fifteen-character name and fifteen narrow lowercase letters do not take the same room, and the
- * old `truncate(label, 26)` treated them identically. Renders the full text first and corrects
- * it in `useLayoutEffect`, before the browser paints, so nothing overflowing is ever visible.
- */
+// Clips to maxWidth by measuring rendered glyphs (getComputedTextLength), not a character
+// count — corrects in useLayoutEffect, before paint, so nothing overflowing is ever visible.
 function ClippedLabel({
   text,
   maxWidth,
@@ -293,8 +269,6 @@ function ClippedLabel({
       setDisplay(text)
       return
     }
-    // The longest prefix (plus an ellipsis) that still fits, found by measuring the real
-    // rendered length rather than assuming a width per character.
     let fits = 0
     let doesNotFit = text.length
     while (fits < doesNotFit) {
@@ -313,7 +287,6 @@ function ClippedLabel({
   )
 }
 
-/** Every zone that holds a filtered dialogue, plus the lines that fall outside all of them. */
 function zoneRows(
   dialogues: readonly Dialogue[],
   zones: readonly Zone[],
@@ -329,7 +302,7 @@ function zoneRows(
       tally(outside, dialogue)
       continue
     }
-    // A line in two overlapping zones counts in both, exactly as `countDialoguesByZone` does.
+    // A line in two overlapping zones counts in both.
     for (const zoneId of inside) {
       const bucket = byZone.get(zoneId) ?? emptyTally(relevanceTags)
       tally(bucket, dialogue)
@@ -361,7 +334,7 @@ function zoneRows(
   return sortByDialogues(rows)
 }
 
-/** NPCs by line count, with everything past `NPC_LIMIT` folded into one clickable "Other". */
+// NPCs by line count, with everything past NPC_LIMIT folded into one clickable "Other".
 function npcRows(dialogues: readonly Dialogue[], relevanceTags: readonly RelevanceTag[]): BreakdownRow[] {
   const byNpc = new Map<string, Tally>()
   for (const dialogue of dialogues) {
@@ -396,7 +369,6 @@ function npcRows(dialogues: readonly Dialogue[], relevanceTags: readonly Relevan
     label: `Other (${tail.length} NPCs)`,
     dialogues: merged.dialogues,
     counts: merged.counts,
-    // The whole tail as one OR-set: clicking "Other" shows exactly the bar's contents.
     target: { kind: 'npcs', npcKeys: tail.flatMap((row) => npcKeysOf(row.target)) },
   })
   return head
@@ -406,7 +378,6 @@ function npcKeysOf(target: RowTarget): readonly string[] {
   return target.kind === 'npcs' ? target.npcKeys : []
 }
 
-/** Descending by line count, then by label, so equal bars keep a stable order across renders. */
 function sortByDialogues(rows: BreakdownRow[]): BreakdownRow[] {
   return rows.sort((a, b) => b.dialogues - a.dialogues || a.label.localeCompare(b.label))
 }

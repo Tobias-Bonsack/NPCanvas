@@ -1,18 +1,10 @@
 import { byTimeDesc, dialoguesByTimeDesc } from './dialogue-order.ts'
 import type { Dialogue } from '../project/types.ts'
 
-/** How many of the most-recently-spoken NPCs lead the list before it falls back to alphabetical. */
 const RECENT_NPC_LIMIT = 5
 
-/**
- * Every NPC name in the project, deduplicated and blanks dropped — the most recently spoken
- * `RECENT_NPC_LIMIT` first, in that order, then everyone else in locale order. While playing,
- * the next line is usually one of the last few people talked to; alphabetical order made every
- * one of them equally far from the top.
- *
- * Its own module, not `DialoguePanel.tsx`, because `PendingCaptureList.tsx`'s own `NpcNameInput`
- * shares this — and because a `.tsx` that exports anything but components breaks Fast Refresh.
- */
+// The most-recently-spoken NPCs lead the list, then everyone else alphabetically — while
+// playing, the next line is usually one of the last few people talked to.
 export function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
   const byRecency = dialoguesByTimeDesc(dialogues)
   const ordered: string[] = []
@@ -28,13 +20,8 @@ export function npcNamesIn(dialogues: readonly Dialogue[]): string[] {
   return [...recent, ...rest]
 }
 
-/**
- * The most recently spoken record other than `excludeId`, or `null` when there is no other one
- * — the "previous line" a freshly placed dialogue offers to copy, and the "previous capture" a
- * pending-capture row offers to copy (`PendingCaptureList.tsx`). `spokenAt` is the only ordering
- * either a `Dialogue` or a `PendingCapture` carries, so one sorting implementation serves both
- * rather than two.
- */
+// spokenAt is the only ordering a Dialogue or PendingCapture carries, so this generic form
+// serves both.
 export function previousRecordFor<T extends { id: string; spokenAt: string }>(
   items: readonly T[],
   excludeId: T['id'],

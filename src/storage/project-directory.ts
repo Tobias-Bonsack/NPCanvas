@@ -10,39 +10,22 @@ import {
 } from './directory-handle-store.ts'
 import { isFileSystemAccessSupported } from './file-system-support.ts'
 
-// Every export here awaits IO and then dispatches plain actions, one per step. Nothing
-// asynchronous ever reaches the reducer: no thunks, no middleware, no promises in state.
+// Async IO never reaches the reducer: each export awaits, then dispatches a plain action.
 
 const DATA_FILE_NAME = 'data.json'
 const BACKUP_FILE_NAME = 'data.json.bak'
 const MEDIA_DIRECTORY_NAME = 'media'
 
-/**
- * Whether the pre-session `data.json.bak` has been written yet for the connected folder. One
- * generation, not a rotation: only the *first* write of a session backs up what was on disk when
- * the session started, so a bad edit stays recoverable even after autosave has since overwritten
- * `data.json` many times with it. Reset on every `openProject`, which is what "a session" means
- * here — reconnecting to the same folder later backs it up again from whatever is on disk then.
- */
+// Only the first write of a session backs up what was on disk when the session started, so a
+// bad edit stays recoverable even after many autosaves. Reset on every openProject.
 let backedUpThisSession = false
 
-/**
- * The live handle for the connected project folder. Module-level rather than in the store
- * because it is not renderable state and not serializable — the store holds the document.
- */
 let directoryHandle: FileSystemDirectoryHandle | null = null
 
-/**
- * Which load attempt is current. Two loads can be in flight at once — "Choose another folder"
- * clicked while the first read is still going, or the boot-time restore racing a picker click
- * — and without this the one that *finishes* last wins the dispatch while `directoryHandle`
- * points at the other folder. The first edit then autosaves one project into the other's
- * folder and clobbers its `data.json`. Every assignment to `directoryHandle` and every
- * dispatch on the load path is therefore gated on the generation it started under.
- */
+// Two loads can race (boot restore vs. a picker click) — every dispatch on the load path is
+// gated on the generation it started under, so a slower finisher can't win.
 let loadGeneration = 0
 
-/** Claims the load path. Everything the caller does afterwards is conditional on this. */
 function beginLoad(): number {
   loadGeneration += 1
   return loadGeneration
@@ -52,7 +35,6 @@ function isCurrentLoad(generation: number): boolean {
   return generation === loadGeneration
 }
 
-/** Boot entry point, called once from `main.tsx`. */
 export async function startProjectConnection(): Promise<void> {
   if (!isFileSystemAccessSupported()) {
     dispatch({ kind: 'project/unsupported' })
@@ -61,37 +43,24 @@ export async function startProjectConnection(): Promise<void> {
   await restoreSavedDirectory()
 }
 
-/**
- * Opens the folder picker and adopts what the user chooses — the first connect and a switch
- * between projects are the same act. Resolves to whether a folder was actually opened, so a
- * caller can follow up (the switch navigates) without reading the store back.
- *
- * Must be called from a click handler — see the `showDirectoryPicker` comment below.
- */
+// Resolves to whether a folder was actually opened, so a caller (the connect/switch flow) can
+// follow up without reading the store back. Must run in a click handler: showDirectoryPicker
+// needs transient user activation, so this must be its first await.
 export async function connectToNewDirectory(): Promise<boolean> {
   let handle: FileSystemDirectoryHandle
   try {
-    // Requires transient user activation, so this must be the first await in the click
-    // handler's task. `id` makes Chromium reopen the picker where it was last left.
+    // `id` makes Chromium reopen the picker where it was last left.
     handle = await window.showDirectoryPicker({ id: 'npcanvas-project', mode: 'readwrite' })
   } catch (error) {
-    // Every picker rejection ends with no folder chosen. What that means depends on whether
-    // a project was already open, which is the reducer's decision — not this module's.
-    // Cancelling (AbortError) is an ordinary outcome and stays silent; anything else is a
-    // bug worth a console trace, but still not a `load-failed` — there is no folder whose
-    // reading could be retried.
+    // Cancelling (AbortError) is ordinary; anything else is worth a console trace.
     if (!isAbortError(error)) console.error('Folder picker failed', error)
     dispatch({ kind: 'project/pick-cancelled' })
     return false
   }
-
-  // The folder is remembered by `openProject`, once it has actually loaded — a folder whose
-  // `data.json` will not parse must not become the one every reload lands back on.
   await openProject(handle)
   return true
 }
 
-/** Boot path: reuse the folder from the previous session if the grant is still good. */
 async function restoreSavedDirectory(): Promise<void> {
   const generation = beginLoad()
 
@@ -109,10 +78,8 @@ async function restoreSavedDirectory(): Promise<void> {
 
   let permission: PermissionState
   try {
-    // Inside the try: a handle whose folder has since been deleted or renamed on disk rejects
-    // here, and the rejection would otherwise escape this function unhandled. `ErrorBoundary`
-    // does not help — React boundaries catch render, not a rejected promise from a module-scope
-    // boot call — and there is no `unhandledrejection` listener, so it would be a blank boot.
+    // A folder deleted/renamed since last session rejects here; ErrorBoundary can't help (it
+    // catches render, not a rejected promise from this boot-time call), so it's caught explicitly.
     permission = await handle.queryPermission({ mode: 'readwrite' })
   } catch (error) {
     if (isCurrentLoad(generation)) {
@@ -132,15 +99,15 @@ async function restoreSavedDirectory(): Promise<void> {
       return
 
     case 'prompt':
-      // Hold the handle so the Reconnect click can call requestPermission immediately,
-      // without an IndexedDB round trip that would spend the user gesture first.
+      // Held so the Reconnect click can requestPermission immediately, without an IndexedDB
+      // round trip that would spend the user gesture first.
       directoryHandle = handle
       dispatch({ kind: 'project/reconnecting', directoryName: handle.name })
       return
 
     case 'denied':
-      // A denied grant is permanent for this origin+folder, so the stored handle is dead
-      // weight that would otherwise show a Reconnect button that can never succeed.
+      // Permanent for this origin+folder — the stored handle can only ever show a dead-end
+      // Reconnect button, so it's dropped now.
       await clearDirectoryHandle().catch(() => undefined)
       if (isCurrentLoad(generation)) dispatch({ kind: 'project/disconnected' })
       return
@@ -150,7 +117,8 @@ async function restoreSavedDirectory(): Promise<void> {
   }
 }
 
-/** Must be called from a click handler — see the `requestPermission` comment below. */
+// requestPermission only prompts under transient user activation — outside a gesture it just
+// resolves to the current state. Must be the first await in a click handler's task.
 export async function grantSavedDirectoryAccess(): Promise<void> {
   const handle = directoryHandle
   if (handle === null) {
@@ -158,9 +126,6 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
     return
   }
 
-  // requestPermission silently resolves to the *current* state instead of prompting when
-  // it runs outside a user gesture. It must therefore be the first await in the click
-  // handler's task, and this function must never be called from an effect or a timer.
   const permission = await handle.requestPermission({ mode: 'readwrite' })
   switch (permission) {
     case 'granted':
@@ -168,17 +133,15 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
       return
 
     case 'prompt':
-      // Dismissed, not refused: Escape or a click outside the bubble leaves the grant askable,
-      // and Chromium reports that as `prompt`. The handle is still good, so stay on the
-      // Reconnect screen rather than spending it — the next click prompts again.
+      // Dismissed, not refused (Escape or an outside click) — Chromium reports this as
+      // `prompt` too. The handle is still good; the next click prompts again.
       dispatch({ kind: 'project/reconnecting', directoryName: handle.name })
       return
 
     case 'denied':
-      // A refused grant is remembered by Chromium for this origin and folder: the next
-      // requestPermission resolves to `denied` without prompting at all. Keeping the handle
-      // would leave a Reconnect button that can only fail again — and it survives reloads, so
-      // the dead end would outlive the session. Drop it and let the picker be the way back.
+      // Chromium remembers a refusal for this origin+folder: the next requestPermission
+      // resolves to `denied` without prompting, and it survives reloads. Drop the handle so
+      // the picker — not a dead-end Reconnect button — is the way back.
       directoryHandle = null
       await clearDirectoryHandle().catch(() => undefined)
       dispatch({
@@ -193,42 +156,25 @@ export async function grantSavedDirectoryAccess(): Promise<void> {
   }
 }
 
-/**
- * Re-asks for write access to the folder that is already open. Chromium can revoke a
- * `readwrite` grant mid-session — the file-access chip in the omnibox does exactly that — and
- * every write from then on throws `NotAllowedError`, which no amount of retrying clears.
- *
- * Like every `requestPermission`, it prompts only under transient user activation, so this must
- * be the first await in a click handler's task. Resolves to whether the folder is writable now.
- */
+// Re-asks for write access to the already-open folder: Chromium can revoke a readwrite grant
+// mid-session (the omnibox file-access chip does this), after which every write throws
+// NotAllowedError until re-granted. Must run in a click handler, per requestPermission above.
 export async function regrantConnectedDirectory(): Promise<boolean> {
   const handle = directoryHandle
   if (handle === null) return false
   return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted'
 }
 
-/**
- * Writes `data.json`, resolving to the timestamp to show as "saved at".
- *
- * `createWritable()` already writes through a swap file and commits atomically on
- * `close()`, so there is deliberately no tmp-file-plus-rename scheme layered on top.
- */
 export async function writeProjectFile(project: ProjectFile): Promise<string> {
   const handle = directoryHandle
   if (handle === null) throw new Error('No project folder is connected')
   await backUpBeforeFirstWrite(handle)
   await writeDataFile(handle, project)
-  // Within a millisecond of the `savedAt` that `serializeProject` stamped into the file.
-  // Reading it back out of the JSON just to display it is not worth the parse.
   return new Date().toISOString()
 }
 
-/**
- * Copies whatever `data.json` held into `data.json.bak`, once per session and before that
- * session's first write touches it. A folder with no `data.json` yet — a brand-new project,
- * already bootstrapped by `readOrCreateProjectFile` through `writeDataFile` directly rather than
- * through here — has nothing to back up, which is success, not failure.
- */
+// A folder with no data.json yet has nothing to back up — that's bootstrapped separately by
+// readOrCreateProjectFile, which is success, not a missing case here.
 async function backUpBeforeFirstWrite(handle: FileSystemDirectoryHandle): Promise<void> {
   if (backedUpThisSession) return
   backedUpThisSession = true
@@ -242,7 +188,6 @@ async function backUpBeforeFirstWrite(handle: FileSystemDirectoryHandle): Promis
   await writeTextFile(handle, BACKUP_FILE_NAME, await existing.text())
 }
 
-/** Takes the folder explicitly, so a caller can name one that is not (yet) the connected one. */
 async function writeDataFile(
   handle: FileSystemDirectoryHandle,
   project: ProjectFile,
@@ -261,19 +206,12 @@ async function writeTextFile(
     await writable.write(contents)
     await writable.close()
   } catch (error) {
-    // abort(), not close(): close() would commit the half-written swap file over the
-    // user's data. A failure to abort is not worth masking the original error.
+    // abort(), not close() — close() would commit the half-written swap file over the user's data.
     await writable.abort().catch(() => undefined)
     throw error
   }
 }
 
-// ---- media/ ----
-//
-// Every media file the app writes is named from an id it generated, never from the upload's
-// filename, so nothing here needs to sanitise a path. See CLAUDE.md § Media contract.
-
-/** Writes (or overwrites) `media/<fileName>`, creating `media/` on first use. */
 export async function writeMediaFile(fileName: string, data: Blob): Promise<void> {
   const media = await getMediaDirectory({ create: true })
   const fileHandle = await media.getFileHandle(fileName, { create: true })
@@ -287,10 +225,8 @@ export async function writeMediaFile(fileName: string, data: Blob): Promise<void
   }
 }
 
-/**
- * Resolves to `null` when the file is absent, which is an expected state — the user can
- * delete or move files in their own project folder between sessions.
- */
+// Resolves to null when the file is absent — expected, since the user can delete or move
+// files in their own project folder between sessions.
 export async function readMediaFile(fileName: string): Promise<File | null> {
   const media = await getMediaDirectory({ create: false })
   if (media === null) return null
@@ -302,7 +238,7 @@ export async function readMediaFile(fileName: string): Promise<File | null> {
   }
 }
 
-/** Deleting an already-absent file is success: the caller wanted it gone, and it is. */
+// Deleting an already-absent file is success: the caller wanted it gone, and it is.
 export async function deleteMediaFile(fileName: string): Promise<void> {
   const media = await getMediaDirectory({ create: false })
   if (media === null) return
@@ -325,7 +261,6 @@ async function getMediaDirectory(options: {
   try {
     return await handle.getDirectoryHandle(MEDIA_DIRECTORY_NAME, { create: options.create })
   } catch (error) {
-    // Only reachable with create: false — a read against a project that has no media yet.
     if (isNotFoundError(error)) return null
     throw error
   }
@@ -334,12 +269,9 @@ async function getMediaDirectory(options: {
 async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   const generation = beginLoad()
   directoryHandle = handle
-  // A new session over this folder: its first write should back up what is on disk *now*,
-  // not skip the backup because some earlier session already took one.
   backedUpThisSession = false
-  // After the handle, never before: the cache re-reads its live entries immediately, and they
-  // must resolve against the folder being opened. Necessary at all because the cache is keyed
-  // on the file name alone — a copied project folder holds the same names with other bytes.
+  // After the handle, never before — the cache is keyed on file name alone, so a copied
+  // project folder with the same names but other bytes must not resolve against the old one.
   clearMediaCache()
   dispatch({ kind: 'project/loading', directoryName: handle.name })
 
@@ -359,8 +291,8 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   if (!isCurrentLoad(generation)) return
   dispatch({ kind: 'project/loaded', directoryName: handle.name, ...loaded })
 
-  // Remembered only now, and only for the load that won: the folder a reload lands back on is
-  // the one that last actually opened, never one whose `data.json` would not parse.
+  // Remembered only now the load has won, so a reload never lands on a folder whose
+  // data.json didn't parse.
   try {
     await saveDirectoryHandle(handle)
   } catch (error) {
@@ -369,7 +301,6 @@ async function openProject(handle: FileSystemDirectoryHandle): Promise<void> {
   }
 }
 
-/** A document plus whatever `parseProjectFile` had to drop to hand it back whole. */
 type LoadedProject = { project: ProjectFile; repairs: ProjectRepairs }
 
 async function readOrCreateProjectFile(
@@ -380,12 +311,9 @@ async function readOrCreateProjectFile(
     fileHandle = await handle.getFileHandle(DATA_FILE_NAME)
   } catch (error) {
     if (!isNotFoundError(error)) throw error
-    // A folder without data.json is a new project, not a failure. Write it immediately so
-    // the folder is never left half-adopted — with nothing on disk, a reload that restores
-    // the handle would find an empty folder and bootstrap a *second* empty project.
-    //
-    // Through `handle`, not the module-level one: a second load starting during this read
-    // would have replaced it, and this bootstrap belongs to the folder it was read from.
+    // A folder without data.json is a new project, not a failure — write it immediately so a
+    // reload doesn't find an empty folder and bootstrap a second empty project. Through the
+    // passed-in `handle`, not the module-level one, in case a second load has since replaced it.
     const project = createEmptyProject(handle.name)
     await writeDataFile(handle, project)
     return { project, repairs: { kind: 'none' } }
@@ -409,25 +337,15 @@ function isNotFoundError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError'
 }
 
-/**
- * No file of that name can be produced — whether the folder simply lacks it, or the name is
- * one the FS Access API refuses outright. A hand-edited `fileName` containing `/`, `.` or `..`
- * rejects with a plain `TypeError` ("Name is not allowed"), not a `NotFoundError`; treating
- * that as a hard failure surfaced a validation message where the honest answer is that the
- * picture is missing, which is the state the media layer already knows how to draw.
- *
- * Read and delete only. A *write* under an unusable name is a real failure and must not be
- * swallowed — and the app writes only names it generated itself.
- */
+// A hand-edited fileName containing `/`, `.` or `..` rejects with a plain TypeError ("Name is
+// not allowed"), not NotFoundError — treated as missing (not a hard failure) for read/delete
+// only; a write under such a name is a real failure and must still throw.
 function isMissingFile(error: unknown): boolean {
   return isNotFoundError(error) || error instanceof TypeError
 }
 
-/**
- * A lost or refused `readwrite` grant, as opposed to a disk, quota or serialisation failure.
- * The two need different offers — one a permission prompt, the other a plain retry — so the
- * caller has to be able to tell them apart. See `regrantConnectedDirectory`.
- */
+// Distinguishes a lost/refused readwrite grant from a disk/quota/serialisation failure — the
+// caller offers a permission prompt for one and a plain retry for the other.
 export function isPermissionError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'NotAllowedError'
 }

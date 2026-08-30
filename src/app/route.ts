@@ -5,38 +5,25 @@ import type { DialogueId, MapId, QuestId, ZoneId } from '../project/types.ts'
 // Hash routing, not history routing: Pages serves static files, so history routing would
 // need a `404.html` copy of `index.html`. The URL carries view state only, never data.
 
-/**
- * What the canvas jumps to — a map (`MapList`) or a zone (`ZoneList`). One union rather than
- * two parallel one-shot fields, so a second sidebar list reaches for the same `focus` channel
- * instead of growing its own.
- */
+// One union, not two parallel fields, so a second sidebar list reaches for the same channel.
 export type FocusTarget = { kind: 'map'; id: MapId } | { kind: 'zone'; id: ZoneId }
 
 export type Route =
   | {
       kind: 'canvas'
       dialogueId: DialogueId | null
-      /**
-       * A one-shot navigation intent, not view state: the canvas jumps to this target once and
-       * then clears the parameter with a replacing navigation. Left in the hash it would
-       * fight a user who immediately pans away, re-focusing on every render.
-       */
+      // One-shot intent: the canvas jumps here once, then clears it via a replacing navigation.
       focus: FocusTarget | null
     }
   | {
       kind: 'quests'
-      /**
-       * A one-shot intent, exactly like `focusMapId`: the board opens this quest's editor once
-       * and then clears the parameter with a replacing navigation. It exists so the dialogue
-       * panel can create a quest and land the caret in its name field, which lives on the
-       * board — the hash carries *which card is open*, never any quest data.
-       */
+      // One-shot, same pattern as focus — lets the dialogue panel create a quest and land the
+      // caret in its name field on the board.
       editQuestId: QuestId | null
     }
   | { kind: 'insights' }
   | { kind: 'settings' }
 
-/** Shared reference, so an unparseable hash keeps returning the identical object. */
 const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focus: null }
 
 export function parseRoute(hash: string): Route {
@@ -53,9 +40,8 @@ export function parseRoute(hash: string): Route {
       return { kind: 'insights' }
     case 'settings':
       return { kind: 'settings' }
-    // `map` is the pre-M3.5 path, when the canvas showed one map at a time and named it in
-    // the hash. Every map is on screen now, so the id is dropped rather than honoured — but
-    // an old link must still land on the canvas rather than render nothing.
+    // `map` is the pre-M3.5 path — every map is on screen now, but an old link must still land
+    // on the canvas rather than render nothing.
     case 'canvas':
     case 'map': {
       const params = new URLSearchParams(query)
@@ -71,7 +57,6 @@ export function parseRoute(hash: string): Route {
   }
 }
 
-/** `map:<id>` or `zone:<id>`. An unrecognised or missing prefix is no focus at all. */
 function parseFocus(raw: string | null): FocusTarget | null {
   if (raw === null) return null
   const [kind, id] = raw.split(':', 2)
@@ -127,14 +112,8 @@ export function useRoute(): Route {
   return useSyncExternalStore(subscribeToHash, getRoute)
 }
 
-/**
- * `replace` is for corrections and one-shot intents the user did not ask to keep in history
- * — a deep link to a dialogue that has since been deleted, say. Pushing those would trap the
- * back button on a URL that immediately corrects itself again.
- *
- * `location.replace` rather than `history.replaceState`, because replaceState does not fire
- * `hashchange` and `useRoute` would keep serving the stale snapshot.
- */
+// `replace` is for corrections and one-shot intents not meant to enter history. location.replace,
+// not history.replaceState — replaceState doesn't fire hashchange, so useRoute would go stale.
 export function navigate(route: Route, options?: { replace?: boolean }): void {
   const hash = formatRoute(route)
   if (options?.replace === true) {

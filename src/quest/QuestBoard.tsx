@@ -30,11 +30,7 @@ import { QuestForm } from './QuestForm.tsx'
 import { QUEST_HUES, nextQuestHue, questAccentStyle, questHueStyle } from './quest-style.ts'
 import './QuestBoard.css'
 
-/**
- * Transient board UI — which card is being edited, which has its picker open, which is
- * confirming a delete. Component state, never the store: see CLAUDE.md § Store scope. One
- * mode for the whole board rather than one per card, because only one card can be mid-edit.
- */
+// One mode for the whole board, not one per card — only one card can be mid-edit.
 export type QuestBoardMode =
   | { kind: 'idle' }
   | { kind: 'editing'; id: QuestId }
@@ -43,17 +39,12 @@ export type QuestBoardMode =
 
 const STATUS_LABEL: Record<QuestStatus, string> = { open: 'Open', done: 'Done' }
 
-/** The verb that moves a quest to the *other* status — the only transition a card offers. */
 const STATUS_TOGGLE: Record<QuestStatus, { to: QuestStatus; label: string }> = {
   open: { to: 'done', label: 'Mark done' },
   done: { to: 'open', label: 'Reopen' },
 }
 
-/**
- * The second-priority view. A relevance tag says what *kind* of thing a line was; a quest is
- * the thread the user actually wants to follow and tick off, so quests are made by hand and
- * only ever reference dialogues — deleting one takes nothing with it.
- */
+// Quests are made by hand and only ever reference dialogues — deleting one takes nothing with it.
 export function QuestBoard({
   project,
   route,
@@ -71,12 +62,8 @@ export function QuestBoard({
     [onViewStateChange],
   )
 
-  // `?edit=<id>` is how the dialogue panel and the dossier open a quest's editor directly, and
-  // land the caret in its name field, which lives here. A one-shot intent, so it is cleared with
-  // a replacing navigation before the editor opens — left in the hash it would reopen on every
-  // render and fight a user who closed it. An id naming a quest that no longer exists is simply
-  // dropped. The card is also scrolled into view: an id landing at the top of an unscrolled
-  // board with no highlight leaves no indication which quest was meant.
+  // `?edit=<id>` opens a quest's editor directly. One-shot: cleared via a replacing navigation
+  // before opening, or it would reopen on every render. An unknown id is simply dropped.
   const editQuestId = route.editQuestId
   const quests = project.quests
   useEffect(() => {
@@ -88,11 +75,9 @@ export function QuestBoard({
     }
   }, [editQuestId, quests, setMode])
 
-  // Resolved once per document change rather than once per linked row: a quest holds ids, and
-  // a card with twenty of them would otherwise scan the dialogue array twenty times.
+  // Resolved once per document change, not once per linked row.
   const dialoguesById = useMemo(() => byId(project.dialogues), [project.dialogues])
   const zonesById = useMemo(() => byId(project.zones), [project.zones])
-  // Locations are derived here exactly as the canvas derives them — a Dialogue stores no zone.
   const zoneIndex = useMemo(
     () => indexDialoguesByZone(project.dialogues, project.zones, project.maps),
     [project.dialogues, project.zones, project.maps],
@@ -108,7 +93,6 @@ export function QuestBoard({
       hue: nextQuestHue(project.quests),
     }
     dispatch({ kind: 'quest/added', quest })
-    // Straight into the editor: a nameless quest in a list is nothing to click on.
     setMode({ kind: 'editing', id: quest.id })
   }
 
@@ -146,14 +130,13 @@ export function QuestBoard({
 }
 
 type BoardData = {
-  /** Every dialogue in the project — the pool the attach picker searches. */
   dialogues: readonly Dialogue[]
   dialoguesById: ReadonlyMap<DialogueId, Dialogue>
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
 }
 
-/** Renders its heading even when empty: "Done 0" is the progress the board exists to show. */
+// Renders its heading even when empty — "Done 0" is the progress the board exists to show.
 function QuestGroup({
   status,
   quests,
@@ -180,7 +163,6 @@ function QuestGroup({
             <li key={quest.id}>
               <QuestCard
                 quest={quest}
-                // Only the card the mode names is in that mode; every other card is idle.
                 mode={'id' in mode && mode.id === quest.id ? mode : { kind: 'idle' }}
                 onSetMode={onSetMode}
                 {...data}
@@ -206,13 +188,10 @@ function QuestCard({
   mode: QuestBoardMode
   onSetMode: (mode: QuestBoardMode) => void
 }): ReactElement {
-  // Delete is `EditableRow`'s own, local state — the rest of the card's modes (`editing`,
-  // `recolouring`, `attaching`) stay lifted into `QuestsViewState` because `?edit=<id>` has to
-  // reach them from outside the card; nothing ever needs to deep-link into a delete confirmation.
+  // Delete is EditableRow's own local state; the other modes stay lifted into QuestsViewState
+  // because ?edit=<id> must reach them from outside the card.
   const editable = useEditableRow()
 
-  // Chronological, because a quest is read as a sequence of what was heard when. ISO 8601
-  // sorts lexicographically, so no Date is constructed per comparison.
   const linked = useMemo(() => {
     const found = quest.dialogueIds.flatMap((id) => {
       const dialogue = dialoguesById.get(id)
@@ -231,8 +210,6 @@ function QuestCard({
       className="quest-card card"
       data-status={quest.status}
       style={questAccentStyle(quest)}
-      // A named region, the same pattern `QuestGroup` already uses — forty cards otherwise all
-      // read as "quest-card" to anything that announces the region a control lives in.
       aria-labelledby={nameId}
     >
       <header className="quest-card__header row-actions-host">
@@ -280,7 +257,6 @@ function QuestCard({
 
       {editable.mode === 'delete' ? (
         <EditableRowDeleteConfirm
-          // No cascade to warn about — a quest references dialogues, it never owns them.
           message="Delete this quest? Its dialogues stay exactly where they are."
           onConfirm={() => dispatch({ kind: 'quest/deleted', questId: quest.id })}
           close={editable.close}
@@ -333,7 +309,6 @@ function QuestCard({
   )
 }
 
-/** Exhaustive over `QuestBoardMode`; a silently added mode fails to compile here. */
 function QuestCardMode({
   quest,
   mode,
@@ -364,8 +339,8 @@ function QuestCardMode({
     case 'editing':
       return <QuestForm quest={quest} onDone={() => onSetMode({ kind: 'idle' })} />
 
-    // The swatches carry the raw hue rather than the accent: a done quest is drawn green, and
-    // a palette showing twelve greens would say nothing about what is being picked.
+    // Raw hue, not the accent — a done quest is drawn green, so a palette of twelve accented
+    // greens would say nothing about what's being picked.
     case 'recolouring':
       return (
         <div className="quest-card__palette" role="group" aria-label={`Colour of ${quest.name}`}>
@@ -412,14 +387,10 @@ function QuestCardMode({
   }
 }
 
-/** How many matches a search shows before it stops listing and starts counting. */
 const PICKER_LIMIT = 25
 
-/**
- * Attaching, by search over NPC name and the line itself. A dialogue logged as a picture and not
- * yet transcribed is reachable by NPC name — and by an empty query, which lists everything unattached
- * newest first, because the line just logged is the one most likely being filed.
- */
+// Empty query lists everything unattached, newest first — the line just logged is the one
+// most likely being filed.
 function DialoguePicker({
   dialogues,
   exclude,
@@ -499,23 +470,18 @@ function DialoguePicker({
   )
 }
 
-/**
- * Keyed by an id, for the O(1) lookups a card of linked ids needs. `T['id']` rather than a
- * second type parameter: a key parameter is only inferable from the constraint, which lands
- * as `unknown` and throws away the brand.
- */
+// T['id'], not a second type parameter — a key parameter is only inferable from the
+// constraint, which lands as `unknown` and throws away the brand.
 function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
   const map = new Map<T['id'], T>()
   for (const item of items) map.set(item.id, item)
   return map
 }
 
-/** The DOM id a quest's card is scrolled to when `?edit=<id>` names it. */
 function questCardElementId(questId: QuestId): string {
   return `quest-card-${questId}`
 }
 
-/** A quest created from a dialogue starts nameless, and a blank card is nothing to click on. */
 function questName(quest: Quest): string {
   const trimmed = quest.name.trim()
   return trimmed === '' ? 'Untitled quest' : trimmed

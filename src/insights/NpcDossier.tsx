@@ -31,25 +31,18 @@ import {
   totalOf,
 } from './relevance-segments.ts'
 
-/** Everything one NPC's lines add up to, derived on every read — nothing here is stored. */
+// Derived on every read — nothing here is stored.
 type NpcProfile = {
-  /** The trimmed name, `''` for the unnamed group. Also what a rename matches on. */
   key: string
   label: string
-  /** Chronological: a dossier is read as the sequence of what this person said. */
   dialogues: Dialogue[]
   tally: Tally
   zones: Zone[]
   quests: Quest[]
 }
 
-/**
- * The collection along the *person* axis: everything one NPC ever said, wherever they said it.
- *
- * Reads the filtered dialogues like every other panel, so a dossier opened under a filter is
- * honestly "what this NPC said, within what you are looking at" rather than a second, quietly
- * different set.
- */
+// Reads the filtered dialogues like every other panel, so a dossier opened under a filter is
+// honestly "what this NPC said, within what you're looking at", not a quietly different set.
 export function NpcDossier({
   dialogues,
   quests,
@@ -64,7 +57,6 @@ export function NpcDossier({
   zonesById: ReadonlyMap<ZoneId, Zone>
   zoneIndex: ReadonlyMap<DialogueId, ZoneId[]>
   relevanceTags: readonly RelevanceTag[]
-  /** The open NPC's key — lifted to `App` so it survives a switch away and back. */
   selectedKey: string | null
   onSelectedKeyChange: (key: string | null) => void
 }): ReactElement {
@@ -73,8 +65,7 @@ export function NpcDossier({
     [dialogues, quests, zonesById, zoneIndex, relevanceTags],
   )
 
-  // A key naming an NPC the filter (or a rename) has since removed falls back to the top of the
-  // list rather than leaving the panel blank.
+  // A key the filter or a rename has since removed falls back to the top of the list.
   const selected = profiles.find((profile) => profile.key === selectedKey) ?? profiles[0] ?? null
 
   return (
@@ -123,8 +114,7 @@ export function NpcDossier({
 
           {selected !== null && (
             <Dossier
-              // Remounts on selection, which is what resets the rename draft: a half-typed name
-              // must never carry over onto a different NPC.
+              // Remounts on selection, resetting the rename draft.
               key={selected.key}
               profile={selected}
               knownKeys={profiles.map((profile) => profile.key)}
@@ -244,11 +234,6 @@ function Dossier({
   )
 }
 
-/**
- * One line in full, rather than the one-row summary the timeline lists: this is the view where
- * the *content* is the point — so the line and every picture of it are shown, not just the first.
- * A dialogue with neither says so, rather than rendering as an empty box.
- */
 function NpcLine({
   dialogue,
   label,
@@ -258,8 +243,7 @@ function NpcLine({
   label: string
   zones: readonly Zone[]
 }): ReactElement {
-  // The dossier is a reading list, so each line pages its own pictures independently — one
-  // shared current frame across a dozen lines would move all of them at once.
+  // Each line pages its own pictures independently — a shared current frame would move all at once.
   const [currentMediaId, setCurrentMediaId] = useState<MediaId | null>(null)
   const said = dialogue.text.trim()
   return (
@@ -291,9 +275,7 @@ function NpcLine({
         </a>
       </header>
       {said !== '' && <p className="npc-line__text">{dialogue.text}</p>}
-      {/* No reorder or remove here, and nothing dispatched: editing a line's media from a place
-          that shows neither its pin nor its map is how a picture gets removed from the wrong
-          dialogue. "Show on canvas" above is the way to the panel that can edit it. */}
+      {/* No reorder/remove here — "Show on canvas" is the way to the panel that can edit media. */}
       <MediaGallery
         media={dialogue.media}
         label={label}
@@ -307,11 +289,7 @@ function NpcLine({
   )
 }
 
-/**
- * The trigger, collapsed behind the row-action reveal from #94 until invoked — renaming here
- * rewrites every line the NPC ever said, so it is a deliberate action, not a field that sits
- * permanently open with a disabled button.
- */
+// Collapsed until invoked, since renaming rewrites every line the NPC ever said.
 function RenameForm({
   profile,
   knownKeys,
@@ -348,12 +326,9 @@ function RenameForm({
   )
 }
 
-/**
- * The draft plus an explicit submit button — deliberately *not* the per-keystroke dispatch
- * `QuestForm` and `DialogueForm` use. Those edit one field of one record; this rewrites every
- * line the NPC ever said, and typing "T" on the way to "Tomas" would merge them into an
- * existing "T" before the second keystroke landed.
- */
+// An explicit submit, deliberately not the per-keystroke dispatch QuestForm/DialogueForm use —
+// this rewrites every line the NPC said, and typing "T" toward "Tomas" would merge into an
+// existing "T" before the second keystroke landed.
 function RenameFields({
   profile,
   knownKeys,
@@ -361,7 +336,6 @@ function RenameFields({
 }: {
   profile: NpcProfile
   knownKeys: readonly string[]
-  /** `null` when the rename was cancelled rather than submitted — nothing to select. */
   onDone: (key: string | null) => void
 }): ReactElement {
   const [draft, setDraft] = useState(profile.key)
@@ -420,7 +394,6 @@ function Fact({
   )
 }
 
-/** A composition bar: every NPC's is full width, so the shapes compare rather than the sizes. */
 function SegmentBar({
   counts,
   tags,
@@ -457,11 +430,7 @@ function SegmentBar({
   )
 }
 
-/**
- * One profile per distinct `npcKey`, sorted by line count. Blank names are a group of their own
- * rather than being dropped: "logged before I knew who was talking" is the state a dossier is
- * for, and it is renamable from there like any other.
- */
+// Blank names are a group of their own, not dropped — renamable like any other.
 function buildProfiles(
   dialogues: readonly Dialogue[],
   quests: readonly Quest[],
@@ -501,7 +470,7 @@ function buildProfiles(
   return profiles.sort(
     (a, b) =>
       b.dialogues.length - a.dialogues.length ||
-      // The unnamed group sorts last among equals: it is a to-do, not a character.
+      // The unnamed group sorts last among equals.
       Number(a.key === '') - Number(b.key === '') ||
       a.label.localeCompare(b.label),
   )

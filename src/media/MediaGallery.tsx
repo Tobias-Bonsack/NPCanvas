@@ -5,15 +5,8 @@ import { resolveGalleryIndex, stepGalleryIndex } from './gallery-index.ts'
 import { MediaView } from './MediaView.tsx'
 import './MediaGallery.css'
 
-/**
- * A line's pictures, one frame at a time. Five frames of one sentence are alternatives to page
- * between, not a list read top to bottom — stacked, they push the form that produced them off
- * screen and make comparing frame 2 against frame 4 a scroll.
- *
- * It holds no selection of its own: the caller does, because the panel renders reorder and
- * remove controls for the *current* frame underneath, and two owners of "which frame is this
- * button about" is one too many. `onSelect` is the only way the frame changes.
- */
+// Frames to page between, not a list read top to bottom. Holds no selection of its own — the
+// caller does, since the panel renders reorder/remove controls for the current frame underneath.
 export function MediaGallery({
   media,
   label,
@@ -21,7 +14,6 @@ export function MediaGallery({
   onSelect,
 }: {
   media: readonly DialogueMedia[]
-  /** Alt text for every frame — the NPC's name reads best, as in `MediaView`. */
   label: string
   selectedId: MediaId | null
   onSelect: (id: MediaId) => void
@@ -30,8 +22,7 @@ export function MediaGallery({
   const current = media[index]
   if (current === undefined) return null
 
-  // With one frame the arrows, the counter and the strip are all noise: there is nothing to
-  // page to, and "1 of 1" says only that the picture the reader is looking at exists.
+  // With one frame the arrows/counter/strip are all noise.
   const paged = media.length > 1
 
   function page(delta: number): void {
@@ -39,10 +30,8 @@ export function MediaGallery({
     if (next !== undefined) onSelect(next.id)
   }
 
-  // Bound on the container rather than on `window`: the dossier renders one gallery per line,
-  // and a global listener would page every one of them at once. The text-field guard is the
-  // same one every keyboard shortcut in this app honours — a gallery sits inside a panel whose
-  // line field is a textarea, and an arrow key there is a caret move.
+  // Bound on the container, not window — the dossier renders one gallery per line, and a
+  // global listener would page every one at once.
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
     if (!paged || isTextFieldFocused()) return
     if (event.key === 'ArrowLeft') page(-1)
@@ -54,16 +43,10 @@ export function MediaGallery({
   return (
     <div className="media-gallery" onKeyDown={onKeyDown}>
       <div className="media-gallery__frame">
-        {/* The frame fills the width the panel gives it; the strip below stays at the default,
-            or a thumbnail would be blown up to the column's width. */}
         <MediaView media={current} label={label} fit="fill" />
       </div>
 
       {paged && (
-        // A status, not a label: paging is what changes it, and a reader who cannot see the
-        // frame change needs to be told the count moved. The thumbnail strip below and the
-        // arrow keys are the only ways to page — see MediaGallery.css for why a third
-        // (Previous/Next buttons) was one too many.
         <p className="media-gallery__count hint-text" role="status">
           Picture {index + 1} of {media.length}
         </p>
@@ -80,9 +63,7 @@ export function MediaGallery({
               aria-label={`Picture ${position + 1}`}
               onClick={() => onSelect(medium.id)}
             >
-              {/* `inert` because a thumbnail is a picture of a frame, not the frame: a video
-                  rendered here still carries its own controls, and neither the pointer nor the
-                  Tab key may reach them inside a button whose job is to select. */}
+              {/* inert — a video thumbnail still carries controls that must not be reachable here. */}
               <span className="media-gallery__thumb-media" inert>
                 <MediaView media={medium} label="" />
               </span>

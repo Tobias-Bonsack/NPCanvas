@@ -18,28 +18,20 @@ const KIND_LABEL: Record<SearchResult['kind'], string> = {
   zone: 'Zone',
 }
 
-/**
- * One search, reachable from any view: `/` or Ctrl/Cmd+K opens it, Escape closes it, and it
- * jumps straight to a dialogue, an NPC's dossier, a quest, or a zone. Mounted once from `App`,
- * above the route switch, so it is never tied to the view it happened to open from.
- *
- * Self-contained: it owns its own open/query/active state and every keyboard shortcut it
- * needs, so nothing else in the app has to know it exists.
- */
+// Mounted once from App, above the route switch, so it's never tied to the view it opened from.
 export function SearchPalette({
   project,
   onOpenNpcDossier,
 }: {
   project: ProjectFile
-  /** Sets the insights dossier's open NPC and navigates there — the one action this component
-   *  cannot take on its own, since that view state lives in `App`. */
+  // Sets the insights dossier's open NPC and navigates — this component can't touch that view
+  // state, since it lives in App.
   onOpenNpcDossier: (key: string) => void
 }): ReactElement | null {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  // What had focus before the palette opened, so closing it — by any path — gives it back.
   const restoreFocus = useRef<HTMLElement | null>(null)
 
   function openPalette(): void {
@@ -55,9 +47,8 @@ export function SearchPalette({
     restoreFocus.current = null
   }
 
-  // Global, like every other app-wide shortcut — see `text-field-focus.ts`. `/` is guarded on a
-  // text field the same way a canvas tool key is; Ctrl/Cmd+K is not, matching the convention
-  // every command-palette-style shortcut uses so it works while typing anywhere else too.
+  // `/` is guarded on a text field like a canvas tool key; Ctrl/Cmd+K isn't, matching the
+  // convention command palettes use so it works while typing anywhere else.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       if (open) return
@@ -72,8 +63,7 @@ export function SearchPalette({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
 
-  // Focus moved in, per the dialog's own contract — a `role="dialog"` that does not move focus
-  // into itself is not keyboard-operable at all.
+  // role="dialog" must move focus into itself to be keyboard-operable.
   useEffect(() => {
     if (open) inputRef.current?.focus()
   }, [open])
@@ -242,7 +232,6 @@ function ResultLabel({ result }: { result: SearchResult }): ReactElement {
   }
 }
 
-/** A stable DOM id per result, for `aria-activedescendant` — unique across every kind. */
 function resultElementId(result: SearchResult): string {
   switch (result.kind) {
     case 'dialogue':

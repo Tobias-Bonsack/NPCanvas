@@ -9,18 +9,10 @@ import { NpcNameInput } from './NpcNameInput.tsx'
 import { RelevancePicker } from './RelevancePicker.tsx'
 import './DialogueForm.css'
 
-/**
- * There is deliberately no Save button: persistence is autosave's job, and a second commit step
- * would let the document and the folder disagree about what the user believes they typed.
- *
- * The two typed fields still go through `useFieldDraft` rather than dispatching per character.
- * A keystroke that reached the store would copy `project.dialogues`, and that array's identity is
- * what `PinLayer`'s `memo` guards — so writing a line would re-render every pin on the canvas,
- * per character. The discrete controls below (relevance, timestamp) dispatch immediately: they
- * are single acts, and a draft would only add a way to lose one.
- *
- * Must be rendered keyed on `dialogue.id` — see `useFieldDraft`.
- */
+// No Save button — persistence is autosave's job. The two typed fields go through useFieldDraft
+// rather than dispatching per character: a keystroke reaching the store would copy
+// project.dialogues, whose identity PinLayer's memo guards, re-rendering every pin per character.
+// Must be rendered keyed on dialogue.id — see useFieldDraft.
 export function DialogueForm({
   dialogue,
   relevanceTags,
@@ -33,27 +25,17 @@ export function DialogueForm({
   dialogue: Dialogue
   relevanceTags: readonly RelevanceTag[]
   npcNames: readonly string[]
-  /**
-   * Filled with a function that pushes both drafts into the document now. The capture path holds
-   * it because `captureIntoDialogue` appends to `dialogue.text` as the store has it, and the
-   * Ctrl+Enter shortcut never blurs the field that is ahead of the store.
-   */
+  // Filled with a function that pushes both drafts now — the capture path uses it because
+  // captureIntoDialogue appends to dialogue.text as the store has it.
   flushRef: RefObject<(() => void) | null>
-  /** This dialogue was just placed, so the NPC field claims the initial focus instead of the pin. */
   autoFocusNpc: boolean
-  /** Called once the autofocus above has actually happened — see the effect below. */
   onAutoFocusConsumed: () => void
-  /** The previous line's tags, offered as a one-click carry-over — see `RelevanceCarryOver`. */
   previousRelevance: readonly RelevanceTagId[]
 }): ReactElement {
-  // One base id per form instance; each control suffixes it, so a second panel could never
-  // collide and every label targets exactly its own control.
   const fieldId = useId()
   const dialogueId = dialogue.id
 
-  // `DialogueForm` is remounted per `dialogue.id` (see the `key` at its call site), so this
-  // guard is only ever about a *second* run of this same mount's effect — never about a later
-  // reselection of the same dialogue, which is a fresh mount with a fresh ref.
+  // Remounted per dialogue.id, so this guard is only about a second run of this mount's effect.
   const consumedAutoFocus = useRef(false)
   useEffect(() => {
     if (!autoFocusNpc || consumedAutoFocus.current) return
@@ -98,9 +80,7 @@ export function DialogueForm({
           type="datetime-local"
           value={toLocalDateTimeValue(dialogue.spokenAt)}
           onChange={(event) => {
-            // Chromium reports '' until every segment is filled. Skipping the dispatch keeps
-            // the stored instant intact while the user retypes a component; the control
-            // re-renders from the document, so nothing is lost either way.
+            // Chromium reports '' until every segment is filled — skip rather than clobber.
             const spokenAt = fromLocalDateTimeValue(event.target.value)
             if (spokenAt !== null) dispatch({ kind: 'dialogue/spoken-at-set', dialogueId, spokenAt })
           }}
@@ -113,10 +93,7 @@ export function DialogueForm({
         onChange={(relevance) => dispatch({ kind: 'dialogue/relevance-set', dialogueId, relevance })}
       />
 
-      {/* Offered, not applied silently — see #45. Only for a record nothing has touched yet: a
-          dialogue that already carries a line, a picture, or its own tags has moved past the
-          moment this is useful, and the button would just be an easy way to overwrite a choice
-          already made. */}
+      {/* Only for a record nothing has touched yet, so this never overwrites a choice already made. */}
       {isUntouched(dialogue) && previousRelevance.length > 0 && (
         <button
           type="button"
@@ -129,8 +106,6 @@ export function DialogueForm({
         </button>
       )}
 
-      {/* Always shown, including for a dialogue that carries pictures: the line and the frames
-          proving it are separate fields, and a captured screenshot is transcribed into this one. */}
       <div className="dialogue-form__field dialogue-form__field--grow">
         <label className="micro-label" htmlFor={`${fieldId}-text`}>
           What was said
@@ -149,7 +124,6 @@ export function DialogueForm({
   )
 }
 
-/** No line, no picture, no tags yet — exactly what a `place-dialogue` click leaves behind. */
 function isUntouched(dialogue: Dialogue): boolean {
   return dialogue.text.trim() === '' && dialogue.media.length === 0 && dialogue.relevance.length === 0
 }

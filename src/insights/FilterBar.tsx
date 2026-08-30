@@ -21,16 +21,9 @@ const CONTENT_KIND_LABEL: Record<ContentKind, string> = {
   video: 'Clip',
 }
 
-/**
- * Edits a `DialogueFilter`. The filter is a prop and comes back through `onChange` — the bar
- * owns none of it, which is what lets the map screen mount the same control over its own
- * transient filter state later without either copy fighting the other.
- *
- * Tags and content kinds are chips (few, fixed, worth showing all of). Maps, zones and NPCs are
- * "add one" selects plus a row of removable chips, because those lists grow with the project and
- * because a chart click can add several values to one field at once — which a `<select>` showing
- * a single value could not represent.
- */
+// The filter is a prop, returned through onChange — the bar owns none of it. Tags/content kinds
+// are chips (few, fixed); maps/zones/NPCs are "add one" selects plus removable chips, since
+// those lists grow and a chart click can add several values a single <select> couldn't show.
 export function FilterBar({
   project,
   filter,
@@ -44,8 +37,7 @@ export function FilterBar({
   const mapsById = useMemo(() => byId(project.maps), [project.maps])
   const zonesById = useMemo(() => byId(project.zones), [project.zones])
 
-  // Annotated rather than inferred: the "Outside any zone" entry widens the element type to
-  // `string` unless the array is declared as the union it is.
+  // Annotated so the "Outside any zone" entry doesn't widen the element type to `string`.
   const zoneOptions: { value: ZoneScope; label: string }[] = project.zones
     .filter((zone) => !filter.zones.includes(zone.id))
     .map((zone) => ({ value: zone.id, label: zoneLabel(zone) }))
@@ -75,9 +67,7 @@ export function FilterBar({
             className="text-input"
             type="date"
             value={toDateInputValue(filter.from)}
-            // Caps the picker at "To" — the browser refuses to open on a later date, though a
-            // typed-in one still reaches `onChange`, which is why `invertedRange` also says so
-            // below rather than trusting the picker alone.
+            // A typed-in date can still bypass this cap, hence invertedRange below too.
             max={toDateInputValue(filter.to)}
             onChange={(event) =>
               onChange({ ...filter, from: fromDateInputValue(event.target.value, 'start') })
@@ -215,24 +205,13 @@ export function FilterBar({
   )
 }
 
-/** Marks a real option's DOM value, so it can never collide with the placeholder's `""` — an
- *  NPC's `npcKey` is `''` for "unnamed", which is a legitimate value this field must offer. */
+// Prefixed so a real option's DOM value never collides with the placeholder's "" — an NPC's
+// npcKey is '' for "unnamed", a legitimate value this field must offer.
 const OPTION_PREFIX = 'v:'
 
-/**
- * A select that never holds a selection: picking an option appends it to an OR-field and the
- * control snaps back to its own name. A stateful `<select>` would have to show one of several
- * chosen values, which is the thing this field cannot express.
- *
- * The option values are `String(value)`, not a position in the list — `options` is rebuilt from
- * the live document on every render, so resolving a choice by index trusted that the list would
- * not reorder between the render that drew it and the change event picking from it. The DOM
- * value still has to be a string, so this is the same stable string `key` already gives every
- * `<option>`, reused for its actual purpose (prefixed, so it never collides with the placeholder
- * — see `OPTION_PREFIX`). Not the id itself — an id is only ever produced by `ids.ts`'s own
- * casts, and `T` here is generic, so nothing re-brands one from this string; the option is
- * looked up by matching it back against the same list instead.
- */
+// Never holds a selection — picking an option appends it to an OR-field and snaps back to its
+// own name. Options are keyed by String(value), not list position, since options rebuilds from
+// the live document every render and could reorder between render and the change event.
 function AddSelect<T>({
   label,
   options,
@@ -287,7 +266,6 @@ function ActiveChip({
   )
 }
 
-/** Every NPC in the project, deduplicated by `npcKey` and sorted for a stable option list. */
 function sortedNpcKeys(dialogues: readonly Dialogue[]): string[] {
   const keys = new Set<string>()
   for (const dialogue of dialogues) keys.add(npcKey(dialogue))
@@ -302,7 +280,7 @@ function zoneLabel(zone: Zone): string {
   return zone.name.trim() === '' ? 'Unnamed zone' : zone.name
 }
 
-/** A filter may name something deleted between renders; the chip says so instead of blanking. */
+// A filter may name something deleted between renders; the chip says so instead of blanking.
 function labelOf<T>(item: T | undefined, label: (item: T) => string, fallback: string): string {
   return item === undefined ? fallback : label(item)
 }
@@ -313,11 +291,8 @@ function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T
   return map
 }
 
-/**
- * `<input type="date">` is wall-clock, `spokenAt` is an instant — the same split
- * `local-datetime.ts` documents for `datetime-local`. A bound picked as a day means the whole
- * local day, so `from` is its first millisecond and `to` its last.
- */
+// <input type="date"> is wall-clock, spokenAt is an instant — a bound picked as a day means the
+// whole local day, so `from` is its first millisecond and `to` its last.
 function toDateInputValue(iso: string | null): string {
   if (iso === null) return ''
   const date = new Date(iso)
