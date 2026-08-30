@@ -3,11 +3,10 @@ import { MAX_MAP_SCALE, MIN_MAP_SCALE } from '../map/canvas-layout.ts'
 import type { ParseResult } from './data-file.ts'
 import { createEmptyProject, parseProjectFile, serializeProject } from './data-file.ts'
 
-// Exercises every reader branch; rebuilt per test to avoid cross-test mutation. Tag ids match the
-// old V4 slugs so `v4Document` below can reuse these dialogues' `relevance` arrays verbatim.
-export function validDocument(): Record<string, unknown> {
+// Exercises every reader branch; rebuilt per test to avoid cross-test mutation.
+function validDocument(): Record<string, unknown> {
   return {
-    schemaVersion: 5,
+    schemaVersion: 11,
     projectName: 'Fisherman’s Rest',
     savedAt: '2026-08-14T10:00:00.000Z',
     maps: [
@@ -45,6 +44,7 @@ export function validDocument(): Record<string, unknown> {
         media: [],
         spokenAt: '2026-08-14T09:12:00.000Z',
         relevance: ['worldbuilding'],
+        references: [],
       },
       {
         id: 'dialogue-2',
@@ -70,6 +70,7 @@ export function validDocument(): Record<string, unknown> {
         ],
         spokenAt: '2026-08-14T09:20:00.000Z',
         relevance: [],
+        references: [],
       },
       {
         id: 'dialogue-3',
@@ -88,6 +89,7 @@ export function validDocument(): Record<string, unknown> {
         ],
         spokenAt: '2026-08-14T09:30:00.000Z',
         relevance: ['out-of-world', 'other'],
+        references: [],
       },
       {
         id: 'dialogue-4',
@@ -107,6 +109,7 @@ export function validDocument(): Record<string, unknown> {
         ],
         spokenAt: '2026-08-14T09:40:00.000Z',
         relevance: ['peoplebuilding'],
+        references: ['dialogue-1'],
       },
     ],
     quests: [
@@ -126,11 +129,17 @@ export function validDocument(): Record<string, unknown> {
       { id: 'peoplebuilding', name: 'Peoplebuilding', hue: 35 },
       { id: 'other', name: 'Other', hue: 290 },
     ],
+    glyphs: [],
+    pendingCaptures: [],
+    recorderBindings: [
+      { action: 'record-new', buttonIndex: 0 },
+      { action: 'record-extend', buttonIndex: 1 },
+    ],
   }
 }
 
 /** Fails the test if the document parses, so every rejection case asserts on a real message. */
-export function rejectionMessage(data: unknown): string {
+function rejectionMessage(data: unknown): string {
   const result = parseProjectFile(JSON.stringify(data))
   if (result.ok) throw new Error('expected the document to be rejected, but it parsed')
   return result.message
@@ -149,7 +158,12 @@ describe('parseProjectFile', () => {
       result.file.dialogues.map((dialogue) => dialogue.media.map((medium) => medium.kind)),
     ).toEqual([[], ['image', 'image'], ['gif'], ['video']])
     expect(result.file.dialogues[1].text).toBe('Two crates, no more.')
+    expect(result.file.dialogues[3].references).toEqual(['dialogue-1'])
     expect(result.file.quests[0].dialogueIds).toEqual(['dialogue-1', 'dialogue-4'])
+    expect(result.file.recorderBindings).toEqual([
+      { action: 'record-new', buttonIndex: 0 },
+      { action: 'record-extend', buttonIndex: 1 },
+    ])
 
     const roundTripped = parseProjectFile(serializeProject(result.file))
     expect(roundTripped.ok).toBe(true)
@@ -184,18 +198,22 @@ describe('parseProjectFile', () => {
   })
 
   it('rejects invalid JSON', () => {
-    const result = parseProjectFile('{ "schemaVersion": 1, ')
+    const result = parseProjectFile('{ "schemaVersion": 11, ')
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.message).toContain('not valid JSON')
   })
 
-  it('rejects an unknown schemaVersion', () => {
+  it('rejects an unsupported schemaVersion, naming both the version read and the version expected', () => {
     const data = validDocument()
     data.schemaVersion = 12
-    expect(
-      rejectionMessage(data),
-    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 or 11, but found 12')
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 11, but found 12')
+  })
+
+  it('rejects a document at a version this app can no longer read', () => {
+    const data = validDocument()
+    data.schemaVersion = 10
+    expect(rejectionMessage(data)).toBe('schemaVersion: expected 11, but found 10')
   })
 
   it('rejects a map with no placement', () => {
@@ -206,168 +224,9 @@ describe('parseProjectFile', () => {
   })
 })
 
-/** A V4 document: today's `Dialogue`, before relevance became a document-owned tag. */
-export function v4Document(): Record<string, unknown> {
-  const data = validDocument()
-  data.schemaVersion = 4
-  delete data.relevanceTags
-  return data
-}
-
-/** A V3 document: one exclusive content slot per dialogue, all four old kinds, no capture profiles. */
-export function v3Document(): Record<string, unknown> {
-  const data = v4Document()
-  data.schemaVersion = 3
-  delete data.captureProfiles
-  data.dialogues = [
-    {
-      id: 'dialogue-1',
-      mapId: 'map-1',
-      npcName: 'Old Fisher',
-      position: { x: 40, y: 30 },
-      content: { kind: 'text', text: 'The tide took it.' },
-      spokenAt: '2026-08-14T09:12:00.000Z',
-      relevance: ['worldbuilding'],
-    },
-    {
-      id: 'dialogue-2',
-      mapId: 'map-1',
-      npcName: 'Dockhand',
-      position: { x: 55, y: 12 },
-      content: {
-        kind: 'image',
-        file: { fileName: 'dialogue-2.png', mimeType: 'image/png', byteSize: 1024 },
-        width: 800,
-        height: 600,
-      },
-      spokenAt: '2026-08-14T09:20:00.000Z',
-      relevance: [],
-    },
-    {
-      id: 'dialogue-3',
-      mapId: 'map-1',
-      npcName: 'Gull',
-      position: { x: 5, y: 5 },
-      content: {
-        kind: 'gif',
-        file: { fileName: 'dialogue-3.gif', mimeType: 'image/gif', byteSize: 2048 },
-        width: 320,
-        height: 240,
-      },
-      spokenAt: '2026-08-14T09:30:00.000Z',
-      relevance: ['out-of-world', 'other'],
-    },
-    {
-      id: 'dialogue-4',
-      mapId: 'map-1',
-      npcName: 'Harbourmaster',
-      position: { x: 90, y: 70 },
-      content: {
-        kind: 'video',
-        file: { fileName: 'dialogue-4.webm', mimeType: 'video/webm', byteSize: 65536 },
-        width: 640,
-        height: 360,
-        durationMs: 4200,
-      },
-      spokenAt: '2026-08-14T09:40:00.000Z',
-      relevance: ['peoplebuilding'],
-    },
-  ]
-  return data
-}
-
-/** A V2 document is a V3 one with the quest hues removed and the version rolled back. */
-export function v2Document(): Record<string, unknown> {
-  const data = v3Document()
-  data.schemaVersion = 2
-  const [quest] = data.quests as Record<string, unknown>[]
-  delete quest.hue
-  data.quests = [
-    quest,
-    { ...quest, id: 'quest-2', name: 'Find the lantern', status: 'done', dialogueIds: [] },
-    { ...quest, id: 'quest-3', name: 'Pay the ferryman', dialogueIds: [] },
-  ]
-  return data
-}
-
-/** A V1 document is a V2 one with the placement fields removed and the version rolled back. */
-export function v1Document(): Record<string, unknown> {
-  const data = v2Document()
-  data.schemaVersion = 1
-  const [map] = data.maps as Record<string, unknown>[]
-  delete map.origin
-  delete map.scale
-  data.maps = [
-    map,
-    {
-      ...map,
-      id: 'map-2',
-      name: 'Caves',
-      width: 800,
-      height: 600,
-      file: { fileName: 'map-2.png', mimeType: 'image/png', byteSize: 51200 },
-    },
-    {
-      ...map,
-      id: 'map-3',
-      name: 'Keep',
-      width: 1200,
-      height: 400,
-      file: { fileName: 'map-3.png', mimeType: 'image/png', byteSize: 76800 },
-    },
-  ]
-  return data
-}
-
-/** A V7 document with one profile, which has therefore never had a gauge measurement at all. */
-export function v7Document(): Record<string, unknown> {
-  const data = validDocument()
-  data.schemaVersion = 7
-  data.glyphs = []
-  data.pendingCaptures = []
-  data.captureProfiles = [
-    {
-      id: 'profile-1',
-      name: 'Yellow',
-      frameWidth: 3840,
-      frameHeight: 2088,
-      screenRect: { x: 814, y: 64, width: 2211, height: 1991 },
-      nativeWidth: 160,
-      nativeHeight: 144,
-      textRect: { x: 8, y: 104, width: 144, height: 32 },
-    },
-  ]
-  return data
-}
-
-/** A V9 document: today's shape minus `recorderBindings`, which V10 adds. */
-export function v9Document(): Record<string, unknown> {
-  const data = v7Document()
-  data.schemaVersion = 9
-  return data
-}
-
-/** A valid V10 document with one binding per recorder action. */
-function documentWithRecorderBindings(): Record<string, unknown> {
-  const data = v9Document()
-  data.schemaVersion = 10
-  data.recorderBindings = [
-    { action: 'record-new', buttonIndex: 0 },
-    { action: 'record-extend', buttonIndex: 1 },
-  ]
-  return data
-}
-
-/** A valid V11 document — the only version whose dialogues can carry `references`. */
-function v11Document(): Record<string, unknown> {
-  const data = documentWithRecorderBindings()
-  data.schemaVersion = 11
-  return data
-}
-
 describe('parseProjectFile: recorderBindings', () => {
   it('reads a binding for each action', () => {
-    const result = parseProjectFile(JSON.stringify(documentWithRecorderBindings()))
+    const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.file.recorderBindings).toEqual([
@@ -377,7 +236,7 @@ describe('parseProjectFile: recorderBindings', () => {
   })
 
   it('round trips a binding unchanged', () => {
-    const result = parseProjectFile(JSON.stringify(documentWithRecorderBindings()))
+    const result = parseProjectFile(JSON.stringify(validDocument()))
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
@@ -388,7 +247,7 @@ describe('parseProjectFile: recorderBindings', () => {
   })
 
   it('collapses a duplicate action to its first binding, mirroring the reducer’s own rule', () => {
-    const data = documentWithRecorderBindings()
+    const data = validDocument()
     data.recorderBindings = [
       { action: 'record-new', buttonIndex: 0 },
       { action: 'record-new', buttonIndex: 4 },
@@ -401,7 +260,7 @@ describe('parseProjectFile: recorderBindings', () => {
   })
 
   it('rejects a buttonIndex that is not a non-negative integer', () => {
-    const data = documentWithRecorderBindings()
+    const data = validDocument()
     data.recorderBindings = [{ action: 'record-new', buttonIndex: -1 }]
     expect(rejectionMessage(data)).toBe(
       'recorderBindings[0].buttonIndex: expected a non-negative integer',
@@ -409,7 +268,7 @@ describe('parseProjectFile: recorderBindings', () => {
   })
 
   it('rejects a fractional buttonIndex', () => {
-    const data = documentWithRecorderBindings()
+    const data = validDocument()
     data.recorderBindings = [{ action: 'record-new', buttonIndex: 1.5 }]
     expect(rejectionMessage(data)).toBe(
       'recorderBindings[0].buttonIndex: expected a non-negative integer',
@@ -417,7 +276,7 @@ describe('parseProjectFile: recorderBindings', () => {
   })
 
   it('rejects an unknown action', () => {
-    const data = documentWithRecorderBindings()
+    const data = validDocument()
     data.recorderBindings = [{ action: 'record-forever', buttonIndex: 0 }]
     expect(rejectionMessage(data)).toBe(
       'recorderBindings[0].action: expected record-new or record-extend or cycle-profile',
@@ -426,107 +285,100 @@ describe('parseProjectFile: recorderBindings', () => {
 })
 
 describe('parseProjectFile: field validation', () => {
-  it('rejects a missing field', () => {
-    const data = validDocument()
-    delete data.projectName
-    expect(rejectionMessage(data)).toBe('projectName: expected a string')
-  })
-
-  it('rejects a mistyped field', () => {
-    const data = validDocument()
-    const maps = data.maps as Record<string, unknown>[]
-    maps[0].width = '2000'
-    expect(rejectionMessage(data)).toBe('maps[0].width: expected a finite number')
-  })
-
-  it('rejects a polygon with fewer than three points', () => {
-    const data = validDocument()
-    const zones = data.zones as Record<string, unknown>[]
-    zones[0].polygon = [
-      { x: 0, y: 0 },
-      { x: 10, y: 10 },
-    ]
-    expect(rejectionMessage(data)).toBe('zones[0].polygon: expected at least 3 points')
-  })
-
-  it('rejects an unknown dialogue media kind', () => {
-    const data = validDocument()
-    const dialogues = data.dialogues as Record<string, unknown>[]
-    dialogues[2].media = [{ id: 'media-3', kind: 'audio', file: {}, width: 1, height: 1 }]
-    expect(rejectionMessage(data)).toBe(
-      'dialogues[2].media[0].kind: expected one of image, gif, video',
-    )
-  })
-
-  it('rejects a medium with no id, so nothing can address it later', () => {
-    const data = validDocument()
-    const dialogues = data.dialogues as Record<string, unknown>[]
-    const media = dialogues[2].media as Record<string, unknown>[]
-    delete media[0].id
-    expect(rejectionMessage(data)).toBe('dialogues[2].media[0].id: expected a string')
-  })
-
-  it('rejects an unknown V3 content kind', () => {
-    const data = v3Document()
-    const dialogues = data.dialogues as Record<string, unknown>[]
-    dialogues[2].content = { kind: 'audio', file: {}, width: 1, height: 1 }
-    expect(rejectionMessage(data)).toContain('dialogues[2].content.kind')
-  })
-
-  it('rejects an unknown V4 relevance slug', () => {
-    const data = v4Document()
-    const dialogues = data.dialogues as Record<string, unknown>[]
-    dialogues[0].relevance = ['worldbuilding', 'lore']
-    expect(rejectionMessage(data)).toContain('dialogues[0].relevance[1]')
-  })
-
-  it('rejects a quest status outside open and done', () => {
-    const data = validDocument()
-    const quests = data.quests as Record<string, unknown>[]
-    quests[0].status = 'abandoned'
-    expect(rejectionMessage(data)).toBe('quests[0].status: expected open or done')
-  })
-
-  it('rejects a capture profile whose rect is not a rect', () => {
-    const data = validDocument()
-    data.captureProfiles = [
-      {
-        id: 'profile-1',
-        name: 'Game Boy',
-        frameWidth: 1998,
-        frameHeight: 1123,
-        screenRect: { x: 0, y: 0, width: 1148 },
-        nativeWidth: 160,
-        nativeHeight: 144,
-        textRect: { x: 8, y: 96, width: 144, height: 40 },
-        glyphs: [],
+  it.each([
+    [
+      'a missing field',
+      (data: Record<string, unknown>) => {
+        delete data.projectName
       },
-    ]
-    expect(rejectionMessage(data)).toBe(
+      'projectName: expected a string',
+    ],
+    [
+      'a mistyped field',
+      (data: Record<string, unknown>) => {
+        ;(data.maps as Record<string, unknown>[])[0].width = '2000'
+      },
+      'maps[0].width: expected a finite number',
+    ],
+    [
+      'a polygon with fewer than three points',
+      (data: Record<string, unknown>) => {
+        ;(data.zones as Record<string, unknown>[])[0].polygon = [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ]
+      },
+      'zones[0].polygon: expected at least 3 points',
+    ],
+    [
+      'an unknown dialogue media kind',
+      (data: Record<string, unknown>) => {
+        ;(data.dialogues as Record<string, unknown>[])[2].media = [
+          { id: 'media-3', kind: 'audio', file: {}, width: 1, height: 1 },
+        ]
+      },
+      'dialogues[2].media[0].kind: expected one of image, gif, video',
+    ],
+    [
+      'a medium with no id, so nothing can address it later',
+      (data: Record<string, unknown>) => {
+        const media = (data.dialogues as Record<string, unknown>[])[2].media as Record<
+          string,
+          unknown
+        >[]
+        delete media[0].id
+      },
+      'dialogues[2].media[0].id: expected a string',
+    ],
+    [
+      'a quest status outside open and done',
+      (data: Record<string, unknown>) => {
+        ;(data.quests as Record<string, unknown>[])[0].status = 'abandoned'
+      },
+      'quests[0].status: expected open or done',
+    ],
+    [
+      'a capture profile whose rect is not a rect',
+      (data: Record<string, unknown>) => {
+        data.captureProfiles = [
+          {
+            id: 'profile-1',
+            name: 'Game Boy',
+            frameWidth: 1998,
+            frameHeight: 1123,
+            screenRect: { x: 0, y: 0, width: 1148 },
+            nativeWidth: 160,
+            nativeHeight: 144,
+            textRect: { x: 8, y: 96, width: 144, height: 40 },
+          },
+        ]
+      },
       'captureProfiles[0].screenRect.height: expected a finite number',
-    )
-  })
-
-  it('rejects a relevance tag hue outside 0..359', () => {
+    ],
+    [
+      'a relevance tag hue outside 0..359',
+      (data: Record<string, unknown>) => {
+        ;(data.relevanceTags as Record<string, unknown>[])[0].hue = 400
+      },
+      'relevanceTags[0].hue: expected a hue in 0..359',
+    ],
+    [
+      'a relevance tag with no name',
+      (data: Record<string, unknown>) => {
+        delete (data.relevanceTags as Record<string, unknown>[])[0].name
+      },
+      'relevanceTags[0].name: expected a string',
+    ],
+  ])('rejects %s', (_label, mutate, message) => {
     const data = validDocument()
-    const relevanceTags = data.relevanceTags as Record<string, unknown>[]
-    relevanceTags[0].hue = 400
-    expect(rejectionMessage(data)).toBe('relevanceTags[0].hue: expected a hue in 0..359')
-  })
-
-  it('rejects a relevance tag with no name', () => {
-    const data = validDocument()
-    const relevanceTags = data.relevanceTags as Record<string, unknown>[]
-    delete relevanceTags[0].name
-    expect(rejectionMessage(data)).toBe('relevanceTags[0].name: expected a string')
+    mutate(data)
+    expect(rejectionMessage(data)).toBe(message)
   })
 })
 
-/** A valid V7 document whose `pendingCaptures` carries one capture with a picture and a tag. */
+/** A valid document whose `pendingCaptures` carries one capture with a picture and a tag. */
 function documentWithPendingCapture(): Record<string, unknown> {
   const data = validDocument()
-  data.schemaVersion = 7
-  data.glyphs = []
   data.pendingCaptures = [
     {
       id: 'capture-1',
@@ -823,12 +675,6 @@ describe('parseProjectFile: documents that are not documents', () => {
     expect(result.message).toContain(expected)
   })
 
-  it('names the missing field when a V2 document is hand-bumped to V3', () => {
-    const data = v2Document()
-    data.schemaVersion = 3
-    expect(rejectionMessage(data)).toBe('quests[0].hue: expected a finite number')
-  })
-
   it('points at the offending vertex when a polygon holds bare numbers', () => {
     const data = validDocument()
     const zones = data.zones as Record<string, unknown>[]
@@ -866,7 +712,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 0,
       questDialogueIds: 1,
       relevance: 0,
-      dialogueReferences: 0,
+      dialogueReferences: 1, // dialogue-4's reference to the now-gone dialogue-1
     })
   })
 
@@ -924,7 +770,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
   })
 
   it('drops a dialogue reference naming a dialogue that is gone', () => {
-    const data = v11Document()
+    const data = validDocument()
     const dialogues = data.dialogues as Record<string, unknown>[]
     dialogues[0].references = ['dialogue-2', 'dialogue-gone']
 
@@ -941,7 +787,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
   })
 
   it('drops a self-reference rather than rejecting the document', () => {
-    const data = v11Document()
+    const data = validDocument()
     const dialogues = data.dialogues as Record<string, unknown>[]
     dialogues[0].references = ['dialogue-1', 'dialogue-2']
 
@@ -957,7 +803,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     })
   })
 
-  it('counts every dropped record when the document\'s one map is missing, dangling every zone and dialogue at once', () => {
+  it("counts every dropped record when the document's one map is missing, dangling every zone and dialogue at once", () => {
     const data = validDocument()
     data.maps = []
 
@@ -984,17 +830,6 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
     expect(reread.repairs).toEqual({ kind: 'none' })
-  })
-
-  it('repairs a V1 document too, after the migration chain has run', () => {
-    const data = v1Document()
-    const dialogues = data.dialogues as Record<string, unknown>[]
-    dialogues[0].mapId = 'map-gone'
-
-    const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(11)
-    expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
-    expect(result.repairs.kind).toBe('repaired')
   })
 
   it('does not reject over a file name only a dropped record still claims', () => {

@@ -78,7 +78,7 @@ describe('nextRelevanceHue', () => {
 })
 
 describe('defaultRelevanceTags', () => {
-  it('seeds four distinctly hued tags, in RELEVANCE_SLUGS_V4 order', () => {
+  it('seeds four distinctly hued tags, in the default order', () => {
     const tags = defaultRelevanceTags()
     expect(tags.map((t) => t.name)).toEqual([
       'Out of world',

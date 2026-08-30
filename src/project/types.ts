@@ -15,16 +15,6 @@ export type Point = { x: number; y: number }
 /** At least three vertices — a two-point "region" is not representable. */
 export type Polygon = readonly [Point, Point, Point, ...Point[]]
 
-// Frozen V1-V4 vocabulary, kept only so migrateV4 can zip it against defaultRelevanceTags() by
-// index; nothing post-migration reads it.
-export const RELEVANCE_SLUGS_V4 = [
-  'out-of-world',
-  'worldbuilding',
-  'peoplebuilding',
-  'other',
-] as const
-export type RelevanceSlugV4 = (typeof RELEVANCE_SLUGS_V4)[number]
-
 /** A project-owned relevance tag; position in `ProjectFile['relevanceTags']` is display order. */
 export type RelevanceTag = { id: RelevanceTagId; name: string; hue: number }
 
@@ -84,9 +74,6 @@ export type Dialogue = {
   references: DialogueId[]
 }
 
-/** Frozen V10 shape, used by older ProjectFileVN types until migration. */
-export type DialogueV10 = Omit<Dialogue, 'references'>
-
 /**
  * A conversation the watcher recorded before anyone said where it happened — every `Dialogue`
  * field except `mapId`/`position`. No field spells "unknown" (location is derived, never
@@ -135,18 +122,6 @@ export type CaptureProfile = {
   textRect: PixelRect
 }
 
-/** Pre-migration shape: a V5-and-earlier profile, carrying its own alphabet. */
-export type CaptureProfileV5 = CaptureProfileV7 & { glyphs: Glyph[] }
-
-/** Pre-migration shape: a V6/V7 profile, before the battle gauge was measured. */
-export type CaptureProfileV7 = Omit<CaptureProfile, 'battleRect'>
-
-/**
- * Pre-migration shape: a V8 profile, carrying the opponent's status-gauge rect that
- * `battleGaugeVisible` used to read before #104 deleted the M15 battle-detection machinery.
- */
-export type CaptureProfileV8 = CaptureProfile & { battleRect: PixelRect | null }
-
 /** A runtime list, not fixed nullable fields — a third trigger is a new value, not a new field. */
 export const RECORDER_ACTIONS = ['record-new', 'record-extend', 'cycle-profile'] as const
 export type RecorderAction = (typeof RECORDER_ACTIONS)[number]
@@ -171,185 +146,11 @@ export type Quest = {
 
 // ---- on-disk schema ----
 
-/** A V1 map: no placement, because V1 showed exactly one map at a time. */
-export type GameMapV1 = {
-  id: MapId
-  name: string
-  file: MediaFile
-  width: number
-  height: number
-}
-
-/** A V1-V3 dialogue: one exclusive content slot — text XOR one file, never both. */
-export type DialogueV3 = {
-  id: DialogueId
-  mapId: MapId
-  npcName: string
-  position: Point
-  content:
-    | { kind: 'text'; text: string }
-    | { kind: 'image'; file: MediaFile; width: number; height: number }
-    | { kind: 'gif'; file: MediaFile; width: number; height: number }
-    | { kind: 'video'; file: MediaFile; width: number; height: number; durationMs: number }
-  spokenAt: string
-  relevance: RelevanceSlugV4[]
-}
-
-/** A V4 dialogue: today's `Dialogue`, before relevance became a document-owned tag. */
-export type DialogueV4 = {
-  id: DialogueId
-  mapId: MapId
-  npcName: string
-  position: Point
-  text: string
-  media: DialogueMedia[]
-  spokenAt: string
-  relevance: RelevanceSlugV4[]
-}
-
-/** A V1/V2 quest: no colour, because every quest was drawn in one shared gold. */
-export type QuestV2 = {
-  id: QuestId
-  name: string
-  status: QuestStatus
-  dialogueIds: DialogueId[]
-  note: string
-}
-
-export type ProjectFileV1 = {
-  schemaVersion: 1
-  projectName: string
-  savedAt: string
-  maps: GameMapV1[]
-  zones: Zone[]
-  dialogues: DialogueV3[]
-  quests: QuestV2[]
-}
-
-/** V2 places every map on one shared canvas, so maps carry `origin` and `scale`. */
-export type ProjectFileV2 = {
-  schemaVersion: 2
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV3[]
-  quests: QuestV2[]
-}
-
-/** V3 gives every quest its own hue, so a pin can fly one flag per quest it belongs to. */
-export type ProjectFileV3 = {
-  schemaVersion: 3
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV3[]
-  quests: Quest[]
-}
-
-/** V4 splits a dialogue into text and pictures, and adds capture profiles. */
-export type ProjectFileV4 = {
-  schemaVersion: 4
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV4[]
-  quests: Quest[]
-  captureProfiles: CaptureProfileV5[]
-}
-
-/** V5 moves the relevance vocabulary into the document, project-owned like a `Quest`'s hue. */
-export type ProjectFileV5 = {
-  schemaVersion: 5
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfileV5[]
-  relevanceTags: RelevanceTag[]
-}
-
-/** V6 moves the alphabet off the profile and onto the project, since the font is the console's. */
-export type ProjectFileV6 = {
-  schemaVersion: 6
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfileV7[]
-  relevanceTags: RelevanceTag[]
-  glyphs: Glyph[]
-}
-
-/** V7 adds `pendingCaptures` — see `PendingCapture`. */
-export type ProjectFileV7 = {
-  schemaVersion: 7
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfileV7[]
-  relevanceTags: RelevanceTag[]
-  glyphs: Glyph[]
-  pendingCaptures: PendingCapture[]
-}
-
-/** V8 adds the battle-gauge rect to a profile — nullable because older profiles never measured it. */
-export type ProjectFileV8 = {
-  schemaVersion: 8
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfileV8[]
-  relevanceTags: RelevanceTag[]
-  glyphs: Glyph[]
-  pendingCaptures: PendingCapture[]
-}
-
-/** V9 drops `battleRect`: #104 deleted the machinery that read it. */
-export type ProjectFileV9 = {
-  schemaVersion: 9
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfile[]
-  relevanceTags: RelevanceTag[]
-  glyphs: Glyph[]
-  pendingCaptures: PendingCapture[]
-}
-
-/** V10 adds `recorderBindings` — see `RecorderBinding`. */
-export type ProjectFileV10 = {
-  schemaVersion: 10
-  projectName: string
-  savedAt: string
-  maps: GameMap[]
-  zones: Zone[]
-  dialogues: DialogueV10[]
-  quests: Quest[]
-  captureProfiles: CaptureProfile[]
-  relevanceTags: RelevanceTag[]
-  glyphs: Glyph[]
-  pendingCaptures: PendingCapture[]
-  recorderBindings: RecorderBinding[]
-}
-
-/** V11 adds `references` to dialogues — see `Dialogue.references`. */
-export type ProjectFileV11 = {
+/**
+ * The only schema shape the app reads or writes. To evolve it, see CLAUDE.md § "Schema
+ * versioning" — one reader for the current version, at most one migration step back.
+ */
+export type ProjectFile = {
   schemaVersion: 11
   projectName: string
   savedAt: string
@@ -363,9 +164,6 @@ export type ProjectFileV11 = {
   pendingCaptures: PendingCapture[]
   recorderBindings: RecorderBinding[]
 }
-
-/** The current shape, and the only one the store, the components, and writes ever see. */
-export type ProjectFile = ProjectFileV11
 
 /**
  * What `parseProjectFile` had to drop to hand back a referentially whole document — counts, not

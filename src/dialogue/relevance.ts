@@ -1,7 +1,10 @@
 import type { CSSProperties } from 'react'
 import { newRelevanceTagId } from '../project/ids.ts'
 import type { RelevanceTag, RelevanceTagId } from '../project/types.ts'
-import { RELEVANCE_SLUGS_V4 } from '../project/types.ts'
+
+// The project's seeded starting vocabulary — order, labels and hues for a fresh project only;
+// nothing downstream reads these slugs, `relevanceTags` ids are what the document stores.
+const DEFAULT_RELEVANCE_SLUGS = ['out-of-world', 'worldbuilding', 'peoplebuilding', 'other'] as const
 
 // Saturation and lightness are fixed across the app; only the hue distinguishes a tag.
 const SATURATION = '70%'
@@ -20,26 +23,24 @@ export function nextRelevanceHue(tags: readonly RelevanceTag[]): number {
   )
 }
 
-const DEFAULT_LABELS: Record<RelevanceSlugV4Key, string> = {
+type RelevanceSlug = (typeof DEFAULT_RELEVANCE_SLUGS)[number]
+
+const DEFAULT_LABELS: Record<RelevanceSlug, string> = {
   'out-of-world': 'Out of world',
   worldbuilding: 'Worldbuilding',
   peoplebuilding: 'Peoplebuilding',
   other: 'Other',
 }
 
-const DEFAULT_HUES: Record<RelevanceSlugV4Key, number> = {
+const DEFAULT_HUES: Record<RelevanceSlug, number> = {
   'out-of-world': 220,
   worldbuilding: 150,
   peoplebuilding: 35,
   other: 290,
 }
 
-type RelevanceSlugV4Key = (typeof RELEVANCE_SLUGS_V4)[number]
-
-// Seeded by createEmptyProject and by the V4->V5 migration, so a fresh and a migrated project
-// are indistinguishable. Returned in RELEVANCE_SLUGS_V4 order so migrateV4 can zip slug to id.
 export function defaultRelevanceTags(): RelevanceTag[] {
-  return RELEVANCE_SLUGS_V4.map((slug) => ({
+  return DEFAULT_RELEVANCE_SLUGS.map((slug) => ({
     id: newRelevanceTagId(),
     name: DEFAULT_LABELS[slug],
     hue: DEFAULT_HUES[slug],

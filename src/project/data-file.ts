@@ -1,12 +1,6 @@
 import { defaultRelevanceTags } from '../dialogue/relevance.ts'
 import { clampMapScale } from '../map/canvas-layout.ts'
 import {
-  readCaptureProfileV7,
-  readGameMapV1,
-  readQuestV2,
-  readVersionedProjectFile,
-} from './data-file-migrations.ts'
-import {
   asCaptureProfileId,
   asDialogueId,
   asMapId,
@@ -82,11 +76,6 @@ export type ParseResult =
  * Hand-written validation, no schema library — see CLAUDE.md § Dependencies for the
  * tripwire that would make `zod` worth it.
  *
- * This is also the designated **migration entry point**: `readProjectFile` branches on
- * `schemaVersion` and migrates forward to the newest shape, so every caller downstream keeps
- * seeing only the current `ProjectFile`. Add a version by extending that branch — never by
- * redefining what an existing field means.
- *
  * Every field is copied out explicitly rather than spread, which is what makes unknown
  * extra keys tolerated on read and dropped on the next write.
  */
@@ -107,7 +96,7 @@ export function parseProjectFile(text: string): ParseResult {
 }
 
 /** Carries the offending path so a rejection points at a field, not at the whole file. */
-export class SchemaError extends Error {
+class SchemaError extends Error {
   constructor(path: string, expected: string) {
     super(`${path}: expected ${expected}`)
     this.name = 'SchemaError'
@@ -119,29 +108,25 @@ function describe(error: unknown): string {
 }
 
 // ---- primitives ----
-//
-// Shared by both this file's current-version readers and every pre-migration reader in
-// `data-file-migrations.ts` — kept in this one place so a version's shape never has two
-// competing readers for the same primitive.
 
-export function readObject(value: unknown, path: string): Record<string, unknown> {
+function readObject(value: unknown, path: string): Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new SchemaError(path, 'an object')
   }
   return value as Record<string, unknown>
 }
 
-export function readArray(value: unknown, path: string): unknown[] {
+function readArray(value: unknown, path: string): unknown[] {
   if (!Array.isArray(value)) throw new SchemaError(path, 'an array')
   return value
 }
 
-export function readString(value: unknown, path: string): string {
+function readString(value: unknown, path: string): string {
   if (typeof value !== 'string') throw new SchemaError(path, 'a string')
   return value
 }
 
-export function readNumber(value: unknown, path: string): number {
+function readNumber(value: unknown, path: string): number {
   // NaN and Infinity survive no JSON round trip, so rejecting them here keeps every
   // number in the document writable back out.
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -154,7 +139,7 @@ export function readNumber(value: unknown, path: string): number {
  * A measurement, not a coordinate: a size of zero or less is never a legitimate value and is
  * always divided by, laid out with, or allocated from somewhere downstream.
  */
-export function readPositiveNumber(value: unknown, path: string): number {
+function readPositiveNumber(value: unknown, path: string): number {
   const number = readNumber(value, path)
   if (number <= 0) throw new SchemaError(path, 'a number greater than 0')
   return number
@@ -166,7 +151,7 @@ export function readPositiveNumber(value: unknown, path: string): number {
  * so rejecting it here would make a clip the app itself imported take the whole project down
  * on the next load. Nothing divides by it; it is displayed or it is not.
  */
-export function readNonNegativeNumber(value: unknown, path: string): number {
+function readNonNegativeNumber(value: unknown, path: string): number {
   const number = readNumber(value, path)
   if (number < 0) throw new SchemaError(path, 'a number of 0 or more')
   return number
@@ -201,7 +186,7 @@ function readInstant(value: unknown, path: string): string {
  * `indexDialoguesByZone` keeps whichever came last. Copy-pasting a block in the
  * pretty-printed `data.json` is all it takes.
  */
-export function assertUniqueIds(items: readonly { id: string }[], path: string): void {
+function assertUniqueIds(items: readonly { id: string }[], path: string): void {
   const seen = new Set<string>()
   items.forEach((item, index) => {
     if (seen.has(item.id)) {
@@ -212,7 +197,7 @@ export function assertUniqueIds(items: readonly { id: string }[], path: string):
 }
 
 /** Reads an array of records and rejects the whole document if two of them share an id. */
-export function readUniqueArray<T extends { id: string }>(
+function readUniqueArray<T extends { id: string }>(
   raw: Record<string, unknown>,
   key: string,
   read: (value: unknown, path: string) => T,
@@ -222,7 +207,7 @@ export function readUniqueArray<T extends { id: string }>(
   return items
 }
 
-export function readMapId(value: unknown, path: string): MapId {
+function readMapId(value: unknown, path: string): MapId {
   return asMapId(readString(value, path))
 }
 
@@ -230,11 +215,11 @@ function readZoneId(value: unknown, path: string): ZoneId {
   return asZoneId(readString(value, path))
 }
 
-export function readDialogueId(value: unknown, path: string): DialogueId {
+function readDialogueId(value: unknown, path: string): DialogueId {
   return asDialogueId(readString(value, path))
 }
 
-export function readQuestId(value: unknown, path: string): QuestId {
+function readQuestId(value: unknown, path: string): QuestId {
   return asQuestId(readString(value, path))
 }
 
@@ -242,7 +227,7 @@ function readMediaId(value: unknown, path: string): MediaId {
   return asMediaId(readString(value, path))
 }
 
-export function readCaptureProfileId(value: unknown, path: string): CaptureProfileId {
+function readCaptureProfileId(value: unknown, path: string): CaptureProfileId {
   return asCaptureProfileId(readString(value, path))
 }
 
@@ -270,7 +255,7 @@ function readPolygon(value: unknown, path: string): Polygon {
   return [first, second, third, ...rest]
 }
 
-export function readMediaFile(value: unknown, path: string): MediaFile {
+function readMediaFile(value: unknown, path: string): MediaFile {
   const raw = readObject(value, path)
   return {
     fileName: readString(raw.fileName, `${path}.fileName`),
@@ -280,12 +265,12 @@ export function readMediaFile(value: unknown, path: string): MediaFile {
 }
 
 /**
- * A V5 dialogue's relevance: ids against the project's own `relevanceTags`. Known ids come back
+ * A dialogue's relevance: ids against the project's own `relevanceTags`. Known ids come back
  * in `tagOrder`'s canonical order; anything unrecognised trails after them rather than being
  * rejected here — `repairReferences` is what counts and drops a tag id that names nothing,
  * exactly as it already does for a dangling `mapId` or quest reference.
  */
-export function readRelevanceV5(
+function readRelevance(
   value: unknown,
   path: string,
   tagOrder: readonly RelevanceTagId[],
@@ -303,7 +288,7 @@ function readRelevanceTagId(value: unknown, path: string): RelevanceTagId {
   return asRelevanceTagId(readString(value, path))
 }
 
-export function readRelevanceTag(value: unknown, path: string): RelevanceTag {
+function readRelevanceTag(value: unknown, path: string): RelevanceTag {
   const raw = readObject(value, path)
   return {
     id: readRelevanceTagId(raw.id, `${path}.id`),
@@ -342,7 +327,7 @@ function readDialogueMedia(value: unknown, path: string): DialogueMedia {
   }
 }
 
-export function readPixelRect(value: unknown, path: string): PixelRect {
+function readPixelRect(value: unknown, path: string): PixelRect {
   const raw = readObject(value, path)
   return {
     x: readNumber(raw.x, `${path}.x`),
@@ -360,7 +345,7 @@ function readGlyph(value: unknown, path: string): Glyph {
   }
 }
 
-export function readGlyphs(value: unknown, path: string): Glyph[] {
+function readGlyphs(value: unknown, path: string): Glyph[] {
   return readArray(value, path).map((glyph, index) => readGlyph(glyph, `${path}[${index}]`))
 }
 
@@ -395,7 +380,7 @@ function readRecorderBinding(value: unknown, path: string): RecorderBinding {
  * At most one binding per action, mirroring the reducer's own invariant — the first naming of an
  * action wins, so a hand-edited duplicate collapses rather than rejecting the whole document.
  */
-export function readRecorderBindings(value: unknown, path: string): RecorderBinding[] {
+function readRecorderBindings(value: unknown, path: string): RecorderBinding[] {
   const bindings = readArray(value, path).map((binding, index) =>
     readRecorderBinding(binding, `${path}[${index}]`),
   )
@@ -409,22 +394,28 @@ export function readRecorderBindings(value: unknown, path: string): RecorderBind
   return result
 }
 
-/**
- * A V9 profile: exactly the fields `readCaptureProfileV7` already reads. V8's gauge measurement
- * had no reader left after #104, so V9 drops it and this is once again a plain pass-through.
- * `readCaptureProfileV7` is the pre-migration reader in `data-file-migrations.ts` — the shape
- * has not changed since, only the version whose document it belongs to has moved on.
- */
-export function readCaptureProfile(value: unknown, path: string): CaptureProfile {
-  return readCaptureProfileV7(value, path)
-}
-
-export function readGameMap(value: unknown, path: string): GameMap {
+function readCaptureProfile(value: unknown, path: string): CaptureProfile {
   const raw = readObject(value, path)
   return {
-    // `readGameMapV1` is the pre-migration reader in `data-file-migrations.ts`: a current
-    // `GameMap` is a V1 map plus placement, and the base fields have not changed shape since.
-    ...readGameMapV1(value, path),
+    id: readCaptureProfileId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    frameWidth: readPositiveNumber(raw.frameWidth, `${path}.frameWidth`),
+    frameHeight: readPositiveNumber(raw.frameHeight, `${path}.frameHeight`),
+    screenRect: readPixelRect(raw.screenRect, `${path}.screenRect`),
+    nativeWidth: readPositiveNumber(raw.nativeWidth, `${path}.nativeWidth`),
+    nativeHeight: readPositiveNumber(raw.nativeHeight, `${path}.nativeHeight`),
+    textRect: readPixelRect(raw.textRect, `${path}.textRect`),
+  }
+}
+
+function readGameMap(value: unknown, path: string): GameMap {
+  const raw = readObject(value, path)
+  return {
+    id: readMapId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    file: readMediaFile(raw.file, `${path}.file`),
+    width: readPositiveNumber(raw.width, `${path}.width`),
+    height: readPositiveNumber(raw.height, `${path}.height`),
     origin: readPoint(raw.origin, `${path}.origin`),
     // Clamped, not rejected, and through the very function the reducer uses: a hand-typed
     // `scale: 0` makes `canvasRectToMapLocal` return an Infinity rect, which culls every pin
@@ -445,54 +436,25 @@ function readZone(value: unknown, path: string): Zone {
   }
 }
 
-/** The fields every dialogue version shares; only `relevance` and the content differ by version. */
-export function readDialogueCommon<R>(
-  raw: Record<string, unknown>,
-  path: string,
-  readRelevanceField: (value: unknown, path: string) => R,
-): {
-  id: DialogueId
-  mapId: MapId
-  npcName: string
-  position: Point
-  spokenAt: string
-  relevance: R
-} {
+function readDialogue(value: unknown, path: string, tagOrder: readonly RelevanceTagId[]): Dialogue {
+  const raw = readObject(value, path)
   return {
     id: readDialogueId(raw.id, `${path}.id`),
     mapId: readMapId(raw.mapId, `${path}.mapId`),
     npcName: readString(raw.npcName, `${path}.npcName`),
     position: readPoint(raw.position, `${path}.position`),
-    spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
-    relevance: readRelevanceField(raw.relevance, `${path}.relevance`),
-  }
-}
-
-export function readDialogue(
-  value: unknown,
-  path: string,
-  tagOrder: readonly RelevanceTagId[],
-): Dialogue {
-  const raw = readObject(value, path)
-  const common = readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder))
-  const references = (raw.references !== undefined ? readArray(raw.references, `${path}.references`) : []).map(
-    (ref, index) => readDialogueId(ref, `${path}.references[${index}]`),
-  )
-  return {
-    id: common.id,
-    mapId: common.mapId,
-    npcName: common.npcName,
-    position: common.position,
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
-    spokenAt: common.spokenAt,
-    relevance: common.relevance,
-    references,
+    spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
+    relevance: readRelevance(raw.relevance, `${path}.relevance`, tagOrder),
+    references: readArray(raw.references, `${path}.references`).map((ref, index) =>
+      readDialogueId(ref, `${path}.references[${index}]`),
+    ),
   }
 }
 
 /** Everything a `Dialogue` is read as, minus `mapId` and `position` — see `PendingCapture`. */
-export function readPendingCapture(
+function readPendingCapture(
   value: unknown,
   path: string,
   tagOrder: readonly RelevanceTagId[],
@@ -504,7 +466,7 @@ export function readPendingCapture(
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
     spokenAt: readInstant(raw.spokenAt, `${path}.spokenAt`),
-    relevance: readRelevanceV5(raw.relevance, `${path}.relevance`, tagOrder),
+    relevance: readRelevance(raw.relevance, `${path}.relevance`, tagOrder),
   }
 }
 
@@ -512,7 +474,7 @@ export function readPendingCapture(
  * A `MediaId` is what a remove or a reorder addresses, so two media sharing one inside a
  * single dialogue is the same defect duplicate dialogue ids are — removing either takes both.
  */
-export function readMedia(value: unknown, path: string): DialogueMedia[] {
+function readMedia(value: unknown, path: string): DialogueMedia[] {
   const media = readArray(value, path).map((medium, index) =>
     readDialogueMedia(medium, `${path}[${index}]`),
   )
@@ -520,19 +482,21 @@ export function readMedia(value: unknown, path: string): DialogueMedia[] {
   return media
 }
 
-/**
- * A current `Quest` is a V2 quest plus a colour. `readQuestV2` is the pre-migration reader in
- * `data-file-migrations.ts` — the shared fields have not changed shape since V2.
- */
 function readQuest(value: unknown, path: string): Quest {
   const raw = readObject(value, path)
   return {
-    ...readQuestV2(value, path),
+    id: readQuestId(raw.id, `${path}.id`),
+    name: readString(raw.name, `${path}.name`),
+    status: readQuestStatus(raw.status, `${path}.status`),
+    dialogueIds: readArray(raw.dialogueIds, `${path}.dialogueIds`).map((id, index) =>
+      readDialogueId(id, `${path}.dialogueIds[${index}]`),
+    ),
+    note: readString(raw.note, `${path}.note`),
     hue: readHue(raw.hue, `${path}.hue`),
   }
 }
 
-export function readQuestStatus(value: unknown, path: string): QuestStatus {
+function readQuestStatus(value: unknown, path: string): QuestStatus {
   const status = readString(value, path)
   if (!isQuestStatus(status)) throw new SchemaError(path, QUEST_STATUSES.join(' or '))
   return status
@@ -542,9 +506,17 @@ function isQuestStatus(value: string): value is QuestStatus {
   return (QUEST_STATUSES as readonly string[]).includes(value)
 }
 
+/**
+ * The version is a guard, not a migration chain — see CLAUDE.md § "Schema versioning". One
+ * reader for the current version, at most one migration step back; nothing older is read.
+ */
 function readProjectFile(value: unknown): { file: ProjectFile; repairs: ProjectRepairs } {
   const raw = readObject(value, 'data.json')
-  const repaired = repairReferences(readVersionedProjectFile(raw))
+  const schemaVersion = readNumber(raw.schemaVersion, 'schemaVersion')
+  if (schemaVersion !== 11) {
+    throw new SchemaError('schemaVersion', `11, but found ${String(schemaVersion)}`)
+  }
+  const repaired = repairReferences(readCurrentProjectFile(raw))
   // After the repair, not before: a record that is about to be dropped must not be able to
   // reject the document it is no longer part of.
   assertUniqueFileNames(repaired.file)
@@ -564,53 +536,62 @@ function readProjectFile(value: unknown): { file: ProjectFile; repairs: ProjectR
  * The repaired document is only in memory; it reaches `media/` and `data.json` on the next save
  * like any other edit.
  */
+/** Filters a list and reports how many elements it dropped, so every repair pass counts the same way. */
+function filterCounting<T>(
+  items: readonly T[],
+  keep: (item: T) => boolean,
+): { kept: T[]; dropped: number } {
+  const kept = items.filter(keep)
+  return { kept, dropped: items.length - kept.length }
+}
+
 function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: ProjectRepairs } {
   const mapIds = new Set<MapId>(file.maps.map((map) => map.id))
-  const survivingDialogues = file.dialogues.filter((dialogue) => mapIds.has(dialogue.mapId))
-  const zones = file.zones.filter((zone) => mapIds.has(zone.mapId))
+  const { kept: survivingDialogues, dropped: droppedDialogues } = filterCounting(
+    file.dialogues,
+    (dialogue) => mapIds.has(dialogue.mapId),
+  )
+  const { kept: zones, dropped: droppedZones } = filterCounting(file.zones, (zone) =>
+    mapIds.has(zone.mapId),
+  )
 
   // Against the *surviving* dialogues, so a quest reference to a dialogue dropped one line
   // above goes with it — the two repairs are one pass, not two independent ones.
   const dialogueIds = new Set<DialogueId>(survivingDialogues.map((dialogue) => dialogue.id))
   let questDialogueIds = 0
   const quests = file.quests.map((quest) => {
-    const kept = quest.dialogueIds.filter((id) => dialogueIds.has(id))
-    if (kept.length === quest.dialogueIds.length) return quest
-    questDialogueIds += quest.dialogueIds.length - kept.length
+    const { kept, dropped } = filterCounting(quest.dialogueIds, (id) => dialogueIds.has(id))
+    if (dropped === 0) return quest
+    questDialogueIds += dropped
     return { ...quest, dialogueIds: kept }
   })
 
-  // Every id readRelevanceV5 read is already normalised into canonical order; only ids naming
-  // no current tag need dropping, and readRelevanceV5 trails those after the known ones.
+  // Every id readRelevance read is already normalised into canonical order; only ids naming
+  // no current tag need dropping, and readRelevance trails those after the known ones.
   const tagIds = new Set<RelevanceTagId>(file.relevanceTags.map((tag) => tag.id))
   let relevance = 0
   let dialogueReferences = 0
   const dialogues = survivingDialogues.map((dialogue) => {
-    const keptRelevance = dialogue.relevance.filter((id) => tagIds.has(id))
-    const keptReferences = dialogue.references.filter((id) => dialogueIds.has(id) && id !== dialogue.id)
-    const relevanceChanged = keptRelevance.length !== dialogue.relevance.length
-    const referencesChanged = keptReferences.length !== dialogue.references.length
-    if (!relevanceChanged && !referencesChanged) return dialogue
-    if (relevanceChanged) relevance += dialogue.relevance.length - keptRelevance.length
-    if (referencesChanged) dialogueReferences += dialogue.references.length - keptReferences.length
-    return {
-      ...dialogue,
-      relevance: keptRelevance,
-      references: keptReferences,
-    }
+    const keptRelevance = filterCounting(dialogue.relevance, (id) => tagIds.has(id))
+    const keptReferences = filterCounting(
+      dialogue.references,
+      (id) => dialogueIds.has(id) && id !== dialogue.id,
+    )
+    if (keptRelevance.dropped === 0 && keptReferences.dropped === 0) return dialogue
+    relevance += keptRelevance.dropped
+    dialogueReferences += keptReferences.dropped
+    return { ...dialogue, relevance: keptRelevance.kept, references: keptReferences.kept }
   })
 
   // A pending capture carries no `mapId`, so it has nothing to be orphaned from — only its
   // relevance ids can dangle, repaired the same way and folded into the same count.
   const pendingCaptures = file.pendingCaptures.map((capture) => {
-    const kept = capture.relevance.filter((id) => tagIds.has(id))
-    if (kept.length === capture.relevance.length) return capture
-    relevance += capture.relevance.length - kept.length
+    const { kept, dropped } = filterCounting(capture.relevance, (id) => tagIds.has(id))
+    if (dropped === 0) return capture
+    relevance += dropped
     return { ...capture, relevance: kept }
   })
 
-  const droppedDialogues = file.dialogues.length - dialogues.length
-  const droppedZones = file.zones.length - zones.length
   if (droppedDialogues === 0 && droppedZones === 0 && questDialogueIds === 0 && relevance === 0 && dialogueReferences === 0) {
     return { file, repairs: { kind: 'none' } }
   }
@@ -632,10 +613,6 @@ function repairReferences(file: ProjectFile): { file: ProjectFile; repairs: Proj
  * delete destructive: removing either dialogue takes the bytes the other still points at, and
  * `deleteMediaFile` cannot tell the difference. Maps live in `media/` too (`map-<id>.<ext>`),
  * so they share the namespace and are checked with it.
- *
- * Run on the migrated document rather than per version, which is why a V1–V3 file reports the
- * V4 path `dialogues[i].media[0]` for what it stores as `dialogues[i].content` — the file name
- * in the message is what identifies the line to fix either way.
  */
 function assertUniqueFileNames(file: ProjectFile): void {
   const seen = new Set<string>()
@@ -664,24 +641,7 @@ function assertUniqueFileNames(file: ProjectFile): void {
   })
 }
 
-/** `maps`, `dialogues` and `quests` differ per version; the rest is read by the same functions. */
-export function readCommonFields(
-  raw: Record<string, unknown>,
-): { projectName: string; savedAt: string; zones: Zone[] } {
-  return {
-    projectName: readString(raw.projectName, 'projectName'),
-    savedAt: readInstant(raw.savedAt, 'savedAt'),
-    zones: readUniqueArray(raw, 'zones', readZone),
-  }
-}
-
-/**
- * V10 reads `recorderBindings` last, after everything V9 already read. Otherwise identical to V9
- * — the bindings are the only thing this version adds, and it adds them to the document rather
- * than to any profile. Every version before it lives in `data-file-migrations.ts`, read only by
- * `readVersionedProjectFile` there.
- */
-export function readProjectFileV11(raw: Record<string, unknown>): ProjectFile {
+function readCurrentProjectFile(raw: Record<string, unknown>): ProjectFile {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
   const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
@@ -693,18 +653,16 @@ export function readProjectFileV11(raw: Record<string, unknown>): ProjectFile {
   )
   return {
     schemaVersion: 11,
-    ...readCommonFields(raw),
+    projectName: readString(raw.projectName, 'projectName'),
+    savedAt: readInstant(raw.savedAt, 'savedAt'),
+    zones: readUniqueArray(raw, 'zones', readZone),
     maps: readUniqueArray(raw, 'maps', readGameMap),
     dialogues,
-    quests: readQuestsV3(raw),
+    quests: readUniqueArray(raw, 'quests', readQuest),
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
     relevanceTags,
     glyphs: readGlyphs(raw.glyphs, 'glyphs'),
     pendingCaptures,
     recorderBindings: readRecorderBindings(raw.recorderBindings, 'recorderBindings'),
   }
-}
-
-export function readQuestsV3(raw: Record<string, unknown>): Quest[] {
-  return readUniqueArray(raw, 'quests', readQuest)
 }
