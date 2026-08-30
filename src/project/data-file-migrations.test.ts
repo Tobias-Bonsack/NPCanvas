@@ -19,7 +19,7 @@ describe('parseProjectFile: migration chain', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.maps[0].scale).toBe(0.75)
     expect(result.file.quests[0].hue).toBe(45)
@@ -47,7 +47,7 @@ describe('parseProjectFile: V5 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.glyphs).toEqual([
       { char: 'P', bits: 'fc8282fc80808000' },
       { char: 'a', bits: '000038043c443e00' },
@@ -97,7 +97,7 @@ describe('parseProjectFile: V5 migration', () => {
     const reread = parseProjectFile(serializeProject(migrated.file))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(10)
+    expect(reread.file.schemaVersion).toBe(11)
     expect({ ...reread.file, savedAt: '' }).toEqual({ ...migrated.file, savedAt: '' })
   })
 
@@ -184,10 +184,41 @@ describe('parseProjectFile: V9 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.recorderBindings).toEqual([])
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
+  })
+})
+
+/** A valid V10 document with one binding per recorder action. */
+function v10Document(): Record<string, unknown> {
+  const data = v9Document()
+  data.schemaVersion = 10
+  data.recorderBindings = [{ action: 'record-new', buttonIndex: 0 }]
+  return data
+}
+
+describe('parseProjectFile: V10 migration', () => {
+  it('adds an empty references list to every dialogue, since nothing before V11 could have written one', () => {
+    const result = parseProjectFile(JSON.stringify(v10Document()))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    expect(result.file.schemaVersion).toBe(11)
+    expect(result.file.dialogues.every((dialogue) => dialogue.references.length === 0)).toBe(true)
+    expect(result.file.recorderBindings).toEqual([{ action: 'record-new', buttonIndex: 0 }])
+  })
+
+  it('ignores a references field a hand-edited V10 document should never have had', () => {
+    const data = v10Document()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].references = ['dialogue-2']
+
+    const result = parseProjectFile(JSON.stringify(data))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.file.dialogues[0].references).toEqual([])
   })
 })
 
@@ -197,7 +228,7 @@ describe('parseProjectFile: V7 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
     // Every other measurement is the one that was on disk.
@@ -220,7 +251,7 @@ describe('parseProjectFile: V8 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.captureProfiles).toHaveLength(1)
     expect(result.file.captureProfiles[0]).not.toHaveProperty('battleRect')
     expect(result.file.captureProfiles[0].textRect).toEqual({ x: 8, y: 104, width: 144, height: 32 })
@@ -233,7 +264,7 @@ describe('parseProjectFile: V6 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.pendingCaptures).toEqual([])
     expect(result.file.maps[0].origin).toEqual({ x: -400, y: 250 })
     expect(result.file.dialogues).toHaveLength(4)
@@ -246,7 +277,7 @@ describe('parseProjectFile: V4 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.relevanceTags.map((tag) => tag.name)).toEqual([
       'Out of world',
       'Worldbuilding',
@@ -286,7 +317,7 @@ describe('parseProjectFile: V3 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.captureProfiles).toEqual([])
 
     const [text, image, gif, video] = result.file.dialogues
@@ -340,7 +371,7 @@ describe('parseProjectFile: V2 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.quests.map((quest) => quest.hue)).toEqual([
       QUEST_HUES[0],
       QUEST_HUES[1],
@@ -368,7 +399,7 @@ describe('parseProjectFile: V1 migration', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
 
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.dialogues).toHaveLength(4)
     expect(result.file.dialogues[0]).toMatchObject({ text: 'The tide took it.', media: [] })
     expect(result.file.dialogues[3].media[0]).toMatchObject({ kind: 'video', durationMs: 4200 })
@@ -408,7 +439,7 @@ describe('parseProjectFile: V1 migration', () => {
     const result = parseProjectFile(JSON.stringify(data))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.file).toMatchObject({ schemaVersion: 10, maps: [], pendingCaptures: [] })
+    expect(result.file).toMatchObject({ schemaVersion: 11, maps: [], pendingCaptures: [] })
   })
 
   it('still validates the V1 fields it reads', () => {
@@ -434,6 +465,6 @@ describe('serializeProject: a migrated document is byte-stable on its second sav
     const withoutSavedAt = (text: string): string =>
       text.replace(/"savedAt": "[^"]*"/g, '"savedAt": "<stamped>"')
     expect(withoutSavedAt(serializeProject(reread.file))).toBe(withoutSavedAt(firstSave))
-    expect(reread.file.schemaVersion).toBe(10)
+    expect(reread.file.schemaVersion).toBe(11)
   })
 })

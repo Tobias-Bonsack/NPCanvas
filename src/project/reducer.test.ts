@@ -75,7 +75,7 @@ function dialogue(id: string, mapId: MapId): Dialogue {
     media: [],
     spokenAt: '2026-08-14T10:00:00.000Z',
     relevance: [],
-      references: [],
+    references: [],
   }
 }
 
@@ -751,6 +751,109 @@ describe('reduce: dialogue actions', () => {
   it('ignores a delete of a dialogue that does not exist', () => {
     const state = ready(twoMapProject())
     expect(reduce(state, { kind: 'dialogue/deleted', dialogueId: asDialogueId('nope') })).toBe(state)
+  })
+
+  it('drops a reference to the deleted dialogue from every other dialogue', () => {
+    const state = ready(twoMapProject())
+    const withRef = readyOf(
+      reduce(state, {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-forest'),
+        referenceId: asDialogueId('dialogue-harbour'),
+      }),
+    )
+    const next = readyOf(
+      reduce(withRef, { kind: 'dialogue/deleted', dialogueId: asDialogueId('dialogue-harbour') }),
+    )
+    expect(next.project.dialogues[0].references).toEqual([])
+  })
+})
+
+describe('reduce: dialogue/reference-added and dialogue/reference-removed', () => {
+  it('adds a reference from one dialogue to another', () => {
+    const next = readyOf(
+      reduce(ready(twoMapProject()), {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    )
+    expect(next.project.dialogues[0].references).toEqual([asDialogueId('dialogue-forest')])
+  })
+
+  it('removes a reference', () => {
+    const state = readyOf(
+      reduce(ready(twoMapProject()), {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    )
+    const next = readyOf(
+      reduce(state, {
+        kind: 'dialogue/reference-removed',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    )
+    expect(next.project.dialogues[0].references).toEqual([])
+  })
+
+  it('refuses a self-reference', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-harbour'),
+      }),
+    ).toBe(state)
+  })
+
+  it('refuses a reference to a dialogue that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('nope'),
+      }),
+    ).toBe(state)
+  })
+
+  it('ignores adding a reference that is already present', () => {
+    const state = readyOf(
+      reduce(ready(twoMapProject()), {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    )
+    expect(
+      reduce(state, {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    ).toBe(state)
+  })
+
+  it('ignores removing a reference that is not there, or from a dialogue that does not exist', () => {
+    const state = ready(twoMapProject())
+    expect(
+      reduce(state, {
+        kind: 'dialogue/reference-removed',
+        dialogueId: asDialogueId('dialogue-harbour'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    ).toBe(state)
+    expect(
+      reduce(state, {
+        kind: 'dialogue/reference-added',
+        dialogueId: asDialogueId('nope'),
+        referenceId: asDialogueId('dialogue-forest'),
+      }),
+    ).toBe(state)
   })
 })
 
@@ -1840,6 +1943,33 @@ describe('reduce: dialogue/merged', () => {
     expect(
       reduce(state, { kind: 'dialogue/merged', intoId: asDialogueId('one'), fromId: asDialogueId('one') }),
     ).toBe(state)
+  })
+
+  it('drops the self-reference a merge would otherwise create', () => {
+    const state = split()
+    const pointing = ready({
+      ...state.project,
+      dialogues: [
+        { ...state.project.dialogues[0], references: [asDialogueId('two')] },
+        state.project.dialogues[1],
+      ],
+    })
+    const next = readyOf(reduce(pointing, merge))
+    expect(next.project.dialogues[0].references).toEqual([])
+  })
+
+  it('repoints a reference at the target when the source merges away', () => {
+    const map = gameMap('map-1')
+    const third: Dialogue = { ...dialogue('three', map.id), references: [asDialogueId('two')] }
+    const state = split()
+    const withThird = ready({
+      ...state.project,
+      dialogues: [...state.project.dialogues, third],
+    })
+    const next = readyOf(reduce(withThird, merge))
+    expect(next.project.dialogues.find((d) => d.id === asDialogueId('three'))?.references).toEqual([
+      asDialogueId('one'),
+    ])
   })
 
   it('is one undo step, and brings both lines back', () => {

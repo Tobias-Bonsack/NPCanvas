@@ -192,10 +192,10 @@ describe('parseProjectFile', () => {
 
   it('rejects an unknown schemaVersion', () => {
     const data = validDocument()
-    data.schemaVersion = 11
+    data.schemaVersion = 12
     expect(
       rejectionMessage(data),
-    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7, 8, 9 or 10, but found 11')
+    ).toBe('schemaVersion: expected 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 or 11, but found 12')
   })
 
   it('rejects a map with no placement', () => {
@@ -355,6 +355,13 @@ function documentWithRecorderBindings(): Record<string, unknown> {
     { action: 'record-new', buttonIndex: 0 },
     { action: 'record-extend', buttonIndex: 1 },
   ]
+  return data
+}
+
+/** A valid V11 document — the only version whose dialogues can carry `references`. */
+function v11Document(): Record<string, unknown> {
+  const data = documentWithRecorderBindings()
+  data.schemaVersion = 11
   return data
 }
 
@@ -598,6 +605,7 @@ describe('parseProjectFile: pendingCaptures', () => {
       zones: 0,
       questDialogueIds: 0,
       relevance: 1,
+      dialogueReferences: 0,
     })
   })
 
@@ -616,7 +624,7 @@ describe('parseProjectFile: pendingCaptures', () => {
 describe('createEmptyProject', () => {
   it('writes the current schema version, so a new project is never migrated on its first read', () => {
     const project = createEmptyProject('Harbour')
-    expect(project.schemaVersion).toBe(10)
+    expect(project.schemaVersion).toBe(11)
     expect(project.captureProfiles).toEqual([])
     expect(project.glyphs).toEqual([])
     expect(project.pendingCaptures).toEqual([])
@@ -631,7 +639,7 @@ describe('createEmptyProject', () => {
     const reread = parseProjectFile(serializeProject(project))
     expect(reread.ok).toBe(true)
     if (!reread.ok) return
-    expect(reread.file.schemaVersion).toBe(10)
+    expect(reread.file.schemaVersion).toBe(11)
   })
 })
 
@@ -858,6 +866,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 0,
       questDialogueIds: 1,
       relevance: 0,
+      dialogueReferences: 0,
     })
   })
 
@@ -875,6 +884,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 1,
       questDialogueIds: 0,
       relevance: 0,
+      dialogueReferences: 0,
     })
   })
 
@@ -892,6 +902,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 0,
       questDialogueIds: 1,
       relevance: 0,
+      dialogueReferences: 0,
     })
   })
 
@@ -908,6 +919,41 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 0,
       questDialogueIds: 0,
       relevance: 1,
+      dialogueReferences: 0,
+    })
+  })
+
+  it('drops a dialogue reference naming a dialogue that is gone', () => {
+    const data = v11Document()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].references = ['dialogue-2', 'dialogue-gone']
+
+    const result = repaired(data)
+    expect(result.file.dialogues[0].references).toEqual(['dialogue-2'])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 0,
+      questDialogueIds: 0,
+      relevance: 0,
+      dialogueReferences: 1,
+    })
+  })
+
+  it('drops a self-reference rather than rejecting the document', () => {
+    const data = v11Document()
+    const dialogues = data.dialogues as Record<string, unknown>[]
+    dialogues[0].references = ['dialogue-1', 'dialogue-2']
+
+    const result = repaired(data)
+    expect(result.file.dialogues[0].references).toEqual(['dialogue-2'])
+    expect(result.repairs).toEqual({
+      kind: 'repaired',
+      dialogues: 0,
+      zones: 0,
+      questDialogueIds: 0,
+      relevance: 0,
+      dialogueReferences: 1,
     })
   })
 
@@ -925,6 +971,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 1,
       questDialogueIds: 2,
       relevance: 0,
+      dialogueReferences: 0,
     })
   })
 
@@ -945,7 +992,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
     dialogues[0].mapId = 'map-gone'
 
     const result = repaired(data)
-    expect(result.file.schemaVersion).toBe(10)
+    expect(result.file.schemaVersion).toBe(11)
     expect(result.file.dialogues.some((dialogue) => dialogue.mapId === 'map-gone')).toBe(false)
     expect(result.repairs.kind).toBe('repaired')
   })
@@ -968,6 +1015,7 @@ describe('parseProjectFile: repairs dangling references rather than rejecting', 
       zones: 0,
       questDialogueIds: 0,
       relevance: 0,
+      dialogueReferences: 0,
     })
   })
 })

@@ -285,7 +285,7 @@ export function readMediaFile(value: unknown, path: string): MediaFile {
  * rejected here — `repairReferences` is what counts and drops a tag id that names nothing,
  * exactly as it already does for a dangling `mapId` or quest reference.
  */
-function readRelevanceV5(
+export function readRelevanceV5(
   value: unknown,
   path: string,
   tagOrder: readonly RelevanceTagId[],

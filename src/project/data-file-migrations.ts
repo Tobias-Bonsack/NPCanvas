@@ -6,7 +6,6 @@ import {
   readArray,
   readCaptureProfile,
   readCommonFields,
-  readDialogue,
   readDialogueCommon,
   readDialogueId,
   readGameMap,
@@ -26,12 +25,13 @@ import {
   readQuestsV3,
   readQuestStatus,
   readRelevanceTag,
+  readRelevanceV5,
   readRecorderBindings,
   readString,
   readUniqueArray,
   SchemaError,
 } from './data-file.ts'
-import { asRelevanceTagId, newMediaId } from './ids.ts'
+import { newMediaId } from './ids.ts'
 import type {
   CaptureProfile,
   CaptureProfileV5,
@@ -58,6 +58,7 @@ import type {
   Quest,
   QuestV2,
   RelevanceSlugV4,
+  RelevanceTagId,
 } from './types.ts'
 import { RELEVANCE_SLUGS_V4 } from './types.ts'
 
@@ -183,6 +184,32 @@ function readDialogueV4(value: unknown, path: string): DialogueV4 {
     text: readString(raw.text, `${path}.text`),
     media: readMedia(raw.media, `${path}.media`),
   }
+}
+
+/**
+ * Frozen V10 dialogue shape — no `references`, since nothing before V11 could write one. Used by
+ * `readProjectFileV5` through `readProjectFileV10`; the live `readDialogue` in `data-file.ts` is
+ * for V11 only.
+ */
+function readDialogueV10(
+  value: unknown,
+  path: string,
+  tagOrder: readonly RelevanceTagId[],
+): DialogueV10 {
+  const raw = readObject(value, path)
+  return {
+    ...readDialogueCommon(raw, path, (v, p) => readRelevanceV5(v, p, tagOrder)),
+    text: readString(raw.text, `${path}.text`),
+    media: readMedia(raw.media, `${path}.media`),
+  }
+}
+
+function readDialoguesV10(raw: Record<string, unknown>, tagOrder: readonly RelevanceTagId[]): DialogueV10[] {
+  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
+    readDialogueV10(item, `dialogues[${index}]`, tagOrder),
+  )
+  assertUniqueIds(dialogues, 'dialogues')
+  return dialogues
 }
 
 function readDialogueV3(value: unknown, path: string): DialogueV3 {
@@ -320,10 +347,7 @@ function readProjectFileV4(raw: Record<string, unknown>): ProjectFileV4 {
 function readProjectFileV5(raw: Record<string, unknown>): ProjectFileV5 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
-    readDialogue(item, `dialogues[${index}]`, tagOrder),
-  )
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   return {
     schemaVersion: 5,
     ...readCommonFields(raw),
@@ -343,10 +367,7 @@ function readProjectFileV5(raw: Record<string, unknown>): ProjectFileV5 {
 function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
-    readDialogue(item, `dialogues[${index}]`, tagOrder),
-  )
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   return {
     schemaVersion: 6,
     ...readCommonFields(raw),
@@ -367,10 +388,7 @@ function readProjectFileV6(raw: Record<string, unknown>): ProjectFileV6 {
 function readProjectFileV7(raw: Record<string, unknown>): ProjectFileV7 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
-    readDialogue(item, `dialogues[${index}]`, tagOrder),
-  )
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
     readPendingCapture(item, path, tagOrder),
   )
@@ -394,10 +412,7 @@ function readProjectFileV7(raw: Record<string, unknown>): ProjectFileV7 {
 function readProjectFileV8(raw: Record<string, unknown>): ProjectFileV8 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
-    readDialogue(item, `dialogues[${index}]`, tagOrder),
-  )
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
     readPendingCapture(item, path, tagOrder),
   )
@@ -421,10 +436,7 @@ function readProjectFileV8(raw: Record<string, unknown>): ProjectFileV8 {
 function readProjectFileV9(raw: Record<string, unknown>): ProjectFileV9 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) =>
-    readDialogue(item, `dialogues[${index}]`, tagOrder),
-  )
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
     readPendingCapture(item, path, tagOrder),
   )
@@ -578,27 +590,7 @@ function migrateV9(file: ProjectFileV9): ProjectFileV10 {
 function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10 {
   const relevanceTags = readUniqueArray(raw, 'relevanceTags', readRelevanceTag)
   const tagOrder = relevanceTags.map((tag) => tag.id)
-
-  // Helper to read relevance tags like readRelevanceV5 does
-  const readRelevanceForV10 = (value: unknown, path: string): readonly string[] => {
-    const tagArray = readArray(value, path)
-    const found = new Set(
-      tagArray.map((tag, index) => asRelevanceTagId(readString(tag, `${path}[${index}]`))),
-    )
-    const known = tagOrder.filter((id) => found.has(id))
-    const unknown = [...found].filter((id) => !tagOrder.includes(id))
-    return [...known, ...unknown]
-  }
-
-  const dialogues = readArray(raw.dialogues, 'dialogues').map((item, index) => {
-    const dialogueRaw = readObject(item, `dialogues[${index}]`)
-    return {
-      ...readDialogueCommon(dialogueRaw, `dialogues[${index}]`, readRelevanceForV10),
-      text: readString(dialogueRaw.text, `dialogues[${index}].text`),
-      media: readMedia(dialogueRaw.media, `dialogues[${index}].media`),
-    }
-  })
-  assertUniqueIds(dialogues, 'dialogues')
+  const dialogues = readDialoguesV10(raw, tagOrder)
   const pendingCaptures = readUniqueArray(raw, 'pendingCaptures', (item, path) =>
     readPendingCapture(item, path, tagOrder),
   )
@@ -606,7 +598,7 @@ function readProjectFileV10(raw: Record<string, unknown>): ProjectFileV10 {
     schemaVersion: 10,
     ...readCommonFields(raw),
     maps: readUniqueArray(raw, 'maps', readGameMap),
-    dialogues: dialogues as unknown as DialogueV10[],
+    dialogues,
     quests: readQuestsV3(raw),
     captureProfiles: readUniqueArray(raw, 'captureProfiles', readCaptureProfile),
     relevanceTags,
