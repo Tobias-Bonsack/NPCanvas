@@ -301,8 +301,10 @@
 
 /* Laid on mapsBounds, with a viewBox carrying the same offset so canvas coordinates reach the
    points attribute verbatim. Overflow is visible for the reason .zone-layer__svg's is: a pin
-   dragged past its map's edge must still be joined to the line. */
-.trail-layer__svg {
+   dragged past its map's edge must still be joined to the line. Shared with .reference-layer__svg
+   below — both are the same CanvasLineLayer shell. */
+.trail-layer__svg,
+.reference-layer__svg {
   position: absolute;
   display: block;
   overflow: visible;
@@ -325,8 +327,10 @@
 }
 
 /* The line's outline, and the reason it is a second element: a stroke has no fill, so paint-order
-   cannot halo it the way it haloes the arrowhead below. One pixel proud on each side. */
-.trail-layer__halo {
+   cannot halo it the way it haloes the arrowhead below. One pixel proud on each side. Shared with
+   .reference-layer__halo — the two edges are drawn identically, only the coloured .__path differs. */
+.trail-layer__halo,
+.reference-layer__halo {
   stroke: rgba(0, 0, 0, 0.65);
   stroke-width: calc(5px / (var(--map-zoom) * var(--map-scale)));
 }
@@ -343,9 +347,10 @@
    transform-box is view-box — not the fill-box .zone-layer__label needs — because the arrow is
    placed by the translate inside --arrow-place rather than sitting where it was authored: its
    path is drawn about the origin so that scale and rotate act about the point it was moved to.
-   Composing the two here rather than in JS is what keeps a zoom free of a per-arrow style write. */
-.trail-layer__arrow {
-  fill: var(--trail);
+   Composing the two here rather than in JS is what keeps a zoom free of a per-arrow style write.
+   Shared with .reference-layer__arrow, which differs only in its fill colour below. */
+.trail-layer__arrow,
+.reference-layer__arrow {
   transform-box: view-box;
   transform-origin: 0 0;
   transform: var(--arrow-place) scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
@@ -357,6 +362,10 @@
   stroke: rgba(0, 0, 0, 0.65);
   stroke-width: 2;
   stroke-linejoin: round;
+}
+
+.trail-layer__arrow {
+  fill: var(--trail);
 }
 
 /* ---- reference edges ---- */
@@ -372,22 +381,11 @@
   pointer-events: none;
 }
 
-.reference-layer__svg {
-  position: absolute;
-  display: block;
-  overflow: visible;
-}
-
 /* Both widths and the arrowhead's counter-scale follow .trail-layer's own — no vector-effect,
    for the reason measured there. */
 .reference-layer__halo,
 .reference-layer__path {
   stroke-linecap: round;
-}
-
-.reference-layer__halo {
-  stroke: rgba(0, 0, 0, 0.65);
-  stroke-width: calc(5px / (var(--map-zoom) * var(--map-scale)));
 }
 
 .reference-layer__path {
@@ -397,13 +395,6 @@
 
 .reference-layer__arrow {
   fill: var(--reference);
-  transform-box: view-box;
-  transform-origin: 0 0;
-  transform: var(--arrow-place) scale(calc(1 / (var(--map-zoom) * var(--map-scale))));
-  paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.65);
-  stroke-width: 2;
-  stroke-linejoin: round;
 }
 
 /* ---- pins ---- */

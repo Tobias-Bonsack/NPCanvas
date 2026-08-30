@@ -1,10 +1,10 @@
-import type { CSSProperties, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { memo, useMemo } from 'react'
 import type { Dialogue, DialogueId, GameMap } from '../project/types.ts'
+import { CanvasLineLayer } from './CanvasLineLayer.tsx'
 import type { PinDragPreview } from './PinLayer.tsx'
 import { mapLocalToCanvas, mapsBounds } from './canvas-layout.ts'
 import { referenceEdges } from './reference-path.ts'
-import type { TrailArrow } from './trail-path.ts'
 import { segmentArrow } from './trail-path.ts'
 
 // Drawn in canvas space, like the trail, for the same reason: an edge can join two lines on two
@@ -57,56 +57,36 @@ export const ReferenceLayer = memo(function ReferenceLayer({
 
   if (shown.length === 0 || bounds === null) return null
 
+  const arrows = shown.flatMap((edge) => {
+    const arrow = segmentArrow(edge.fromPoint, edge.toPoint)
+    return arrow === null ? [] : [arrow]
+  })
+
   return (
-    <div className="reference-layer">
-      <svg
-        className="reference-layer__svg"
-        style={{ left: `${bounds.x}px`, top: `${bounds.y}px` }}
-        width={bounds.width}
-        height={bounds.height}
-        viewBox={`${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`}
-        aria-hidden="true"
-      >
-        {/* Two passes: a wider dark halo stroke underneath, the coloured line on top — see
-            TrailLayer.tsx for why, and MapCanvas.css for why no vector-effect. */}
-        {shown.map((edge) => (
-          <line
-            key={`${edge.from}-${edge.to}-halo`}
-            className="reference-layer__halo"
-            x1={edge.fromPoint.x}
-            y1={edge.fromPoint.y}
-            x2={edge.toPoint.x}
-            y2={edge.toPoint.y}
-          />
-        ))}
-        {shown.map((edge) => (
-          <line
-            key={`${edge.from}-${edge.to}-path`}
-            className="reference-layer__path"
-            x1={edge.fromPoint.x}
-            y1={edge.fromPoint.y}
-            x2={edge.toPoint.x}
-            y2={edge.toPoint.y}
-          />
-        ))}
-        {shown.flatMap((edge) => {
-          const arrow = segmentArrow(edge.fromPoint, edge.toPoint)
-          return arrow === null ? [] : [<Arrowhead key={`${edge.from}-${edge.to}-arrow`} arrow={arrow} />]
-        })}
-      </svg>
-    </div>
+    <CanvasLineLayer
+      classPrefix="reference-layer"
+      bounds={bounds}
+      halo={shown.map((edge) => (
+        <line
+          key={`${edge.from}-${edge.to}-halo`}
+          className="reference-layer__halo"
+          x1={edge.fromPoint.x}
+          y1={edge.fromPoint.y}
+          x2={edge.toPoint.x}
+          y2={edge.toPoint.y}
+        />
+      ))}
+      path={shown.map((edge) => (
+        <line
+          key={`${edge.from}-${edge.to}-path`}
+          className="reference-layer__path"
+          x1={edge.fromPoint.x}
+          y1={edge.fromPoint.y}
+          x2={edge.toPoint.x}
+          y2={edge.toPoint.y}
+        />
+      ))}
+      arrows={arrows}
+    />
   )
 })
-
-function Arrowhead({ arrow }: { arrow: TrailArrow }): ReactElement {
-  return <path className="reference-layer__arrow" style={arrowStyle(arrow)} d={ARROW_HEAD} />
-}
-
-// A triangle about the origin pointing along +x, in canvas units before the counter-scale.
-const ARROW_HEAD = 'M -6 -6 L 9 0 L -6 6 Z'
-
-function arrowStyle(arrow: TrailArrow): CSSProperties & Record<'--arrow-place', string> {
-  return {
-    '--arrow-place': `translate(${arrow.point.x}px, ${arrow.point.y}px) rotate(${arrow.angle}deg)`,
-  }
-}
