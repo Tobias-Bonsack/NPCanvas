@@ -19,7 +19,8 @@ import type {
   Zone,
   ZoneId,
 } from '../project/types.ts'
-import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
+import { SegmentDefs, SegmentFill, SegmentLegend, UNKNOWN_FILL } from './SegmentLegend.tsx'
+import { ZoneChips } from './ZoneChips.tsx'
 import { npcKey, npcLabel } from './filters.ts'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
 import {
@@ -27,6 +28,7 @@ import {
   segmentColor,
   segmentKeys,
   segmentLabel,
+  segmentRun,
   tally,
   totalOf,
 } from './relevance-segments.ts'
@@ -253,15 +255,7 @@ function NpcLine({
           {formatSpokenAt(dialogue.spokenAt)}
         </time>
         <span className="dialogue-row__where">
-          {zones.length === 0 ? (
-            <span className="dialogue-row__nowhere">Outside any zone</span>
-          ) : (
-            zones.map((zone) => (
-              <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
-                {zoneLabel(zone)}
-              </span>
-            ))
-          )}
+          <ZoneChips zones={zones} nowhereClassName="dialogue-row__nowhere" />
         </span>
         <a
           className="npc-line__link"
@@ -405,26 +399,21 @@ function SegmentBar({
 }): ReactElement {
   const total = totalOf(counts)
   const colors = segmentColor(tags)
-  let x = 0
 
   return (
     <svg className={className} viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
       {total === 0 ? (
         <rect width="100" height="8" className="insights__track" />
       ) : (
-        segmentKeys(tags).map((segment) => {
-          const count = counts.get(segment) ?? 0
-          if (count === 0) return null
-          const width = (count / total) * 100
-          const left = x
-          x += width
-          return (
-            <g key={segment}>
-              <rect x={left} y="0" width={width} height="8" fill={colors.get(segment) ?? 'transparent'} />
-              <rect x={left} y="0" width={width} height="8" fill={`url(#npc-${segment})`} />
-            </g>
-          )
-        })
+        segmentRun(segmentKeys(tags), counts, 100 / total).map(({ segment, offset, extent }) => (
+          <SegmentFill
+            key={segment}
+            idPrefix="npc"
+            segment={segment}
+            color={colors.get(segment) ?? UNKNOWN_FILL}
+            rect={{ x: offset, y: 0, width: extent, height: 8 }}
+          />
+        ))
       )}
     </svg>
   )

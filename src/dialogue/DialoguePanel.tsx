@@ -7,8 +7,8 @@ import { DIALOGUE_MEDIA_ACCEPT } from '../media/import-media.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { resolveGalleryIndex } from '../media/gallery-index.ts'
 import { MediaGallery } from '../media/MediaGallery.tsx'
+import { ZoneChips } from '../insights/ZoneChips.tsx'
 import { SidePanel } from '../map/SidePanel.tsx'
-import { zoneHueStyle } from '../map/zone-style.ts'
 import { dispatch } from '../project/store.ts'
 import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
 import { DialogueQuestLinks } from '../quest/DialogueQuestLinks.tsx'
@@ -173,15 +173,7 @@ export function DialoguePanel({
 
         {/* Derived, not stored — moving the pin or the zone changes this with no write here. */}
         <p className="dialogue-panel__location">
-          {locations.length === 0 ? (
-            <span className="dialogue-panel__nowhere">Outside any zone</span>
-          ) : (
-            locations.map((zone) => (
-              <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
-                {zone.name}
-              </span>
-            ))
-          )}
+          <ZoneChips zones={locations} nowhereClassName="dialogue-panel__nowhere" />
         </p>
 
         {/* Keyed on the dialogue: unmounting on a pin switch is what flushes a half-typed line. */}

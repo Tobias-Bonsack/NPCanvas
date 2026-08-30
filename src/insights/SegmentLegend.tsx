@@ -77,6 +77,31 @@ export function SegmentDefs({
   )
 }
 
+/**
+ * The two-rect pass every stacked segment bar draws once per segment: a solid fill, then the
+ * pattern on top so the chart survives being read greyscale. Axis, scale and interaction stay the
+ * caller's — this is only the part that never differs between BreakdownBar, TimelineBar and
+ * NpcDossier's SegmentBar.
+ */
+export function SegmentFill({
+  idPrefix,
+  segment,
+  color,
+  rect,
+}: {
+  idPrefix: string
+  segment: SegmentKey
+  color: string
+  rect: { x: number; y: number; width: number; height: number }
+}): ReactElement {
+  return (
+    <>
+      <rect {...rect} fill={color} />
+      <rect {...rect} fill={`url(#${idPrefix}-${segment})`} />
+    </>
+  )
+}
+
 export function SegmentLegend({ tags }: { tags: readonly RelevanceTag[] }): ReactElement {
   const labels = segmentLabel(tags)
   const colors = segmentColor(tags)
@@ -99,4 +124,4 @@ export function SegmentLegend({ tags }: { tags: readonly RelevanceTag[] }): Reac
 }
 
 // Unreachable in practice, but a Map lookup is typed as possibly missing.
-const UNKNOWN_FILL = 'transparent'
+export const UNKNOWN_FILL = 'transparent'

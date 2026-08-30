@@ -59,3 +59,29 @@ export function totalOf(counts: ReadonlyMap<SegmentKey, number>): number {
   for (const count of counts.values()) sum += count
   return sum
 }
+
+/** One non-zero segment's placement along whichever axis the caller draws on. */
+type SegmentRun = { segment: SegmentKey; count: number; offset: number; extent: number }
+
+/**
+ * Walks `keys` in canonical order, skipping a zero count, and accumulates the running offset —
+ * the part every stacked segment bar does identically. `scale` turns a count into an extent
+ * (pixels-per-count for an absolute bar, `100 / total` for a percentage one); axis and id prefix
+ * stay the caller's, since only the geometry is shared.
+ */
+export function segmentRun(
+  keys: readonly SegmentKey[],
+  counts: ReadonlyMap<SegmentKey, number>,
+  scale: number,
+): SegmentRun[] {
+  const runs: SegmentRun[] = []
+  let offset = 0
+  for (const segment of keys) {
+    const count = counts.get(segment) ?? 0
+    if (count === 0) continue
+    const extent = count * scale
+    runs.push({ segment, count, offset, extent })
+    offset += extent
+  }
+  return runs
+}

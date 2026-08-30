@@ -5,9 +5,9 @@ import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../projec
 import { useChartWidth } from './chart-width.ts'
 import type { DialogueFilter, ZoneScope } from './filters.ts'
 import { NO_ZONE, npcKey, npcLabel } from './filters.ts'
-import { SegmentDefs, SegmentLegend } from './SegmentLegend.tsx'
+import { SegmentDefs, SegmentFill, SegmentLegend, UNKNOWN_FILL } from './SegmentLegend.tsx'
 import type { SegmentKey, Tally } from './relevance-segments.ts'
-import { emptyTally, segmentColor, segmentKeys, segmentLabel, tally, totalOf } from './relevance-segments.ts'
+import { emptyTally, segmentColor, segmentKeys, segmentLabel, segmentRun, tally, totalOf } from './relevance-segments.ts'
 
 type RowTarget =
   | { kind: 'zones'; zones: readonly ZoneScope[] }
@@ -181,18 +181,13 @@ function BreakdownBar({
   onSelect: (target: RowTarget, segment: SegmentKey) => void
 }): ReactElement {
   const middle = y + ROW_HEIGHT / 2
-  let x = BAR_X
 
   return (
     <g>
       <ClippedLabel text={row.label} maxWidth={LABEL_WIDTH} x={LABEL_WIDTH} y={middle} />
       <rect className="insights__track" x={BAR_X} y={y} width={barWidth} height={ROW_HEIGHT} rx="3" />
-      {keys.map((segment) => {
-        const count = row.counts.get(segment) ?? 0
-        if (count === 0) return null
-        const segmentWidth = count * scale
-        const left = x
-        x += segmentWidth
+      {segmentRun(keys, row.counts, scale).map(({ segment, count, offset, extent }) => {
+        const left = BAR_X + offset
         const label = `${row.label}, ${labels.get(segment) ?? ''}: ${count}`
         return (
           <g
@@ -208,24 +203,16 @@ function BreakdownBar({
             }}
           >
             <title>{label}</title>
-            <rect
-              x={left}
-              y={y}
-              width={segmentWidth}
-              height={ROW_HEIGHT}
-              fill={colors.get(segment) ?? 'transparent'}
+            <SegmentFill
+              idPrefix={idPrefix}
+              segment={segment}
+              color={colors.get(segment) ?? UNKNOWN_FILL}
+              rect={{ x: left, y, width: extent, height: ROW_HEIGHT }}
             />
-            <rect
-              x={left}
-              y={y}
-              width={segmentWidth}
-              height={ROW_HEIGHT}
-              fill={`url(#${idPrefix}-${segment})`}
-            />
-            {segmentWidth >= LABEL_MIN_SEGMENT && (
+            {extent >= LABEL_MIN_SEGMENT && (
               <text
                 className="insights__segment-count"
-                x={left + segmentWidth / 2}
+                x={left + extent / 2}
                 y={middle}
                 textAnchor="middle"
               >

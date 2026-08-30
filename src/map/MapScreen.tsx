@@ -6,7 +6,7 @@ import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
 import { DialoguePanel } from '../dialogue/DialoguePanel.tsx'
-import { questIndexFor } from '../project/derived.ts'
+import { byId, questIndexFor } from '../project/derived.ts'
 import { dispatch } from '../project/store.ts'
 import { dialoguesInAnyQuest } from '../quest/quest-index.ts'
 import type {
@@ -438,12 +438,6 @@ function withZonePreview(zones: Zone[], drag: ZoneDragPreview | null): readonly 
 
 // T['id'], not a second type parameter — a key parameter is only inferable from the
 // constraint, which lands as `unknown` and throws away the brand.
-function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
-  const map = new Map<T['id'], T>()
-  for (const item of items) map.set(item.id, item)
-  return map
-}
-
 // `key` is a single unmodified letter — matched by the global listener above and printed by
 // ToolPicker's button (#42's "discoverable without documentation").
 const TOOLS: readonly { tool: CanvasTool; label: string; hint: string; key: string }[] = [

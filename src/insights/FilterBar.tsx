@@ -2,6 +2,7 @@ import type { CSSProperties, ReactElement } from 'react'
 import { useMemo } from 'react'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
+import { byId } from '../project/derived.ts'
 import type { Dialogue, GameMap, ProjectFile, RelevanceTagId, Zone } from '../project/types.ts'
 import { DIALOGUE_CONTENT_KINDS } from '../project/types.ts'
 import type { ContentKind, DialogueFilter, ZoneScope } from './filters.ts'
@@ -283,12 +284,6 @@ function zoneLabel(zone: Zone): string {
 // A filter may name something deleted between renders; the chip says so instead of blanking.
 function labelOf<T>(item: T | undefined, label: (item: T) => string, fallback: string): string {
   return item === undefined ? fallback : label(item)
-}
-
-function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
-  const map = new Map<T['id'], T>()
-  for (const item of items) map.set(item.id, item)
-  return map
 }
 
 // <input type="date"> is wall-clock, spokenAt is an instant — a bound picked as a day means the

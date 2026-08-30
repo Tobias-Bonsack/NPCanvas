@@ -43,3 +43,9 @@ export function searchTextOf(dialogue: Dialogue, dialogues: readonly Dialogue[])
 }
 
 export const questIndexFor = identityCache(indexQuestsByDialogue)
+
+export function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
+  const map = new Map<T['id'], T>()
+  for (const item of items) map.set(item.id, item)
+  return map
+}

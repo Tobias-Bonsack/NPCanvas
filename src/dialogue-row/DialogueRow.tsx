@@ -2,10 +2,10 @@ import type { ReactElement } from 'react'
 import { formatRoute } from '../app/route.ts'
 import { ContentGlyph } from '../dialogue/ContentGlyph.tsx'
 import { npcKey, npcLabel } from '../insights/filters.ts'
-import { zoneHueStyle } from '../map/zone-style.ts'
+import { ZoneChips } from '../insights/ZoneChips.tsx'
 import type { Dialogue, Zone } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
-import { dialogueSnippet, formatSpokenAt, zoneLabel } from './dialogue-summary.ts'
+import { dialogueSnippet, formatSpokenAt } from './dialogue-summary.ts'
 import './DialogueRow.css'
 
 /**
@@ -31,15 +31,7 @@ export function DialogueRowContent({
       <span className="dialogue-row__npc">{npcLabel(npcKey(dialogue))}</span>
       <span className="dialogue-row__snippet">{dialogueSnippet(dialogue)}</span>
       <span className="dialogue-row__where">
-        {zones.length === 0 ? (
-          <span className="dialogue-row__nowhere">Outside any zone</span>
-        ) : (
-          zones.map((zone) => (
-            <span key={zone.id} className="hue-chip dialogue-row__zone" style={zoneHueStyle(zone.hue)}>
-              {zoneLabel(zone)}
-            </span>
-          ))
-        )}
+        <ZoneChips zones={zones} nowhereClassName="dialogue-row__nowhere" />
       </span>
       <time className="dialogue-row__when" dateTime={dialogue.spokenAt}>
         {formatSpokenAt(dialogue.spokenAt)}

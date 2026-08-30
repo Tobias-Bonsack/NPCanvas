@@ -13,6 +13,7 @@ import { dialogueSnippet, resolveZones } from '../dialogue-row/dialogue-summary.
 import { subsetByTimeAsc } from '../dialogue/dialogue-order.ts'
 import { npcKey, npcLabel } from '../insights/filters.ts'
 import { indexDialoguesByZone } from '../map/zone-index.ts'
+import { byId } from '../project/derived.ts'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type {
@@ -390,12 +391,6 @@ function QuestCardMode({
 
 // T['id'], not a second type parameter — a key parameter is only inferable from the
 // constraint, which lands as `unknown` and throws away the brand.
-function byId<T extends { id: PropertyKey }>(items: readonly T[]): ReadonlyMap<T['id'], T> {
-  const map = new Map<T['id'], T>()
-  for (const item of items) map.set(item.id, item)
-  return map
-}
-
 function questCardElementId(questId: QuestId): string {
   return `quest-card-${questId}`
 }

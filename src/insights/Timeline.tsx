@@ -5,10 +5,10 @@ import { useChartWidth } from './chart-width.ts'
 import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
 import type { Dialogue, DialogueId, RelevanceTag, Zone, ZoneId } from '../project/types.ts'
-import { SegmentDefs } from './SegmentLegend.tsx'
+import { SegmentDefs, SegmentFill, UNKNOWN_FILL } from './SegmentLegend.tsx'
 import type { DialogueFilter } from './filters.ts'
 import type { SegmentKey } from './relevance-segments.ts'
-import { segmentColor, segmentKeys, tallyOf, totalOf } from './relevance-segments.ts'
+import { segmentColor, segmentKeys, segmentRun, tallyOf, totalOf } from './relevance-segments.ts'
 import type { BucketUnit, TimeBucket } from './timeline-buckets.ts'
 import {
   BUCKET_UNITS,
@@ -417,7 +417,7 @@ function TimelineBar({
   const barWidth = Math.min(Math.max(width - (width > 4 ? 1.5 : 0), 0.5), MAX_BAR_WIDTH)
   const left = x + (width - barWidth) / 2
   const label = `${describeBucket(bucket, unit)}: ${totalOf(counts)}`
-  let y = PLOT_TOP + PLOT_HEIGHT
+  const bottom = PLOT_TOP + PLOT_HEIGHT
 
   return (
     <g
@@ -430,30 +430,15 @@ function TimelineBar({
       onKeyDown={onKeyDown}
     >
       <title>{label}</title>
-      {keys.map((segment) => {
-        const count = counts.get(segment) ?? 0
-        if (count === 0) return null
-        const height = count * scale
-        y -= height
-        return (
-          <g key={segment}>
-            <rect
-              x={left}
-              y={y}
-              width={barWidth}
-              height={height}
-              fill={colors.get(segment) ?? 'transparent'}
-            />
-            <rect
-              x={left}
-              y={y}
-              width={barWidth}
-              height={height}
-              fill={`url(#timeline-${segment})`}
-            />
-          </g>
-        )
-      })}
+      {segmentRun(keys, counts, scale).map(({ segment, offset, extent }) => (
+        <SegmentFill
+          key={segment}
+          idPrefix="timeline"
+          segment={segment}
+          color={colors.get(segment) ?? UNKNOWN_FILL}
+          rect={{ x: left, y: bottom - offset - extent, width: barWidth, height: extent }}
+        />
+      ))}
     </g>
   )
 }
