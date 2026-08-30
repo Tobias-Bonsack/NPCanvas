@@ -196,9 +196,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'map/renamed': {
       if (state.kind !== 'ready') return state
-      const target = state.project.maps.find((map) => map.id === action.mapId)
-      if (target === undefined || target.name === action.name) return state
-      return replaceIn(state, 'maps', target, { ...target, name: action.name })
+      return setField(state, 'maps', action.mapId, 'name', action.name)
     }
 
     case 'map/moved': {
@@ -235,14 +233,16 @@ function applyAction(state: AppState, action: Action): AppState {
         if (zone.mapId === action.mapId) removedZoneIds.add(zone.id)
       }
 
+      const next = removeById(state, 'maps', (map) => map.id === action.mapId)
       return {
-        ...state,
+        ...next,
         project: {
-          ...project,
-          maps: project.maps.filter((map) => map.id !== action.mapId),
-          zones: project.zones.filter((zone) => !removedZoneIds.has(zone.id)),
-          dialogues: project.dialogues.filter((dialogue) => !removedDialogueIds.has(dialogue.id)),
-          quests: pruneQuestDialogues(project.quests, removedDialogueIds),
+          ...next.project,
+          zones: next.project.zones.filter((zone) => !removedZoneIds.has(zone.id)),
+          dialogues: next.project.dialogues.filter(
+            (dialogue) => !removedDialogueIds.has(dialogue.id),
+          ),
+          quests: pruneQuestDialogues(next.project.quests, removedDialogueIds),
         },
         selection: dropDeletedSelection(state.selection, {
           dialogues: removedDialogueIds,
@@ -265,16 +265,12 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'zone/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'zones', action.zoneId)
-      if (target === null || target.name === action.name) return state
-      return replaceIn(state, 'zones', target, { ...target, name: action.name })
+      return setField(state, 'zones', action.zoneId, 'name', action.name)
     }
 
     case 'zone/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'zones', action.zoneId)
-      if (target === null || target.hue === action.hue) return state
-      return replaceIn(state, 'zones', target, { ...target, hue: action.hue })
+      return setField(state, 'zones', action.zoneId, 'hue', action.hue)
     }
 
     // One action for move and resize — both just hand over the ending polygon. Nothing here
@@ -292,16 +288,12 @@ function applyAction(state: AppState, action: Action): AppState {
       const { project } = state
       if (!project.zones.some((zone) => zone.id === action.zoneId)) return state
 
-      const removed = new Set<ZoneId>([action.zoneId])
+      const next = removeById(state, 'zones', (zone) => zone.id === action.zoneId)
       return {
-        ...state,
-        project: {
-          ...project,
-          zones: project.zones.filter((zone) => zone.id !== action.zoneId),
-        },
+        ...next,
         selection: dropDeletedSelection(state.selection, {
           dialogues: EMPTY_DIALOGUE_IDS,
-          zones: removed,
+          zones: new Set([action.zoneId]),
           maps: EMPTY_MAP_IDS,
         }),
       }
@@ -333,9 +325,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'dialogue/npc-named': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'dialogues', action.dialogueId)
-      if (target === null || target.npcName === action.npcName) return state
-      return replaceIn(state, 'dialogues', target, { ...target, npcName: action.npcName })
+      return setField(state, 'dialogues', action.dialogueId, 'npcName', action.npcName)
     }
 
     // An NPC is not an entity, just a name repeated on every line — so "rename this NPC" is one
@@ -357,9 +347,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'dialogue/text-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'dialogues', action.dialogueId)
-      if (target === null || target.text === action.text) return state
-      return replaceIn(state, 'dialogues', target, { ...target, text: action.text })
+      return setField(state, 'dialogues', action.dialogueId, 'text', action.text)
     }
 
     case 'dialogue/media-added': {
@@ -393,9 +381,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'dialogue/spoken-at-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'dialogues', action.dialogueId)
-      if (target === null || target.spokenAt === action.spokenAt) return state
-      return replaceIn(state, 'dialogues', target, { ...target, spokenAt: action.spokenAt })
+      return setField(state, 'dialogues', action.dialogueId, 'spokenAt', action.spokenAt)
     }
 
     case 'dialogue/relevance-set': {
@@ -436,13 +422,13 @@ function applyAction(state: AppState, action: Action): AppState {
       if (!project.dialogues.some((dialogue) => dialogue.id === action.dialogueId)) return state
 
       const removed = new Set<DialogueId>([action.dialogueId])
-      const remaining = project.dialogues.filter((dialogue) => dialogue.id !== action.dialogueId)
+      const next = removeById(state, 'dialogues', (dialogue) => dialogue.id === action.dialogueId)
       return {
-        ...state,
+        ...next,
         project: {
-          ...project,
-          dialogues: pruneDialogueReferences(remaining, removed),
-          quests: pruneQuestDialogues(project.quests, removed),
+          ...next.project,
+          dialogues: pruneDialogueReferences(next.project.dialogues, removed),
+          quests: pruneQuestDialogues(next.project.quests, removed),
         },
         selection: dropDeletedSelection(state.selection, {
           dialogues: removed,
@@ -503,30 +489,22 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'quest/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'quests', action.questId)
-      if (target === null || target.name === action.name) return state
-      return replaceIn(state, 'quests', target, { ...target, name: action.name })
+      return setField(state, 'quests', action.questId, 'name', action.name)
     }
 
     case 'quest/note-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'quests', action.questId)
-      if (target === null || target.note === action.note) return state
-      return replaceIn(state, 'quests', target, { ...target, note: action.note })
+      return setField(state, 'quests', action.questId, 'note', action.note)
     }
 
     case 'quest/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'quests', action.questId)
-      if (target === null || target.hue === action.hue) return state
-      return replaceIn(state, 'quests', target, { ...target, hue: action.hue })
+      return setField(state, 'quests', action.questId, 'hue', action.hue)
     }
 
     case 'quest/status-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'quests', action.questId)
-      if (target === null || target.status === action.status) return state
-      return replaceIn(state, 'quests', target, { ...target, status: action.status })
+      return setField(state, 'quests', action.questId, 'status', action.status)
     }
 
     // The dialogue must exist — together with pruneQuestDialogues, this keeps every
@@ -555,15 +533,8 @@ function applyAction(state: AppState, action: Action): AppState {
     // No cascade: a quest references dialogues, it does not own them.
     case 'quest/deleted': {
       if (state.kind !== 'ready') return state
-      const { project } = state
-      if (!project.quests.some((quest) => quest.id === action.questId)) return state
-      return {
-        ...state,
-        project: {
-          ...project,
-          quests: project.quests.filter((quest) => quest.id !== action.questId),
-        },
-      }
+      if (!state.project.quests.some((quest) => quest.id === action.questId)) return state
+      return removeById(state, 'quests', (quest) => quest.id === action.questId)
     }
 
     case 'capture-profile/added': {
@@ -579,9 +550,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'capture-profile/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'captureProfiles', action.profileId)
-      if (target === null || target.name === action.name) return state
-      return replaceIn(state, 'captureProfiles', target, { ...target, name: action.name })
+      return setField(state, 'captureProfiles', action.profileId, 'name', action.name)
     }
 
     case 'capture-profile/calibrated': {
@@ -595,17 +564,10 @@ function applyAction(state: AppState, action: Action): AppState {
     // The alphabet is the project's, so deleting a profile does not cost it.
     case 'capture-profile/deleted': {
       if (state.kind !== 'ready') return state
-      const { project } = state
-      if (!project.captureProfiles.some((profile) => profile.id === action.profileId)) return state
-      return {
-        ...state,
-        project: {
-          ...project,
-          captureProfiles: project.captureProfiles.filter(
-            (profile) => profile.id !== action.profileId,
-          ),
-        },
+      if (!state.project.captureProfiles.some((profile) => profile.id === action.profileId)) {
+        return state
       }
+      return removeById(state, 'captureProfiles', (profile) => profile.id === action.profileId)
     }
 
     case 'glyphs/learned': {
@@ -637,16 +599,12 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'relevance-tag/renamed': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'relevanceTags', action.tagId)
-      if (target === null || target.name === action.name) return state
-      return replaceIn(state, 'relevanceTags', target, { ...target, name: action.name })
+      return setField(state, 'relevanceTags', action.tagId, 'name', action.name)
     }
 
     case 'relevance-tag/hue-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'relevanceTags', action.tagId)
-      if (target === null || target.hue === action.hue) return state
-      return replaceIn(state, 'relevanceTags', target, { ...target, hue: action.hue })
+      return setField(state, 'relevanceTags', action.tagId, 'hue', action.hue)
     }
 
     // Array order is the canonical order normalizeRelevance sorts against, so reordering here
@@ -682,16 +640,15 @@ function applyAction(state: AppState, action: Action): AppState {
     // Dialogue.relevance references the tag; dialogues themselves are never deleted, only pruned.
     case 'relevance-tag/deleted': {
       if (state.kind !== 'ready') return state
-      const { project } = state
-      if (!project.relevanceTags.some((tag) => tag.id === action.tagId)) return state
+      if (!state.project.relevanceTags.some((tag) => tag.id === action.tagId)) return state
 
       const removed = new Set<RelevanceTagId>([action.tagId])
+      const next = removeById(state, 'relevanceTags', (tag) => tag.id === action.tagId)
       return {
-        ...state,
+        ...next,
         project: {
-          ...project,
-          relevanceTags: project.relevanceTags.filter((tag) => tag.id !== action.tagId),
-          dialogues: pruneDialogueRelevance(project.dialogues, removed),
+          ...next.project,
+          dialogues: pruneDialogueRelevance(next.project.dialogues, removed),
         },
       }
     }
@@ -712,9 +669,7 @@ function applyAction(state: AppState, action: Action): AppState {
 
     case 'pending-capture/text-set': {
       if (state.kind !== 'ready') return state
-      const target = findById(state.project, 'pendingCaptures', action.captureId)
-      if (target === null || target.text === action.text) return state
-      return replaceIn(state, 'pendingCaptures', target, { ...target, text: action.text })
+      return setField(state, 'pendingCaptures', action.captureId, 'text', action.text)
     }
 
     case 'pending-capture/media-added': {
@@ -756,17 +711,10 @@ function applyAction(state: AppState, action: Action): AppState {
     // never enters the reducer.
     case 'pending-capture/deleted': {
       if (state.kind !== 'ready') return state
-      const { project } = state
-      if (!project.pendingCaptures.some((capture) => capture.id === action.captureId)) return state
-      return {
-        ...state,
-        project: {
-          ...project,
-          pendingCaptures: project.pendingCaptures.filter(
-            (capture) => capture.id !== action.captureId,
-          ),
-        },
+      if (!state.project.pendingCaptures.some((capture) => capture.id === action.captureId)) {
+        return state
       }
+      return removeById(state, 'pendingCaptures', (capture) => capture.id === action.captureId)
     }
 
     // One action so promotion is one undo step: the capture leaves pendingCaptures and the new
@@ -821,15 +769,7 @@ function applyAction(state: AppState, action: Action): AppState {
     case 'recorder-binding/cleared': {
       if (state.kind !== 'ready') return state
       if (!state.project.recorderBindings.some((b) => b.action === action.action)) return state
-      return {
-        ...state,
-        project: {
-          ...state.project,
-          recorderBindings: state.project.recorderBindings.filter(
-            (b) => b.action !== action.action,
-          ),
-        },
-      }
+      return removeById(state, 'recorderBindings', (b) => b.action === action.action)
     }
 
     case 'history/undo': {
@@ -986,6 +926,40 @@ function findById<K extends ListField>(
   project: ProjectFile, field: K, id: ProjectFile[K][number]['id'],
 ): ProjectFile[K][number] | null {
   return project[field].find((item) => item.id === id) ?? null
+}
+
+/** `setField(state, 'zones', id, 'name', name)` — the find-compare-replace every rename/set case repeats. */
+function setField<K extends ListField, F extends keyof ProjectFile[K][number]>(
+  state: ReadyState,
+  field: K,
+  id: ProjectFile[K][number]['id'],
+  key: F,
+  value: ProjectFile[K][number][F],
+): AppState {
+  const target = findById(state.project, field, id)
+  if (target === null || target[key] === value) return state
+  return replaceIn(state, field, target, { ...target, [key]: value })
+}
+
+// Every ProjectFile array field, including recorderBindings — the one list keyed by `action`
+// rather than `id`, which is why removeById below takes a predicate, not an id.
+type ArrayField = {
+  [K in keyof ProjectFile]: ProjectFile[K] extends readonly unknown[] ? K : never
+}[keyof ProjectFile]
+
+/**
+ * The guard-then-filter every delete/clear case repeats. Returns `ReadyState`, not `AppState` —
+ * a cascade case chains further project/selection changes on top of the result.
+ */
+function removeById<K extends ArrayField>(
+  state: ReadyState,
+  field: K,
+  matches: (item: ProjectFile[K][number]) => boolean,
+): ReadyState {
+  return {
+    ...state,
+    project: { ...state.project, [field]: state.project[field].filter((item) => !matches(item)) },
+  }
 }
 
 function hasMap(project: ProjectFile, id: MapId): boolean {

@@ -505,10 +505,10 @@ function queueWrite(
     try {
       switch (await writeIntoCapture(captureId, profile, frame, origin, transcript)) {
         case 'appended':
-          countAppended(transcript)
+          bump('appended', transcript)
           break
         case 'unchanged':
-          countRepeated()
+          bump('repeated')
           break
         case 'gone':
           break
@@ -534,7 +534,7 @@ function openCapture(): void {
   }
   dispatch({ kind: 'pending-capture/added', capture })
   setCurrentCaptureId(capture.id)
-  countConversation()
+  bump('conversations')
 }
 
 function currentPendingCapture(id: PendingCaptureId): PendingCapture | null {
@@ -614,7 +614,7 @@ async function takeBack(captureId: PendingCaptureId, media: DialogueMedia): Prom
   if (target === null || !target.media.some((candidate) => candidate.id === media.id)) return
   dispatch({ kind: 'pending-capture/media-removed', captureId, mediaId: media.id })
   await discardMediaFile(media.file.fileName)
-  countDropped()
+  bump('dropped')
 }
 
 // Whole-second resolution deliberately — at `POLL_MS` an exact stamp would publish a new state ten
@@ -627,24 +627,14 @@ function markRead(): void {
   setState({ ...state, paused: null, lastReadAt: at })
 }
 
-function countRepeated(): void {
+/** `lastText` only accompanies `'appended'` — the other three counters don't touch it. */
+function bump(counter: 'repeated' | 'dropped' | 'appended' | 'conversations', lastText?: string): void {
   if (state.kind !== 'watching') return
-  setState({ ...state, repeated: state.repeated + 1 })
-}
-
-function countDropped(): void {
-  if (state.kind !== 'watching') return
-  setState({ ...state, dropped: state.dropped + 1 })
-}
-
-function countAppended(text: string): void {
-  if (state.kind !== 'watching') return
-  setState({ ...state, appended: state.appended + 1, lastText: text })
-}
-
-function countConversation(): void {
-  if (state.kind !== 'watching') return
-  setState({ ...state, conversations: state.conversations + 1 })
+  setState({
+    ...state,
+    [counter]: state[counter] + 1,
+    ...(lastText !== undefined ? { lastText } : {}),
+  })
 }
 
 function hold(captureId: PendingCaptureId, frame: ImageData, origin: Point): void {
@@ -733,7 +723,7 @@ async function replayInto(
       release(entry)
       if (written === 'appended') {
         replay.appended += 1
-        countAppended(reading.text)
+        bump('appended', reading.text)
       } else if (written === 'gone') {
         replay.gone += 1
       } else {
