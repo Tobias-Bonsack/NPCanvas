@@ -7,7 +7,7 @@ import { screenToWorld } from './viewport.ts'
 
 // The world point under the pointer at pointerdown; the origin is a world point, not a whole
 // viewport, so it survives a wheel zoom mid-pan (see zoomAt's matching invariant).
-export type PanGesture = { grabbed: Point }
+type PanGesture = { grabbed: Point }
 
 type UsePanGestureArgs = {
   viewportRef: { current: Viewport }

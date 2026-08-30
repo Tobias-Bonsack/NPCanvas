@@ -21,7 +21,7 @@ export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }
 // `latest` mirrors what's on screen so commit doesn't depend on a state closure. Neither variant
 // carries a viewport — both convert the current pointer position through the live one, so a zoom
 // mid-gesture moves the draft with the cursor.
-export type ZoneGesture =
+type ZoneGesture =
   | { kind: 'draw'; map: GameMap; from: Point; latest: Rect | null }
   | {
       kind: 'move'
