@@ -113,14 +113,8 @@
   color: var(--text-muted);
 }
 
-/* Mirrors the zone palette in the map sidebar: same swatch size, same pressed outline, so
-   recolouring works the same way wherever a colour is stored. */
-.quest-card__palette {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+/* The recolour row is `.hue-palette` (index.css) — same shape as the zone and relevance-tag
+   palettes, so recolouring works the same way wherever a colour is stored. */
 
 /* `.hue-swatch` (index.css) supplies the size/frame/focus ring; only the fill is the quest's own. */
 .quest-card__swatch {

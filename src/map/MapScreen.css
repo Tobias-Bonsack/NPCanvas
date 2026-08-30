@@ -210,13 +210,6 @@
   text-overflow: ellipsis;
 }
 
-.zone-list__palette {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-
 /* `.hue-swatch` (index.css) supplies the size/frame/focus ring; only the fill is the zone's own. */
 .zone-list__swatch {
   background: hsl(var(--zone-hue) 75% 62%);

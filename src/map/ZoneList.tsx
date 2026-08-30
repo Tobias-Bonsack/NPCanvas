@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { EditableRowDeleteConfirm, EditableRowRenameForm } from '../app/EditableRow.tsx'
+import { HuePalette } from '../app/HuePalette.tsx'
 import { useEditableRow } from '../app/use-editable-row.ts'
 import { navigate } from '../app/route.ts'
 import { RowActions } from '../app/RowActions.tsx'
@@ -143,25 +144,18 @@ function ZoneRow({
 
   if (colouring) {
     return (
-      <div className="zone-list__palette" role="group" aria-label={`Colour of ${zone.name}`}>
-        {ZONE_HUES.map((hue) => (
-          <button
-            key={hue}
-            type="button"
-            className="hue-swatch zone-list__swatch"
-            style={zoneHueStyle(hue)}
-            aria-label={`Hue ${hue}`}
-            aria-pressed={hue === zone.hue}
-            onClick={() => {
-              dispatch({ kind: 'zone/hue-set', zoneId: zone.id, hue })
-              setColouring(false)
-            }}
-          />
-        ))}
-        <button type="button" className="button" onClick={() => setColouring(false)}>
-          Cancel
-        </button>
-      </div>
+      <HuePalette
+        swatchClassName="zone-list__swatch"
+        ariaLabel={`Colour of ${zone.name}`}
+        hues={ZONE_HUES}
+        selectedHue={zone.hue}
+        hueStyle={zoneHueStyle}
+        onSelect={(hue) => {
+          dispatch({ kind: 'zone/hue-set', zoneId: zone.id, hue })
+          setColouring(false)
+        }}
+        onCancel={() => setColouring(false)}
+      />
     )
   }
 

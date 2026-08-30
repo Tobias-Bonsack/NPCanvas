@@ -1,6 +1,7 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EditableRowDeleteConfirm, EditableRowRenameForm } from '../app/EditableRow.tsx'
+import { HuePalette } from '../app/HuePalette.tsx'
 import { useEditableRow } from '../app/use-editable-row.ts'
 import { RowActions } from '../app/RowActions.tsx'
 import { RELEVANCE_HUES, nextRelevanceHue, relevanceHueStyle } from '../dialogue/relevance.ts'
@@ -205,25 +206,18 @@ function RelevanceTagRow({
 
   if (colouring) {
     return (
-      <div className="relevance-tag-list__palette" role="group" aria-label={`Colour of ${tagLabel(tag)}`}>
-        {RELEVANCE_HUES.map((hue) => (
-          <button
-            key={hue}
-            type="button"
-            className="hue-swatch relevance-tag-list__swatch"
-            style={relevanceHueStyle(hue)}
-            aria-label={`Hue ${hue}`}
-            aria-pressed={hue === tag.hue}
-            onClick={() => {
-              dispatch({ kind: 'relevance-tag/hue-set', tagId: tag.id, hue })
-              setColouring(false)
-            }}
-          />
-        ))}
-        <button type="button" className="button" onClick={() => setColouring(false)}>
-          Cancel
-        </button>
-      </div>
+      <HuePalette
+        swatchClassName="relevance-tag-list__swatch"
+        ariaLabel={`Colour of ${tagLabel(tag)}`}
+        hues={RELEVANCE_HUES}
+        selectedHue={tag.hue}
+        hueStyle={relevanceHueStyle}
+        onSelect={(hue) => {
+          dispatch({ kind: 'relevance-tag/hue-set', tagId: tag.id, hue })
+          setColouring(false)
+        }}
+        onCancel={() => setColouring(false)}
+      />
     )
   }
 

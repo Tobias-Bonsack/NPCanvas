@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
 import { EditableRowDeleteConfirm } from '../app/EditableRow.tsx'
+import { HuePalette } from '../app/HuePalette.tsx'
 import { useEditableRow } from '../app/use-editable-row.ts'
 import type { Route } from '../app/route.ts'
 import { formatRoute, navigate } from '../app/route.ts'
@@ -344,29 +345,18 @@ function QuestCardMode({
     // greens would say nothing about what's being picked.
     case 'recolouring':
       return (
-        <div className="quest-card__palette" role="group" aria-label={`Colour of ${quest.name}`}>
-          {QUEST_HUES.map((hue) => (
-            <button
-              key={hue}
-              type="button"
-              className="hue-swatch quest-card__swatch"
-              style={questHueStyle(hue)}
-              aria-label={`Hue ${hue}`}
-              aria-pressed={hue === quest.hue}
-              onClick={() => {
-                dispatch({ kind: 'quest/hue-set', questId: quest.id, hue })
-                onSetMode({ kind: 'idle' })
-              }}
-            />
-          ))}
-          <button
-            type="button"
-            className="button"
-            onClick={() => onSetMode({ kind: 'idle' })}
-          >
-            Cancel
-          </button>
-        </div>
+        <HuePalette
+          swatchClassName="quest-card__swatch"
+          ariaLabel={`Colour of ${quest.name}`}
+          hues={QUEST_HUES}
+          selectedHue={quest.hue}
+          hueStyle={questHueStyle}
+          onSelect={(hue) => {
+            dispatch({ kind: 'quest/hue-set', questId: quest.id, hue })
+            onSetMode({ kind: 'idle' })
+          }}
+          onCancel={() => onSetMode({ kind: 'idle' })}
+        />
       )
 
     case 'attaching':

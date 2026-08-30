@@ -382,6 +382,16 @@ body {
   outline-offset: 1px;
 }
 
+/* HuePalette's own container — was three byte-identical `__palette` rules (zone, relevance
+   tag, quest) before #148 gave the recolour row one component. Only the swatch's fill stays
+   per feature, via its own `background: hsl(var(--*-hue) ...)` rule. */
+.hue-palette {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
 /* An `<h1>`-level screen title — insights, the quest board and settings all set one this size
    with no margin, letting the bar around it own the spacing. */
 .screen-title {

@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { formatRoute, navigate } from '../app/route.ts'
+import { SearchOverlay } from '../app/SearchOverlay.tsx'
 import { newQuestId } from '../project/ids.ts'
 import { dispatch } from '../project/store.ts'
 import type { Dialogue, Quest, QuestId } from '../project/types.ts'
@@ -118,10 +119,9 @@ function QuestPicker({
   onPick: (id: QuestId) => void
   onClose: () => void
 }): ReactElement {
-  const [query, setQuery] = useState('')
-
   const attached = useMemo(() => new Set(exclude.map((quest) => quest.id)), [exclude])
-  const matches = useMemo(() => {
+
+  function filter(query: string): Quest[] {
     const needle = query.trim().toLowerCase()
     const candidates = quests.filter(
       (quest) =>
@@ -129,53 +129,26 @@ function QuestPicker({
         (needle === '' || questName(quest).toLowerCase().includes(needle)),
     )
     return [...candidates].sort((a, b) => statusRank(a) - statusRank(b))
-  }, [quests, attached, query])
+  }
 
   return (
-    // stopPropagation so Escape closes only this picker, not DialoguePanel's window-bound
-    // Escape-to-close listener too.
-    <div
+    <SearchOverlay
       className="dialogue-quests__picker"
-      onKeyDown={(event) => {
-        if (event.key !== 'Escape') return
-        event.stopPropagation()
-        onClose()
-      }}
-    >
-      <div className="dialogue-quests__bar">
-        <input
-          className="dialogue-quests__input text-input"
-          type="search"
-          value={query}
-          autoFocus
-          placeholder="Search quests"
-          aria-label="Search quests"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <button type="button" className="button" onClick={onClose}>
-          Close
-        </button>
-      </div>
-
-      {matches.length === 0 ? (
-        <p className="dialogue-quests__empty hint-text">No quest matches that.</p>
-      ) : (
-        <ul className="dialogue-quests__list">
-          {matches.map((quest) => (
-            <li key={quest.id}>
-              <button
-                type="button"
-                className="dialogue-quests__option"
-                style={questAccentStyle(quest)}
-                onClick={() => onPick(quest.id)}
-              >
-                {questName(quest)}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      barClassName="dialogue-quests__bar"
+      inputClassName="dialogue-quests__input"
+      listClassName="dialogue-quests__list"
+      noteClassName="dialogue-quests__empty hint-text"
+      itemClassName="dialogue-quests__option"
+      placeholder="Search quests"
+      ariaLabel="Search quests"
+      filter={filter}
+      itemKey={(quest) => quest.id}
+      itemStyle={questAccentStyle}
+      renderItem={questName}
+      onPick={(quest) => onPick(quest.id)}
+      emptyMessage="No quest matches that."
+      onClose={onClose}
+    />
   )
 }
 

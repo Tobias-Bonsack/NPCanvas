@@ -139,14 +139,8 @@
 
 /* The rename form and delete confirm use `EditableRow`'s default classes here (no override) —
    `.editable-row__form`/`.editable-row__confirm`/`.editable-row__input` (EditableRow.css) were
-   byte-identical to what used to be declared here under this feature's own names. */
-
-.relevance-tag-list__palette {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+   byte-identical to what used to be declared here under this feature's own names. The recolour
+   row is `.hue-palette` (index.css) for the same reason. */
 
 /* `.hue-swatch` (index.css) supplies the size/frame/focus ring; only the fill is the tag's own. */
 .relevance-tag-list__swatch {

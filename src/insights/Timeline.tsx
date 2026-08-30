@@ -1,6 +1,7 @@
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactElement, ReactNode } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Disclosure } from '../app/Disclosure.tsx'
+import { RovingRadioGroup } from '../app/RovingRadioGroup.tsx'
 import { useChartWidth } from './chart-width.ts'
 import { DialogueRow } from '../dialogue-row/DialogueRow.tsx'
 import { resolveZones } from '../dialogue-row/dialogue-summary.ts'
@@ -335,8 +336,6 @@ const GRAIN_LABEL: Record<BucketUnit, string> = {
 
 const GRAIN_OPTIONS: readonly (BucketUnit | null)[] = [null, ...BUCKET_UNITS]
 
-// radiogroup/radio with a roving tabindex, as in MapScreen's ToolPicker: Tab lands once, on
-// whichever is checked, and the arrows move selection and focus together.
 function GrainPicker({
   selected,
   derived,
@@ -346,38 +345,19 @@ function GrainPicker({
   derived: BucketUnit
   onChange: (unit: BucketUnit | null) => void
 }): ReactElement {
-  const buttons = useRef<Partial<Record<string, HTMLButtonElement | null>>>({})
-
-  function onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
-    const step = arrowStep(event.key)
-    if (step === null) return
-    event.preventDefault()
-    const next = GRAIN_OPTIONS[(index + step + GRAIN_OPTIONS.length) % GRAIN_OPTIONS.length]
-    onChange(next)
-    buttons.current[grainKey(next)]?.focus()
-  }
-
   return (
-    <div className="grain-picker" role="radiogroup" aria-label="Timeline grain">
-      {GRAIN_OPTIONS.map((option, index) => (
-        <button
-          key={grainKey(option)}
-          ref={(element) => {
-            buttons.current[grainKey(option)] = element
-          }}
-          type="button"
-          role="radio"
-          className="grain-picker__button segmented-button"
-          aria-checked={option === selected}
-          tabIndex={option === selected ? 0 : -1}
-          aria-label={option === null ? `Auto — currently ${derived}` : undefined}
-          onClick={() => onChange(option)}
-          onKeyDown={(event) => onKeyDown(event, index)}
-        >
-          {option === null ? 'Auto' : GRAIN_LABEL[option]}
-        </button>
-      ))}
-    </div>
+    <RovingRadioGroup
+      className="grain-picker"
+      ariaLabel="Timeline grain"
+      orientation="horizontal"
+      options={GRAIN_OPTIONS}
+      optionKey={grainKey}
+      selectedKey={grainKey(selected)}
+      buttonClassName="grain-picker__button segmented-button"
+      onChange={onChange}
+      optionAriaLabel={(option) => (option === null ? `Auto — currently ${derived}` : undefined)}
+      renderOption={(option) => (option === null ? 'Auto' : GRAIN_LABEL[option])}
+    />
   )
 }
 

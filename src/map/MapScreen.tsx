@@ -1,7 +1,8 @@
-import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
+import { RovingRadioGroup } from '../app/RovingRadioGroup.tsx'
 import { clearSelection } from '../app/select.ts'
 import type { CanvasViewState } from '../app/view-state.ts'
 import { CanvasLegend } from '../dialogue/CanvasLegend.tsx'
@@ -467,8 +468,6 @@ const TOOLS: readonly { tool: CanvasTool; label: string; hint: string; key: stri
   },
 ]
 
-// radiogroup/radio, not plain group — roving tabindex makes the tools keyboard-reachable like a
-// native radio group.
 function ToolPicker({
   tool,
   onChange,
@@ -476,43 +475,22 @@ function ToolPicker({
   tool: CanvasTool
   onChange: (tool: CanvasTool) => void
 }): ReactElement {
-  const buttons = useRef<Partial<Record<CanvasTool['kind'], HTMLButtonElement | null>>>({})
-
-  function onKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>, index: number): void {
-    const step = arrowStep(event.key)
-    if (step === null) return
-    event.preventDefault()
-    const next = TOOLS[(index + step + TOOLS.length) % TOOLS.length]
-    onChange(next.tool)
-    buttons.current[next.tool.kind]?.focus()
-  }
-
   return (
-    <div className="tool-picker" role="radiogroup" aria-label="Canvas tool" aria-orientation="vertical">
-      {TOOLS.map((entry, index) => (
-        <button
-          key={entry.tool.kind}
-          ref={(element) => {
-            buttons.current[entry.tool.kind] = element
-          }}
-          type="button"
-          role="radio"
-          className="tool-picker__button segmented-button"
-          aria-checked={entry.tool.kind === tool.kind}
-          tabIndex={entry.tool.kind === tool.kind ? 0 : -1}
-          title={`${entry.hint} (${entry.key.toUpperCase()})`}
-          onClick={() => onChange(entry.tool)}
-          onKeyDown={(event) => onKeyDown(event, index)}
-        >
+    <RovingRadioGroup
+      className="tool-picker"
+      ariaLabel="Canvas tool"
+      orientation="vertical"
+      options={TOOLS}
+      optionKey={(entry) => entry.tool.kind}
+      selectedKey={tool.kind}
+      buttonClassName="tool-picker__button segmented-button"
+      onChange={(entry) => onChange(entry.tool)}
+      optionTitle={(entry) => `${entry.hint} (${entry.key.toUpperCase()})`}
+      renderOption={(entry) => (
+        <>
           {entry.label} <span className="tool-picker__key">{entry.key.toUpperCase()}</span>
-        </button>
-      ))}
-    </div>
+        </>
+      )}
+    />
   )
-}
-
-function arrowStep(key: string): number | null {
-  if (key === 'ArrowRight' || key === 'ArrowDown') return 1
-  if (key === 'ArrowLeft' || key === 'ArrowUp') return -1
-  return null
 }
