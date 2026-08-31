@@ -284,7 +284,70 @@
   font-size: 9px;
 }
 
-/* An empty frame reserved for quest-arc marks — filled in by a later issue. */
+.cinema__quest-bars {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+}
+
+.cinema-quest-bars {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cinema-quest-bars__row[data-state='unseen'] {
+  opacity: 0.4;
+}
+
+.cinema-quest-bars__bar {
+  cursor: pointer;
+}
+
+.cinema-quest-bars__bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.cinema-quest-bars__track {
+  fill: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
+}
+
+.cinema-quest-bars__fill {
+  fill: hsl(var(--quest-hue) 70% 55%);
+}
+
+.cinema-quest-bars__row[data-state='done'] .cinema-quest-bars__fill {
+  fill: hsl(var(--quest-hue) 60% 45%);
+}
+
+.cinema-quest-bars__seal {
+  fill: hsl(var(--quest-hue) 60% 45%);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cinema-quest-bars__progress {
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.cinema-quest-bars__mark {
+  cursor: pointer;
+}
+
+.cinema-quest-bars__mark rect {
+  fill: var(--surface-1);
+  stroke: hsl(var(--quest-hue) 70% 30%);
+  stroke-width: 1;
+}
+
+.cinema-quest-bars__mark:focus-visible rect {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+/* Empty for now — nothing yet needs the aside. */
 .cinema__rail {
   flex: none;
   width: 16rem;
