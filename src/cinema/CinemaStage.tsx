@@ -1,16 +1,46 @@
 import type { ReactElement } from 'react'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatRoute } from '../app/route.ts'
 import { dialogueSnippet, formatSpokenAt, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { byId } from '../project/derived.ts'
-import type { ProjectFile, Quest } from '../project/types.ts'
+import type { DialogueMedia, ProjectFile, Quest } from '../project/types.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import type { Moment, Reel } from './reel.ts'
 import { arcStateAt } from './quest-arcs.ts'
 import type { QuestArc } from './quest-arcs.ts'
+
+// A hard cut between two very different captures (the talk-animation's colour flash, most of
+// all) reads as flicker. Crossfading over this long softens it without hiding the cut itself.
+const FRAME_FADE_MS = 160
+
+type FrameLayer = { media: DialogueMedia; renderKey: number }
+
+/** Keeps the outgoing frame mounted just long enough to crossfade under the incoming one. */
+function useFrameLayers(media: DialogueMedia | undefined): FrameLayer[] {
+  const [layers, setLayers] = useState<FrameLayer[]>(() => (media === undefined ? [] : [{ media, renderKey: 0 }]))
+  const nextKey = useRef(1)
+
+  useEffect(() => {
+    if (media === undefined) {
+      setLayers([])
+      return
+    }
+    setLayers((current) => {
+      const top = current[current.length - 1]
+      if (top !== undefined && top.media.id === media.id) return current
+      return [...current, { media, renderKey: nextKey.current++ }]
+    })
+    const timer = setTimeout(() => {
+      setLayers((current) => (current.length <= 1 ? current : current.slice(-1)))
+    }, FRAME_FADE_MS)
+    return () => clearTimeout(timer)
+  }, [media])
+
+  return layers
+}
 
 /** What the stage says about a line — everything but the transport; see CLAUDE.md § "Cinema". */
 export function CinemaStage({
@@ -61,6 +91,7 @@ export function CinemaStage({
 
   const media = dialogue.media[frame] ?? dialogue.media[0]
   const frameCount = Math.max(1, dialogue.media.length)
+  const frameLayers = useFrameLayers(media)
 
   const openingArc = arcs.find((arc) => arc.firstMoment === moment.index)
   const closingArc = arcs.find(
@@ -76,7 +107,18 @@ export function CinemaStage({
       {openingArc !== undefined && <ActCard kind="opens" quest={openingArc.quest} />}
 
       <div className="cinema-stage__frame">
-        {media !== undefined && <MediaView media={media} label={dialogue.npcName} fit="fill" />}
+        {frameLayers.map((layer, index) => (
+          <div
+            key={layer.renderKey}
+            className={
+              index < frameLayers.length - 1
+                ? 'cinema-stage__frame-layer cinema-stage__frame-layer--leaving'
+                : 'cinema-stage__frame-layer'
+            }
+          >
+            <MediaView media={layer.media} label={dialogue.npcName} fit="fill" />
+          </div>
+        ))}
       </div>
 
       {frameCount > 1 && (

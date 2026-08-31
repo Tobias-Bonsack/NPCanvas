@@ -57,8 +57,15 @@
   max-width: 42rem;
 }
 
+/* aspect-ratio only while it holds a frame — a text-only line's empty frame must stay 0-height,
+   not a blank grey box. Every captured frame is 160x144 (see the pixelated rule below). */
 .cinema-stage__frame {
+  position: relative;
   max-width: 32rem;
+}
+
+.cinema-stage__frame:not(:empty) {
+  aspect-ratio: 160 / 144;
 }
 
 /* The single most consequential declaration here — every captured frame is 160x144, scaled to
@@ -66,6 +73,45 @@
 .cinema-stage__frame img,
 .cinema-stage__frame video {
   image-rendering: pixelated;
+}
+
+/* Stacked, not swapped in place — a hard cut between two very different captures (the talk
+   animation's colour flash, most of all) reads as flicker. The outgoing layer fades out under
+   the incoming one; see useFrameLayers in CinemaStage.tsx. */
+.cinema-stage__frame-layer {
+  position: absolute;
+  inset: 0;
+  animation: cinema-frame-fade-in 160ms ease-out;
+}
+
+.cinema-stage__frame-layer img,
+.cinema-stage__frame-layer video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cinema-stage__frame-layer--leaving {
+  animation: cinema-frame-fade-out 160ms ease-in forwards;
+}
+
+@keyframes cinema-frame-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes cinema-frame-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinema-stage__frame-layer,
+  .cinema-stage__frame-layer--leaving {
+    animation: none;
+  }
 }
 
 .cinema-stage__frames {
