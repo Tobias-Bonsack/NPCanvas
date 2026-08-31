@@ -182,10 +182,60 @@
   border-color: var(--accent);
 }
 
-/* An empty frame reserved for the reel's density band — filled in by a later issue. */
 .cinema__band {
   flex: none;
-  height: 4rem;
+  padding: var(--space-2) var(--space-3);
+}
+
+.cinema-band {
+  display: block;
+  width: 100%;
+  height: auto;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.cinema-band:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cinema-band__zone-run {
+  fill: hsl(var(--zone-hue) 55% 45% / 0.5);
+}
+
+.cinema-band__zone-run[data-zone='none'] {
+  fill: var(--border);
+}
+
+.cinema-band__slot {
+  fill: hsl(var(--zone-hue) 60% 50%);
+}
+
+.cinema-band__slot[data-zone='none'] {
+  fill: var(--text-muted);
+}
+
+.cinema-band__slot[data-current] {
+  fill: var(--accent);
+}
+
+.cinema-band__arc {
+  fill: none;
+  stroke: var(--reference);
+  stroke-width: 1.5;
+}
+
+.cinema-band__notch line {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.cinema-band__notch text {
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
 }
 
 /* An empty frame reserved for quest-arc marks — filled in by a later issue. */

@@ -4,6 +4,7 @@ import type { CinemaViewState } from '../app/view-state.ts'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import type { ProjectFile } from '../project/types.ts'
+import { CinemaBand } from './CinemaBand.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
 import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
@@ -148,7 +149,14 @@ export function CinemaScreen({
             />
           </div>
           <Transport playhead={playhead} dispatch={dispatch} />
-          <div className="cinema__band card" aria-hidden="true" />
+          <div className="cinema__band card">
+            <CinemaBand
+              project={project}
+              reel={reel}
+              moment={moment}
+              onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
+            />
+          </div>
         </div>
         <aside className="cinema__rail card" aria-hidden="true" />
       </div>
