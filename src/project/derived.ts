@@ -16,7 +16,7 @@ export function dialogueSearchText(dialogue: Dialogue): string {
 // never on value — the same discipline `zone-index.ts` applies, so a zone drag doesn't rebuild the
 // dialogue-derived caches here.
 
-function identityCache<TInput, TOutput>(build: (input: TInput) => TOutput): (input: TInput) => TOutput {
+export function identityCache<TInput, TOutput>(build: (input: TInput) => TOutput): (input: TInput) => TOutput {
   let cached: { input: TInput; output: TOutput } | null = null
   return (input: TInput): TOutput => {
     if (cached !== null && cached.input === input) return cached.output
