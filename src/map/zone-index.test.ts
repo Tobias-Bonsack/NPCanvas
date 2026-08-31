@@ -206,24 +206,20 @@ describe('reindexMovedZone', () => {
     )
   }
 
-  it('agrees with a full rebuild wherever the zone is dragged to', () => {
+  it.each<[string, Point]>([
+    ['left in place', { x: 0, y: 0 }],
+    ['nudged a few pixels', { x: 5, y: 5 }],
+    ['onto the interior map, sharing neither the shop\'s map nor its coordinates', { x: 35, y: 35 }],
+    ['dragged well clear of both zones', { x: 70, y: 70 }],
+    ['dragged the other way', { x: -40, y: -40 }],
+    ['dragged far off the harbour map', { x: 480, y: 480 }],
+    ['dragged absurdly far', { x: 9000, y: 9000 }],
+  ])('agrees with a full rebuild when the zone is %s', (_name, by) => {
     const previous = indexDialoguesByZone(DIALOGUES, ZONES, DRAG_MAPS)
-    const offsets: Point[] = [
-      { x: 0, y: 0 },
-      { x: 5, y: 5 },
-      { x: 35, y: 35 }, // onto the interior map, sharing neither the shop's map nor its coordinates
-
-      { x: 70, y: 70 },
-      { x: -40, y: -40 },
-      { x: 480, y: 480 },
-      { x: 9000, y: 9000 },
-    ]
-    for (const by of offsets) {
-      const drawn = shopAt(by)
-      expect([...reindexMovedZone(previous, DIALOGUES, drawn, DRAG_MAPS, SHOP.id)]).toEqual([
-        ...indexDialoguesByZone(DIALOGUES, drawn, DRAG_MAPS),
-      ])
-    }
+    const drawn = shopAt(by)
+    expect([...reindexMovedZone(previous, DIALOGUES, drawn, DRAG_MAPS, SHOP.id)]).toEqual([
+      ...indexDialoguesByZone(DIALOGUES, drawn, DRAG_MAPS),
+    ])
   })
 
   it('claims a pin on an overlaid map the moment the zone is dragged under it', () => {

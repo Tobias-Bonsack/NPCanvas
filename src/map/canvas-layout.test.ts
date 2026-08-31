@@ -206,18 +206,17 @@ describe('canvasRectToMapLocal', () => {
 })
 
 describe('clampMapScale', () => {
-  it('clamps at both ends and passes the range through untouched', () => {
-    expect(clampMapScale(0.001)).toBe(0.1)
-    expect(clampMapScale(0.1)).toBe(0.1)
-    expect(clampMapScale(1)).toBe(1)
-    expect(clampMapScale(10)).toBe(10)
-    expect(clampMapScale(1000)).toBe(10)
-  })
-
-  it('absorbs NaN as native size, and sends infinities to the ends', () => {
-    expect(clampMapScale(Number.NaN)).toBe(1)
-    expect(clampMapScale(Number.POSITIVE_INFINITY)).toBe(10)
-    expect(clampMapScale(Number.NEGATIVE_INFINITY)).toBe(0.1)
+  it.each([
+    ['below the floor', 0.001, 0.1],
+    ['at the floor', 0.1, 0.1],
+    ['inside the range', 1, 1],
+    ['at the ceiling', 10, 10],
+    ['above the ceiling', 1000, 10],
+    ['NaN, absorbed as native size', Number.NaN, 1],
+    ['positive infinity, sent to the ceiling', Number.POSITIVE_INFINITY, 10],
+    ['negative infinity, sent to the floor', Number.NEGATIVE_INFINITY, 0.1],
+  ])('clamps %s', (_name, input, expected) => {
+    expect(clampMapScale(input)).toBe(expected)
   })
 })
 

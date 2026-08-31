@@ -79,18 +79,17 @@ describe('zoomAt', () => {
 })
 
 describe('clampScale', () => {
-  it('clamps at both ends and passes the range through untouched', () => {
-    expect(clampScale(0.0001)).toBe(0.05)
-    expect(clampScale(0.05)).toBe(0.05)
-    expect(clampScale(1)).toBe(1)
-    expect(clampScale(8)).toBe(8)
-    expect(clampScale(1000)).toBe(8)
-  })
-
-  it('absorbs NaN rather than poisoning the viewport, and sends infinities to the ends', () => {
-    expect(clampScale(Number.NaN)).toBe(0.05)
-    expect(clampScale(Number.POSITIVE_INFINITY)).toBe(8)
-    expect(clampScale(Number.NEGATIVE_INFINITY)).toBe(0.05)
+  it.each([
+    ['below the floor', 0.0001, 0.05],
+    ['at the floor', 0.05, 0.05],
+    ['inside the range', 1, 1],
+    ['at the ceiling', 8, 8],
+    ['above the ceiling', 1000, 8],
+    ['NaN, absorbed rather than poisoning the viewport', Number.NaN, 0.05],
+    ['positive infinity, sent to the ceiling', Number.POSITIVE_INFINITY, 8],
+    ['negative infinity, sent to the floor', Number.NEGATIVE_INFINITY, 0.05],
+  ])('clamps %s', (_name, input, expected) => {
+    expect(clampScale(input)).toBe(expected)
   })
 })
 

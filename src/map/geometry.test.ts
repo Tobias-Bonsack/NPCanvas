@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Polygon } from '../project/types.ts'
+import type { Rect } from './geometry.ts'
 import {
   inflate,
   isSamePolygon,
@@ -15,28 +16,13 @@ import {
 } from './geometry.ts'
 
 describe('rectBetween', () => {
-  it('describes the same rectangle whichever corner the drag started from', () => {
-    const corners = [
-      [
-        { x: 10, y: 20 },
-        { x: 40, y: 60 },
-      ],
-      [
-        { x: 40, y: 60 },
-        { x: 10, y: 20 },
-      ],
-      [
-        { x: 40, y: 20 },
-        { x: 10, y: 60 },
-      ],
-      [
-        { x: 10, y: 60 },
-        { x: 40, y: 20 },
-      ],
-    ] as const
-    for (const [a, b] of corners) {
-      expect(rectBetween(a, b)).toEqual({ x: 10, y: 20, width: 30, height: 40 })
-    }
+  it.each([
+    ['top-left to bottom-right', { x: 10, y: 20 }, { x: 40, y: 60 }],
+    ['bottom-right to top-left', { x: 40, y: 60 }, { x: 10, y: 20 }],
+    ['top-right to bottom-left', { x: 40, y: 20 }, { x: 10, y: 60 }],
+    ['bottom-left to top-right', { x: 10, y: 60 }, { x: 40, y: 20 }],
+  ])('describes the same rectangle dragged from %s', (_name, a, b) => {
+    expect(rectBetween(a, b)).toEqual({ x: 10, y: 20, width: 30, height: 40 })
   })
 
   it('gives a click a rectangle of no size rather than a negative one', () => {
@@ -84,41 +70,32 @@ describe('inflate', () => {
 describe('rectsOverlap', () => {
   const middle = { x: 10, y: 10, width: 20, height: 20 }
 
-  it('is true for rectangles that share area, in either argument order', () => {
-    const other = { x: 20, y: 20, width: 20, height: 20 }
-    expect(rectsOverlap(middle, other)).toBe(true)
-    expect(rectsOverlap(other, middle)).toBe(true)
-  })
-
-  it('counts a shared edge and a shared corner as overlapping', () => {
-    expect(rectsOverlap(middle, { x: 30, y: 10, width: 5, height: 5 })).toBe(true)
-    expect(rectsOverlap(middle, { x: 30, y: 30, width: 5, height: 5 })).toBe(true)
-  })
-
-  it('is false when they miss on either axis alone', () => {
-    expect(rectsOverlap(middle, { x: 31, y: 10, width: 5, height: 5 })).toBe(false)
-    expect(rectsOverlap(middle, { x: 10, y: 31, width: 5, height: 5 })).toBe(false)
-  })
-
-  it('is true for a rectangle wholly inside another', () => {
-    expect(rectsOverlap(middle, { x: 15, y: 15, width: 1, height: 1 })).toBe(true)
+  it.each<[string, Rect, boolean]>([
+    ['shares area', { x: 20, y: 20, width: 20, height: 20 }, true],
+    ['shares an edge', { x: 30, y: 10, width: 5, height: 5 }, true],
+    ['shares only a corner', { x: 30, y: 30, width: 5, height: 5 }, true],
+    ['is wholly inside', { x: 15, y: 15, width: 1, height: 1 }, true],
+    ['misses on the x axis alone', { x: 31, y: 10, width: 5, height: 5 }, false],
+    ['misses on the y axis alone', { x: 10, y: 31, width: 5, height: 5 }, false],
+  ])('%s', (_name, other, expected) => {
+    expect(rectsOverlap(middle, other)).toBe(expected)
+    expect(rectsOverlap(other, middle)).toBe(expected) // argument order must not matter
   })
 })
 
 describe('rectContains', () => {
   const rect = { x: 10, y: 20, width: 30, height: 40 }
 
-  it('accepts interior points and the boundary', () => {
-    expect(rectContains(rect, { x: 25, y: 40 })).toBe(true)
-    expect(rectContains(rect, { x: 10, y: 20 })).toBe(true)
-    expect(rectContains(rect, { x: 40, y: 60 })).toBe(true)
-  })
-
-  it('rejects a point outside on any single axis', () => {
-    expect(rectContains(rect, { x: 9.9, y: 40 })).toBe(false)
-    expect(rectContains(rect, { x: 40.1, y: 40 })).toBe(false)
-    expect(rectContains(rect, { x: 25, y: 19.9 })).toBe(false)
-    expect(rectContains(rect, { x: 25, y: 60.1 })).toBe(false)
+  it.each<[string, { x: number; y: number }, boolean]>([
+    ['an interior point', { x: 25, y: 40 }, true],
+    ['the top-left corner', { x: 10, y: 20 }, true],
+    ['the bottom-right corner', { x: 40, y: 60 }, true],
+    ['a point just left of the box', { x: 9.9, y: 40 }, false],
+    ['a point just right of the box', { x: 40.1, y: 40 }, false],
+    ['a point just above the box', { x: 25, y: 19.9 }, false],
+    ['a point just below the box', { x: 25, y: 60.1 }, false],
+  ])('%s', (_name, point, expected) => {
+    expect(rectContains(rect, point)).toBe(expected)
   })
 
   it('handles a rectangle at negative coordinates, which the shared canvas produces', () => {
@@ -162,23 +139,32 @@ describe('pointInPolygon: convex', () => {
     expect(pointInPolygon({ x: 50, y: 50 }, SQUARE)).toBe(true)
   })
 
-  it('rejects points outside on every side', () => {
-    expect(pointInPolygon({ x: -1, y: 50 }, SQUARE)).toBe(false)
-    expect(pointInPolygon({ x: 101, y: 50 }, SQUARE)).toBe(false)
-    expect(pointInPolygon({ x: 50, y: -1 }, SQUARE)).toBe(false)
-    expect(pointInPolygon({ x: 50, y: 101 }, SQUARE)).toBe(false)
+  it.each([
+    ['left', { x: -1, y: 50 }],
+    ['right', { x: 101, y: 50 }],
+    ['above', { x: 50, y: -1 }],
+    ['below', { x: 50, y: 101 }],
+  ])('rejects a point %s the square', (_name, point) => {
+    expect(pointInPolygon(point, SQUARE)).toBe(false)
   })
 
-  // The boundary is defined as inside, so these are assertions about a decision, not luck.
-  it('counts every vertex as inside', () => {
-    for (const vertex of SQUARE) expect(pointInPolygon(vertex, SQUARE)).toBe(true)
+  // The boundary is defined as inside, so this is an assertion about a decision, not luck.
+  it.each([
+    ['top-left', SQUARE[0]],
+    ['top-right', SQUARE[1]],
+    ['bottom-right', SQUARE[2]],
+    ['bottom-left', SQUARE[3]],
+  ] as const)('counts the %s vertex as inside', (_name, vertex) => {
+    expect(pointInPolygon(vertex, SQUARE)).toBe(true)
   })
 
-  it('counts edge points as inside, including a horizontal edge', () => {
-    expect(pointInPolygon({ x: 50, y: 0 }, SQUARE)).toBe(true)
-    expect(pointInPolygon({ x: 100, y: 50 }, SQUARE)).toBe(true)
-    expect(pointInPolygon({ x: 50, y: 100 }, SQUARE)).toBe(true)
-    expect(pointInPolygon({ x: 0, y: 50 }, SQUARE)).toBe(true)
+  it.each([
+    ['top', { x: 50, y: 0 }],
+    ['right', { x: 100, y: 50 }],
+    ['bottom', { x: 50, y: 100 }],
+    ['left', { x: 0, y: 50 }],
+  ])('counts a point on the %s edge as inside', (_name, point) => {
+    expect(pointInPolygon(point, SQUARE)).toBe(true)
   })
 })
 
