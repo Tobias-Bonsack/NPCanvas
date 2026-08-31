@@ -1,4 +1,4 @@
-import type { Moment, Reel } from './reel.ts'
+import type { Moment } from './reel.ts'
 
 /** One line's own column on the band — see CLAUDE.md § "Cinema". */
 export type BandSlot = {
@@ -6,18 +6,6 @@ export type BandSlot = {
   x: number
   width: number
   height: number
-}
-
-/** A boundary where a real-time gap crossed a session break; carries the gap it hides. */
-export type BandNotch = {
-  x: number
-  gapMs: number
-  label: string
-}
-
-type BandLayout = {
-  slots: BandSlot[]
-  notches: BandNotch[]
 }
 
 export const MIN_SLOT_HEIGHT = 4
@@ -40,37 +28,23 @@ function boundary(index: number, count: number, width: number): number {
   return index >= count ? width : (index * width) / count
 }
 
-function formatGap(ms: number): string {
-  const totalMinutes = Math.round(ms / 60_000)
-  const days = Math.floor(totalMinutes / 1440)
-  const hours = Math.floor((totalMinutes % 1440) / 60)
-  const minutes = totalMinutes % 60
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
-  return `${minutes}m`
-}
+// `walked` is only the moments played so far, in order, ending with the current one — never the
+// whole reel. Slotting against `walked.length` (not the reel's total) is what makes the band
+// fill from the right as the playhead advances: the newest moment's slot always ends at `width`,
+// and every earlier slot narrows to make room for it, rather than sitting at a fixed position
+// sized for a timeline that never grows past "so far".
+/** Pure over the walked moments and a target width — see CLAUDE.md § "Testing scope". */
+export function bandLayout(walked: Moment[], width: number): BandSlot[] {
+  const count = walked.length
+  if (count === 0) return []
 
-/** Pure over `reel` and a target width — see CLAUDE.md § "Testing scope". */
-export function bandLayout(reel: Reel, width: number): BandLayout {
-  const count = reel.moments.length
-  if (count === 0) return { slots: [], notches: [] }
-
-  const slots: BandSlot[] = reel.moments.map((moment: Moment) => {
-    const x = boundary(moment.index, count, width)
+  return walked.map((moment: Moment, position: number) => {
+    const x = boundary(position, count, width)
     return {
       moment,
       x,
-      width: boundary(moment.index + 1, count, width) - x,
+      width: boundary(position + 1, count, width) - x,
       height: slotHeight(moment.dialogue.media.length),
     }
   })
-
-  // sessions[0] never opened on a gap — every later session did, by construction (reel.ts).
-  const notches: BandNotch[] = reel.sessions.slice(1).map((session) => ({
-    x: boundary(session.firstMoment.index, count, width),
-    gapMs: session.gapMsBefore,
-    label: formatGap(session.gapMsBefore),
-  }))
-
-  return { slots, notches }
 }

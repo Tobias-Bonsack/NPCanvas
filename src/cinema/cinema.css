@@ -245,16 +245,23 @@
   stroke-width: 1.5;
 }
 
-.cinema-band__notch line {
-  stroke: var(--border);
-  stroke-width: 1;
-  stroke-dasharray: 2 2;
+/* Both rails are draggable from the seam they share with `.cinema__main` — see
+   `usePanelResize`'s `edge` and the `.side-panel__resizer` it renders (SidePanel.css), reused
+   here rather than duplicated since its hover/focus/cursor styling is edge-agnostic. Each rail
+   is the containing block for its own handle, so `position: relative` stays local to it instead
+   of leaking onto `.cinema__main`. */
+.cinema__quest-rail,
+.cinema__rail {
+  position: relative;
+  min-width: 14rem;
+  max-width: calc(100% - 40rem);
 }
 
-.cinema-band__notch text {
-  fill: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 9px;
+/* The handle sits on the seam it drags — right edge of the quest rail, left edge of the other
+   — mirroring `.side-panel__resizer`'s own right-edge default (`left: -4px`). */
+.cinema__quest-rail .side-panel__resizer {
+  left: auto;
+  right: -4px;
 }
 
 .cinema__quest-rail {

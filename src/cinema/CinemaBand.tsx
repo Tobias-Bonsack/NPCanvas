@@ -5,7 +5,7 @@ import { zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { byId } from '../project/derived.ts'
 import type { ProjectFile } from '../project/types.ts'
-import type { BandNotch, BandSlot } from './band-layout.ts'
+import type { BandSlot } from './band-layout.ts'
 import { MAX_SLOT_HEIGHT, bandLayout } from './band-layout.ts'
 import type { Moment, Reel } from './reel.ts'
 
@@ -13,8 +13,7 @@ import type { Moment, Reel } from './reel.ts'
 const DEFAULT_WIDTH = 720
 const PLOT_TOP = 4
 const SLOT_BASELINE = PLOT_TOP + MAX_SLOT_HEIGHT
-const NOTCH_LABEL_Y = SLOT_BASELINE + 14
-const HEIGHT = NOTCH_LABEL_Y + 4
+const HEIGHT = SLOT_BASELINE + 4
 const ARC_LIFT = 20
 
 /** The whole reel at one slot per line — see CLAUDE.md § "Cinema" and #159. */
@@ -30,7 +29,10 @@ export function CinemaBand({
   onSeekMoment: (index: number) => void
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
-  const layout = useMemo(() => bandLayout(reel, width), [reel, width])
+  // Only the walked moments — see band-layout.ts for why this is what makes the band fill from
+  // the right instead of sitting at a fixed spot in a timeline sized for the whole reel.
+  const walked = useMemo(() => reel.moments.slice(0, moment.index + 1), [reel, moment.index])
+  const slots = useMemo(() => bandLayout(walked, width), [walked, width])
   const zonesById = byId(project.zones)
 
   const momentIndexById = useMemo(
@@ -39,10 +41,10 @@ export function CinemaBand({
   )
 
   function seekAt(event: ReactPointerEvent<SVGSVGElement>): void {
-    if (reel.moments.length === 0) return
+    if (walked.length === 0) return
     const box = event.currentTarget.getBoundingClientRect()
     const fraction = (event.clientX - box.left) / box.width
-    const index = Math.min(Math.max(Math.floor(fraction * reel.moments.length), 0), reel.moments.length - 1)
+    const index = Math.min(Math.max(Math.floor(fraction * walked.length), 0), walked.length - 1)
     onSeekMoment(index)
   }
 
@@ -64,16 +66,15 @@ export function CinemaBand({
   const zoneName = moment.zoneId === null ? null : (zonesById.get(moment.zoneId) ?? null)
   const valueText = `${moment.dialogue.npcName}${zoneName !== null ? `, ${zoneLabel(zoneName)}` : ''}`
 
-  // Nothing not yet played shows on the band — neither its slot nor a line to or from it.
-  const walkedSlots = layout.slots.filter((slot) => slot.moment.index <= moment.index)
-
-  const currentSlot: BandSlot | undefined = layout.slots[moment.index]
+  // slots[i].moment.index === i, since `walked` is the reel's own prefix — the current moment is
+  // always the last slot.
+  const currentSlot: BandSlot | undefined = slots[moment.index]
   const outgoing = currentSlot === undefined
     ? []
     : moment.dialogue.references.flatMap((targetId) => {
         const targetIndex = momentIndexById.get(targetId)
         if (targetIndex === undefined || targetIndex > moment.index) return []
-        const targetSlot = layout.slots[targetIndex]
+        const targetSlot = slots[targetIndex]
         return targetSlot === undefined ? [] : [{ from: currentSlot, to: targetSlot }]
       })
   // The reverse of `dialogue.references` — a walked line that points at the current one gets its
@@ -82,7 +83,7 @@ export function CinemaBand({
     ? []
     : reel.moments.slice(0, moment.index).flatMap((candidate) => {
         if (!candidate.dialogue.references.includes(moment.dialogue.id)) return []
-        const sourceSlot = layout.slots[candidate.index]
+        const sourceSlot = slots[candidate.index]
         return sourceSlot === undefined ? [] : [{ from: sourceSlot, to: currentSlot }]
       })
   const arcs = [...outgoing, ...incoming]
@@ -96,7 +97,7 @@ export function CinemaBand({
       tabIndex={0}
       aria-label="Position in the journey"
       aria-valuemin={0}
-      aria-valuemax={Math.max(0, reel.moments.length - 1)}
+      aria-valuemax={moment.index}
       aria-valuenow={moment.index}
       aria-valuetext={valueText}
       onPointerDown={onPointerDown}
@@ -104,7 +105,7 @@ export function CinemaBand({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {walkedSlots.map((slot) => (
+      {slots.map((slot) => (
         <rect
           key={slot.moment.dialogue.id}
           className="cinema-band__slot"
@@ -129,22 +130,7 @@ export function CinemaBand({
           d={arcPath(from, to)}
         />
       ))}
-
-      {layout.notches.map((notch, index) => (
-        <NotchMark key={index} notch={notch} />
-      ))}
     </svg>
-  )
-}
-
-function NotchMark({ notch }: { notch: BandNotch }): ReactElement {
-  return (
-    <g className="cinema-band__notch">
-      <line x1={notch.x} y1={PLOT_TOP} x2={notch.x} y2={SLOT_BASELINE} />
-      <text x={notch.x} y={NOTCH_LABEL_Y} textAnchor="middle">
-        {notch.label}
-      </text>
-    </g>
   )
 }
 

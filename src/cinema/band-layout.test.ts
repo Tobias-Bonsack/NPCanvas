@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId, asMediaId } from '../project/ids.ts'
 import type { Dialogue, DialogueMedia, MapId, ZoneId } from '../project/types.ts'
-import type { Moment, Reel, Session } from './reel.ts'
+import type { Moment } from './reel.ts'
 import { MAX_SLOT_HEIGHT, MIN_SLOT_HEIGHT, bandLayout } from './band-layout.ts'
 
 const UNUSED_MAP: MapId = asMapId('unused-map')
@@ -30,7 +30,7 @@ function frame(id: string): DialogueMedia {
   }
 }
 
-/** One moment per id, in order; `zoneId` and `gapMsBefore` default to values tests overwrite. */
+/** One moment per id, in order; `zoneId` defaults to values tests overwrite. */
 function momentsOf(ids: readonly (readonly [string, ZoneId | null])[]): Moment[] {
   return ids.map(([id, zoneId], index) => ({
     dialogue: dialogueOf(id),
@@ -42,89 +42,47 @@ function momentsOf(ids: readonly (readonly [string, ZoneId | null])[]): Moment[]
   }))
 }
 
-function reelWithSessions(moments: Moment[], sessionBreaks: number[]): Reel {
-  const sessions: Session[] = []
-  let start = 0
-  for (const breakAt of [...sessionBreaks, moments.length]) {
-    const slice = moments.slice(start, breakAt)
-    sessions.push({
-      index: sessions.length,
-      firstMoment: slice[0],
-      lastMoment: slice[slice.length - 1],
-      gapMsBefore: sessions.length === 0 ? 0 : slice[0].gapMsBefore,
-    })
-    start = breakAt
-  }
-  return { moments, sessions }
-}
-
 describe('bandLayout', () => {
-  it('returns empty arrays for an empty reel rather than throwing', () => {
-    const layout = bandLayout({ moments: [], sessions: [] }, 300)
-    expect(layout).toEqual({ slots: [], notches: [] })
+  it('returns no slots for no walked moments', () => {
+    expect(bandLayout([], 300)).toEqual([])
   })
 
-  it('gives a single-moment reel one slot spanning the full width', () => {
-    const moments = momentsOf([['a', null]])
-    const reel = reelWithSessions(moments, [])
-    const layout = bandLayout(reel, 300)
-    expect(layout.slots).toHaveLength(1)
-    expect(layout.slots[0].x).toBe(0)
-    expect(layout.slots[0].width).toBe(300)
+  it('gives a single walked moment one slot spanning the full width', () => {
+    const walked = momentsOf([['a', null]])
+    const slots = bandLayout(walked, 300)
+    expect(slots).toHaveLength(1)
+    expect(slots[0].x).toBe(0)
+    expect(slots[0].width).toBe(300)
   })
 
-  it('partitions the width exactly for any moment count, with the last slot ending at width', () => {
+  it('partitions the width exactly for any walked count, with the last slot ending at width', () => {
     for (const count of [1, 2, 3, 7, 13, 200]) {
-      const moments = momentsOf(Array.from({ length: count }, (_, i) => [`d${i}`, null] as const))
-      const reel = reelWithSessions(moments, [])
-      const layout = bandLayout(reel, 731)
+      const walked = momentsOf(Array.from({ length: count }, (_, i) => [`d${i}`, null] as const))
+      const slots = bandLayout(walked, 731)
 
       let cursor = 0
-      for (const slot of layout.slots) {
+      for (const slot of slots) {
         expect(slot.x).toBeCloseTo(cursor)
         cursor += slot.width
       }
       expect(cursor).toBe(731)
-      expect(layout.slots[layout.slots.length - 1].x + layout.slots[layout.slots.length - 1].width).toBe(731)
+      expect(slots[slots.length - 1].x + slots[slots.length - 1].width).toBe(731)
     }
   })
 
-  it('places a notch only at session boundaries, never inside a session', () => {
-    const moments = momentsOf(Array.from({ length: 6 }, (_, i) => [`d${i}`, null] as const))
-    moments[2].gapMsBefore = 3 * 60 * 60_000
-    moments[4].gapMsBefore = 26 * 60 * 60_000
-    const reel = reelWithSessions(moments, [2, 4])
-
-    const layout = bandLayout(reel, 600)
-    expect(layout.notches).toHaveLength(2)
-    expect(layout.notches[0].x).toBeCloseTo(200)
-    expect(layout.notches[0].gapMs).toBe(3 * 60 * 60_000)
-    expect(layout.notches[1].x).toBeCloseTo(400)
-    expect(layout.notches[1].gapMs).toBe(26 * 60 * 60_000)
-  })
-
-  it('produces no notches for a reel that never crosses a session gap', () => {
-    const moments = momentsOf(Array.from({ length: 4 }, (_, i) => [`d${i}`, null] as const))
-    const reel = reelWithSessions(moments, [])
-    expect(bandLayout(reel, 400).notches).toEqual([])
-  })
-
   it('clamps slot height at the minimum for a line with no frames', () => {
-    const moments = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', []) }]
-    const reel = reelWithSessions(moments, [])
-    expect(bandLayout(reel, 300).slots[0].height).toBe(MIN_SLOT_HEIGHT)
+    const walked = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', []) }]
+    expect(bandLayout(walked, 300)[0].height).toBe(MIN_SLOT_HEIGHT)
   })
 
   it('clamps slot height at the maximum for a line with an outsized frame count', () => {
     const frames = Array.from({ length: 5000 }, (_, i) => frame(`f${i}`))
-    const moments = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', frames) }]
-    const reel = reelWithSessions(moments, [])
-    expect(bandLayout(reel, 300).slots[0].height).toBe(MAX_SLOT_HEIGHT)
+    const walked = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', frames) }]
+    expect(bandLayout(walked, 300)[0].height).toBe(MAX_SLOT_HEIGHT)
   })
 
   it('gives a one-frame line a height above the minimum clamp — a visible tick, not nothing', () => {
-    const moments = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', [frame('f0')]) }]
-    const reel = reelWithSessions(moments, [])
-    expect(bandLayout(reel, 300).slots[0].height).toBeGreaterThan(MIN_SLOT_HEIGHT)
+    const walked = [{ ...momentsOf([['d0', null]])[0], dialogue: dialogueOf('d0', [frame('f0')]) }]
+    expect(bandLayout(walked, 300)[0].height).toBeGreaterThan(MIN_SLOT_HEIGHT)
   })
 })
