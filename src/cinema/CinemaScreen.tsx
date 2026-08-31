@@ -164,7 +164,6 @@ export function CinemaScreen({
               project={project}
               reel={reel}
               moment={moment}
-              tallies={tallies}
               onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
               onLayout={onBandLayout}
             />

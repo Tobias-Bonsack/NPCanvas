@@ -2,43 +2,32 @@ import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useMemo } from 'react'
 import { useChartWidth } from '../insights/chart-width.ts'
 import { zoneLabel } from '../dialogue-row/dialogue-summary.ts'
-import { SegmentDefs, SegmentFill, UNKNOWN_FILL } from '../insights/SegmentLegend.tsx'
-import { segmentColor, segmentKeys, segmentRun, totalOf } from '../insights/relevance-segments.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { byId } from '../project/derived.ts'
-import type { ProjectFile, Zone } from '../project/types.ts'
-import type { BandLayout, BandNotch, BandSlot, ZoneRun } from './band-layout.ts'
+import type { ProjectFile } from '../project/types.ts'
+import type { BandLayout, BandNotch, BandSlot } from './band-layout.ts'
 import { MAX_SLOT_HEIGHT, bandLayout } from './band-layout.ts'
 import type { Moment, Reel } from './reel.ts'
-import type { JourneySoFar } from './tally.ts'
 
 // viewBox units, and (per chart-width.ts) one viewBox unit is one real CSS pixel.
 const DEFAULT_WIDTH = 720
 const PLOT_TOP = 4
 const SLOT_BASELINE = PLOT_TOP + MAX_SLOT_HEIGHT
-const JOURNEY_TRACK_Y = SLOT_BASELINE + 6
-const JOURNEY_TRACK_HEIGHT = 24
-const ZONE_TRACK_Y = JOURNEY_TRACK_Y + JOURNEY_TRACK_HEIGHT + 6
-const ZONE_TRACK_HEIGHT = 10
-const NOTCH_LABEL_Y = ZONE_TRACK_Y + ZONE_TRACK_HEIGHT + 14
+const NOTCH_LABEL_Y = SLOT_BASELINE + 14
 const HEIGHT = NOTCH_LABEL_Y + 4
 const ARC_LIFT = 20
-const JOURNEY_ID_PREFIX = 'cinema-band-journey'
 
 /** The whole reel at one slot per line — see CLAUDE.md § "Cinema" and #159. */
 export function CinemaBand({
   project,
   reel,
   moment,
-  tallies,
   onSeekMoment,
   onLayout,
 }: {
   project: ProjectFile
   reel: Reel
   moment: Moment
-  /** The journey-so-far prefix scan, one entry per reel moment — see tally.ts. */
-  tallies: readonly JourneySoFar[]
   onSeekMoment: (index: number) => void
   /** Hands the axis this band just computed up — see #160: a second layout call would drift. */
   onLayout?: (layout: BandLayout, width: number) => void
@@ -47,16 +36,6 @@ export function CinemaBand({
   const layout = useMemo(() => bandLayout(reel, width), [reel, width])
   useEffect(() => onLayout?.(layout, width), [layout, width, onLayout])
   const zonesById = byId(project.zones)
-
-  // Imports its counting from insights/relevance-segments.ts rather than re-deriving it — see
-  // CLAUDE.md § "Cinema" and #162.
-  const journeyKeys = useMemo(() => segmentKeys(project.relevanceTags), [project.relevanceTags])
-  const journeyColors = useMemo(() => segmentColor(project.relevanceTags), [project.relevanceTags])
-  const journeyScale = useMemo(() => {
-    const final = tallies[tallies.length - 1]
-    const maxTotal = final === undefined ? 0 : totalOf(final.segments.counts)
-    return maxTotal === 0 ? 0 : JOURNEY_TRACK_HEIGHT / maxTotal
-  }, [tallies])
 
   const momentIndexById = useMemo(
     () => new Map(reel.moments.map((candidate) => [candidate.dialogue.id, candidate.index])),
@@ -115,39 +94,6 @@ export function CinemaBand({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <SegmentDefs idPrefix={JOURNEY_ID_PREFIX} tags={project.relevanceTags} />
-
-      {layout.zoneRuns.map((run, index) => (
-        <ZoneRunBar key={index} run={run} zone={run.zoneId === null ? null : (zonesById.get(run.zoneId) ?? null)} />
-      ))}
-
-      {layout.slots.map((slot, index) => {
-        const counts = tallies[index]?.segments.counts
-        if (counts === undefined) return null
-        return (
-          <g
-            key={`journey-${slot.moment.dialogue.id}`}
-            className="cinema-band__journey-slot"
-            data-ahead={index <= moment.index ? undefined : ''}
-          >
-            {segmentRun(journeyKeys, counts, journeyScale).map((run) => (
-              <SegmentFill
-                key={run.segment}
-                idPrefix={JOURNEY_ID_PREFIX}
-                segment={run.segment}
-                color={journeyColors.get(run.segment) ?? UNKNOWN_FILL}
-                rect={{
-                  x: slot.x,
-                  y: JOURNEY_TRACK_Y + JOURNEY_TRACK_HEIGHT - run.offset - run.extent,
-                  width: Math.max(slot.width - 0.5, 0.5),
-                  height: run.extent,
-                }}
-              />
-            ))}
-          </g>
-        )
-      })}
-
       {layout.slots.map((slot) => (
         <rect
           key={slot.moment.dialogue.id}
@@ -181,26 +127,10 @@ export function CinemaBand({
   )
 }
 
-function ZoneRunBar({ run, zone }: { run: ZoneRun; zone: Zone | null }): ReactElement {
-  return (
-    <rect
-      className="cinema-band__zone-run"
-      data-zone={zone === null ? 'none' : undefined}
-      style={zone === null ? undefined : zoneHueStyle(zone.hue)}
-      x={run.x}
-      y={ZONE_TRACK_Y}
-      width={Math.max(run.width - 0.5, 0.5)}
-      height={ZONE_TRACK_HEIGHT}
-    >
-      <title>{zone === null ? 'No zone' : zoneLabel(zone)}</title>
-    </rect>
-  )
-}
-
 function NotchMark({ notch }: { notch: BandNotch }): ReactElement {
   return (
     <g className="cinema-band__notch">
-      <line x1={notch.x} y1={PLOT_TOP} x2={notch.x} y2={ZONE_TRACK_Y + ZONE_TRACK_HEIGHT} />
+      <line x1={notch.x} y1={PLOT_TOP} x2={notch.x} y2={SLOT_BASELINE} />
       <text x={notch.x} y={NOTCH_LABEL_Y} textAnchor="middle">
         {notch.label}
       </text>

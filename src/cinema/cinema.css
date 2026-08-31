@@ -246,14 +246,6 @@
   outline-offset: 2px;
 }
 
-.cinema-band__zone-run {
-  fill: hsl(var(--zone-hue) 55% 45% / 0.5);
-}
-
-.cinema-band__zone-run[data-zone='none'] {
-  fill: var(--border);
-}
-
 .cinema-band__slot {
   fill: hsl(var(--zone-hue) 60% 50%);
 }
@@ -264,10 +256,6 @@
 
 .cinema-band__slot[data-current] {
   fill: var(--accent);
-}
-
-.cinema-band__journey-slot[data-ahead] {
-  opacity: 0.35;
 }
 
 .cinema-band__arc {

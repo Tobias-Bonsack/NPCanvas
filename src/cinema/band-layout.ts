@@ -1,4 +1,3 @@
-import type { ZoneId } from '../project/types.ts'
 import type { Moment, Reel } from './reel.ts'
 
 /** One line's own column on the band — see CLAUDE.md § "Cinema". */
@@ -16,17 +15,9 @@ export type BandNotch = {
   label: string
 }
 
-/** A run of consecutive moments sharing one zone (or none) — breaks only where the zone changes. */
-export type ZoneRun = {
-  zoneId: ZoneId | null
-  x: number
-  width: number
-}
-
 export type BandLayout = {
   slots: BandSlot[]
   notches: BandNotch[]
-  zoneRuns: ZoneRun[]
 }
 
 export const MIN_SLOT_HEIGHT = 4
@@ -62,7 +53,7 @@ function formatGap(ms: number): string {
 /** Pure over `reel` and a target width — see CLAUDE.md § "Testing scope". */
 export function bandLayout(reel: Reel, width: number): BandLayout {
   const count = reel.moments.length
-  if (count === 0) return { slots: [], notches: [], zoneRuns: [] }
+  if (count === 0) return { slots: [], notches: [] }
 
   const slots: BandSlot[] = reel.moments.map((moment: Moment) => {
     const x = boundary(moment.index, count, width)
@@ -74,25 +65,6 @@ export function bandLayout(reel: Reel, width: number): BandLayout {
     }
   })
 
-  const zoneRuns: ZoneRun[] = []
-  const runStart: number[] = []
-  for (const moment of reel.moments) {
-    const lastIndex = zoneRuns.length - 1
-    if (lastIndex >= 0 && zoneRuns[lastIndex].zoneId === moment.zoneId) continue
-    if (lastIndex >= 0) {
-      const start = runStart[lastIndex]
-      zoneRuns[lastIndex].x = boundary(start, count, width)
-      zoneRuns[lastIndex].width = boundary(moment.index, count, width) - zoneRuns[lastIndex].x
-    }
-    zoneRuns.push({ zoneId: moment.zoneId, x: 0, width: 0 })
-    runStart.push(moment.index)
-  }
-  const last = zoneRuns.length - 1
-  if (last >= 0) {
-    zoneRuns[last].x = boundary(runStart[last], count, width)
-    zoneRuns[last].width = width - zoneRuns[last].x
-  }
-
   // sessions[0] never opened on a gap — every later session did, by construction (reel.ts).
   const notches: BandNotch[] = reel.sessions.slice(1).map((session) => ({
     x: boundary(session.firstMoment.index, count, width),
@@ -100,5 +72,5 @@ export function bandLayout(reel: Reel, width: number): BandLayout {
     label: formatGap(session.gapMsBefore),
   }))
 
-  return { slots, notches, zoneRuns }
+  return { slots, notches }
 }

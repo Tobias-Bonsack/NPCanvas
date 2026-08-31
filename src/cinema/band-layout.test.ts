@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { asDialogueId, asMapId, asMediaId, asZoneId } from '../project/ids.ts'
+import { asDialogueId, asMapId, asMediaId } from '../project/ids.ts'
 import type { Dialogue, DialogueMedia, MapId, ZoneId } from '../project/types.ts'
 import type { Moment, Reel, Session } from './reel.ts'
 import { MAX_SLOT_HEIGHT, MIN_SLOT_HEIGHT, bandLayout } from './band-layout.ts'
@@ -61,7 +61,7 @@ function reelWithSessions(moments: Moment[], sessionBreaks: number[]): Reel {
 describe('bandLayout', () => {
   it('returns empty arrays for an empty reel rather than throwing', () => {
     const layout = bandLayout({ moments: [], sessions: [] }, 300)
-    expect(layout).toEqual({ slots: [], notches: [], zoneRuns: [] })
+    expect(layout).toEqual({ slots: [], notches: [] })
   })
 
   it('gives a single-moment reel one slot spanning the full width', () => {
@@ -87,30 +87,6 @@ describe('bandLayout', () => {
       expect(cursor).toBe(731)
       expect(layout.slots[layout.slots.length - 1].x + layout.slots[layout.slots.length - 1].width).toBe(731)
     }
-  })
-
-  it('breaks a zone run only where the zone changes, and gives a null zone its own runs', () => {
-    const zoneA = asZoneId('a')
-    const zoneB = asZoneId('b')
-    const moments = momentsOf([
-      ['d0', zoneA],
-      ['d1', zoneA],
-      ['d2', null],
-      ['d3', zoneB],
-      ['d4', zoneB],
-      ['d5', zoneA],
-    ])
-    const reel = reelWithSessions(moments, [])
-    const layout = bandLayout(reel, 600)
-
-    expect(layout.zoneRuns.map((run) => run.zoneId)).toEqual([zoneA, null, zoneB, zoneA])
-
-    let cursor = 0
-    for (const run of layout.zoneRuns) {
-      expect(run.x).toBeCloseTo(cursor)
-      cursor += run.width
-    }
-    expect(cursor).toBe(600)
   })
 
   it('places a notch only at session boundaries, never inside a session', () => {
