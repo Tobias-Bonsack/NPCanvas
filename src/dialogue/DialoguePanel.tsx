@@ -298,7 +298,7 @@ function DialogueMediaSection({
   }
 
   return (
-    <section className="dialogue-media">
+    <section className="dialogue-media dialogue-panel__section">
       <h3 className="micro-label">Media</h3>
 
       {currentMedium !== null && (

@@ -41,7 +41,7 @@ export function DialogueQuestLinks({
   }
 
   return (
-    <section className="dialogue-quests">
+    <section className="dialogue-quests dialogue-panel__section">
       <h3 className="micro-label">Quests</h3>
 
       {linked.length === 0 ? (

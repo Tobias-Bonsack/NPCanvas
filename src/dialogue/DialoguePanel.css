@@ -44,14 +44,7 @@
 
 /* ---- media ---- */
 
-.dialogue-media {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
+/* `.dialogue-panel__section` (index.css) supplies the frame. */
 
 /* The frame the pin wears, said in words under it. Not muted like the hints below: which
    picture the canvas shows is a property of the dialogue, not advice about this panel. */
@@ -60,25 +53,12 @@
   font-size: var(--text-2xs);
 }
 
-.dialogue-media__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
+/* `.dialogue-media__controls` (index.css) supplies the layout. */
 
 /* The two ways a picture gets onto a dialogue, side by side — wrapping rather than shrinking,
-   because the panel narrows to 14rem and neither label survives being squeezed. */
-.dialogue-media__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.dialogue-media__label[data-importing] {
-  opacity: 0.6;
-  cursor: progress;
-}
+   because the panel narrows to 14rem and neither label survives being squeezed.
+   `.dialogue-media__actions` and `.dialogue-media__label[data-importing]` (index.css) supply
+   the layout and the busy state. */
 
 /* The input itself is `.visually-hidden` (index.css) — still focusable and still the label's
    target, so keyboard users tab to a real file input rather than to a label that does nothing
@@ -125,20 +105,12 @@
 }
 
 /* Joining two records that were always one. Below the media, because it acts on the whole
-   dialogue rather than on the frame the gallery is showing. */
-.dialogue-merge {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+   dialogue rather than on the frame the gallery is showing. `.dialogue-merge` (index.css)
+   supplies the layout. */
 
 /* Wrapping rather than shrinking, for the reason `dialogue-media__actions` gives: the panel
-   narrows to 14rem and a squeezed select shows none of the line it names. */
-.dialogue-merge__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
+   narrows to 14rem and a squeezed select shows none of the line it names.
+   `.dialogue-merge__controls` (index.css) supplies the layout. */
 
 .dialogue-merge__select {
   flex: 1 1 12rem;

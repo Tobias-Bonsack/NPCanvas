@@ -83,23 +83,9 @@
   gap: var(--space-3);
 }
 
-/* `.micro-label` (index.css) supplies the uppercase treatment. */
+/* `.micro-label` and `.map-list__items` (index.css) supply the treatment and the layout. */
 
-.map-list__items {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.map-list__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+/* `.map-list__item` (index.css) supplies the layout. */
 
 /* The row's primary action, so it takes the leftover width and the two verbs stay narrow. */
 .map-list__name {
@@ -128,11 +114,7 @@
 
 /* ---- zone list ---- */
 
-.zone-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+/* `.zone-list` (index.css) supplies the layout. */
 
 /* A rule rather than a gap between the two sidebar lists: they are different subjects, and
    the maps list ends with an import button that would otherwise read as belonging to zones. */
@@ -277,17 +259,8 @@
 
 /* ---- import ---- */
 
-.map-import {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.map-import__label[data-importing] {
-  opacity: 0.6;
-  cursor: progress;
-}
+/* `.map-import` and `.map-import__label[data-importing]` (index.css) supply the layout and the
+   busy state. */
 
 /* :has() rather than a sibling combinator — the label precedes the input in the DOM, and
    Chromium-only means there is no reason to reorder the markup for a selector's sake. The

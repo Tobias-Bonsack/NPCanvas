@@ -112,23 +112,11 @@
   color: var(--text);
 }
 
-.pending-capture-list__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
+/* `.pending-capture-list__actions` (index.css) supplies the layout. */
 .pending-capture-list__actions .button[data-armed] {
   color: var(--accent-contrast);
   background: var(--accent);
   border-color: var(--accent);
 }
 
-.pending-capture-list__confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  font-size: var(--text-xs);
-}
+/* `.pending-capture-list__confirm` (index.css) supplies the layout. */

@@ -44,7 +44,7 @@ export function DialogueReferences({
   )
 
   return (
-    <section className="dialogue-references">
+    <section className="dialogue-references dialogue-panel__section">
       <h3 className="micro-label">Points at</h3>
       {pointsAt.length === 0 ? (
         <p className="dialogue-references__empty hint-text">Points at nothing yet.</p>

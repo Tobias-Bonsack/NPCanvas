@@ -175,7 +175,7 @@ function Dossier({
             .map((segment) => (
               <li key={segment} className="npc-dossier__chip">
                 <span
-                  className="npc-dossier__dot"
+                  className="dot-swatch"
                   style={{ background: colors.get(segment) ?? 'transparent' }}
                   aria-hidden="true"
                 />

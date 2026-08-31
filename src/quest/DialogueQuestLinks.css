@@ -1,31 +1,10 @@
 /* A section of the dialogue panel, so it borrows the panel's own button and legend classes
-   rather than restating them — only what is specific to quests lives here. */
-.dialogue-quests {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
+   rather than restating them — only what is specific to quests lives here.
+   `.dialogue-panel__section` (index.css) supplies the frame. */
 
-/* `.hint-text` (index.css) supplies the rest. */
+/* `.hint-text` and `.dialogue-quests__list` (index.css) supply the rest and the layout. */
 
-.dialogue-quests__list {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.dialogue-quests__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
+/* `.dialogue-quests__item` (index.css) supplies the layout. */
 
 /* The quest's own colour, written inline as `--quest-hue`, so a link here and that quest's
    flag on the canvas read as the same thread. A finished quest arrives already green through
@@ -59,11 +38,7 @@
   width: 100%;
 }
 
-.dialogue-quests__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
+/* `.dialogue-quests__actions` (index.css) supplies the layout. */
 
 .dialogue-quests__picker {
   width: 100%;
@@ -72,11 +47,7 @@
   gap: var(--space-2);
 }
 
-.dialogue-quests__bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
+/* `.dialogue-quests__bar` (index.css) supplies the layout. */
 
 /* `.text-input` (index.css) supplies the rest. */
 .dialogue-quests__input {

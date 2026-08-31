@@ -55,12 +55,7 @@
   gap: var(--space-2);
 }
 
-.settings__shortcut-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
+/* `.settings__shortcut-row` (index.css) supplies the layout. */
 
 .settings__shortcut-keys {
   margin: 0;
@@ -85,23 +80,10 @@
 }
 
 /* ---- relevance tag list ---- */
-/* Moved from InsightsScreen.css in #92: the vocabulary is edited here now, only read there. */
+/* Moved from InsightsScreen.css in #92: the vocabulary is edited here now, only read there.
+   `.relevance-tag-list__items` (index.css) supplies the layout. */
 
-.relevance-tag-list__items {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.relevance-tag-list__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+/* `.relevance-tag-list__item` (index.css) supplies the layout. */
 
 /* Dropped opacity is the only feedback the row still being dragged needs — its slot in the
    list is already tracking the pointer, since `orderedTags` re-sorts on every crossed row. */

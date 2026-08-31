@@ -41,6 +41,10 @@
      light theme either, for the same reason --trail is not. */
   --reference: #c77dff;
 
+  /* The halo every world-space line/label wears for contrast against map imagery. Fixed
+     regardless of theme, like --trail and --reference. */
+  --line-halo: rgba(0, 0, 0, 0.65);
+
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -265,8 +269,12 @@ body {
   filter: brightness(1.08);
 }
 
+/* A busy label — a dialogue's media import, a map import — shares the primary button's own
+   disabled fade, since both mean the same thing: wait. */
 .button--primary:disabled,
-.button--primary[aria-disabled='true'] {
+.button--primary[aria-disabled='true'],
+.dialogue-media__label[data-importing],
+.map-import__label[data-importing] {
   opacity: 0.6;
   cursor: progress;
 }
@@ -384,11 +392,134 @@ body {
 
 /* HuePalette's own container — was three byte-identical `__palette` rules (zone, relevance
    tag, quest) before #148 gave the recolour row one component. Only the swatch's fill stays
-   per feature, via its own `background: hsl(var(--*-hue) ...)` rule. */
-.hue-palette {
+   per feature. Also covers three feature lists that wrap the same way. */
+.hue-palette,
+.filter-bar__chips,
+.map-list__item,
+.relevance-tag-list__item {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  flex-wrap: wrap;
+}
+
+/* A row of controls that wraps rather than shrinks, byte-identical across eight callers. */
+.held-note__actions,
+.held-note__confirm,
+.pending-capture-list__actions,
+.dialogue-media__actions,
+.filter-bar__row,
+.npc-dossier__rename,
+.map-import,
+.quest-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* A colour dot — the canvas legend's relevance swatch, the NPC dossier's per-tag dot — sized
+   and shaped alike; only the fill, set inline, differs. */
+.dot-swatch {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--radius-round);
+}
+
+/* One dialogue-panel section frame — media, references, quests. */
+.dialogue-panel__section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+/* A one-column stack — a zone list, the merge form, a timeline detail, an NPC-dossier section —
+   four unrelated blocks reaching for the same three declarations. */
+.zone-list,
+.dialogue-merge,
+.timeline__detail,
+.npc-dossier__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A tight inline pair — an item in a reference or quest link list, a filter bar's date field,
+   an insights legend entry. */
+.dialogue-references__item,
+.dialogue-quests__item,
+.filter-bar__date,
+.insights__legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* The same inline pair at the wider gap — a picker's status row, a quest's action bar, a
+   group heading, a timeline detail's title. */
+.dialogue-references__picking,
+.dialogue-quests__bar,
+.quest-board__group-heading,
+.timeline__detail-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A wrapping control row with no vertical centring of its own — the media and merge controls
+   in the dialogue panel, and a quest's action bar. */
+.dialogue-media__controls,
+.dialogue-merge__controls,
+.dialogue-quests__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A borderless list, `gap`-spaced rather than `.framed-list`'s hairlines. */
+.map-list__items,
+.relevance-tag-list__items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dialogue-references__list,
+.dialogue-quests__list {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* An idle/confirm status row, one size down — a quest card's own, and the pending-capture
+   list's carry-over confirm. */
+.quest-card__idle,
+.quest-card__confirm,
+.pending-capture-list__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+}
+
+/* A panel head that wraps at the baseline — an insights panel's own, and a settings shortcut
+   row. */
+.insights__panel-head,
+.settings__shortcut-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 

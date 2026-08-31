@@ -179,10 +179,14 @@
 
 /* ---- zones ---- */
 
-/* A zero-size layer, like .pin-layer: it exists only to give the per-map svg groups a
-   positioning context. Never takes the pointer — zones are hit-tested geometrically in
-   MapCanvas, so a press inside one can still pan the canvas. */
-.zone-layer {
+/* A zero-size layer, shared by every world-space layer that needs a positioning context but no
+   footprint of its own — zones and pins are hit-tested elsewhere, the trail and reference edges
+   draw straight into an svg that fills the canvas on its own. None takes the pointer, so a
+   press inside any of them still reaches whatever is meant to pan or drag underneath. */
+.zone-layer,
+.trail-layer,
+.reference-layer,
+.pin-layer {
   position: absolute;
   top: 0;
   left: 0;
@@ -228,7 +232,7 @@
   /* The label sits over arbitrary map imagery, so it carries its own contrast rather than
      trusting the ground beneath it. */
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.65);
+  stroke: var(--line-halo);
   stroke-width: 3;
   stroke-linejoin: round;
 }
@@ -289,15 +293,8 @@
 
 /* The one world-space layer drawn in canvas space rather than in per-map groups: a segment
    joining two lines heard on two different maps exists in neither map's coordinates. See
-   trail-path.ts for why, and TrailLayer.tsx for why it is not culled. */
-.trail-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
+   trail-path.ts for why, and TrailLayer.tsx for why it is not culled. `.trail-layer`'s own
+   zero-size shell is the shared rule above. */
 
 /* Laid on mapsBounds, with a viewBox carrying the same offset so canvas coordinates reach the
    points attribute verbatim. Overflow is visible for the reason .zone-layer__svg's is: a pin
@@ -331,7 +328,7 @@
    .reference-layer__halo — the two edges are drawn identically, only the coloured .__path differs. */
 .trail-layer__halo,
 .reference-layer__halo {
-  stroke: rgba(0, 0, 0, 0.65);
+  stroke: var(--line-halo);
   stroke-width: calc(5px / (var(--map-zoom) * var(--map-scale)));
 }
 
@@ -359,7 +356,7 @@
      one subject. The counter-scale above means one unit here is already one screen pixel, so this
      needs no division of its own. */
   paint-order: stroke;
-  stroke: rgba(0, 0, 0, 0.65);
+  stroke: var(--line-halo);
   stroke-width: 2;
   stroke-linejoin: round;
 }
@@ -371,15 +368,7 @@
 /* ---- reference edges ---- */
 
 /* Drawn the same way the trail is, in canvas space, for the same reason — see reference-path.ts
-   and ReferenceLayer.tsx. */
-.reference-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
+   and ReferenceLayer.tsx. `.reference-layer`'s own zero-size shell is the shared rule above. */
 
 /* Both widths and the arrowhead's counter-scale follow .trail-layer's own — no vector-effect,
    for the reason measured there. */
@@ -399,19 +388,11 @@
 
 /* ---- pins ---- */
 
-/* A zero-size layer: it exists only to give the pins a positioning context that is not
-   the map image, which may be absent while the media is loading or missing. */
-.pin-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  /* The map underneath owns panning, so the layer and each pin's box are transparent to the
-     pointer and only the controls inside them take it. Otherwise a pin's flex gap would
-     swallow canvas clicks. */
-  pointer-events: none;
-}
+/* `.pin-layer`'s own zero-size shell is the shared rule above — it exists only to give the pins
+   a positioning context that is not the map image, which may be absent while the media is
+   loading or missing. The map underneath owns panning, so the layer and each pin's box are
+   transparent to the pointer and only the controls inside them take it; otherwise a pin's flex
+   gap would swallow canvas clicks. */
 
 .pin__marker,
 .pin__confirm {

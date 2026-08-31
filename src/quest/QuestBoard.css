@@ -35,12 +35,8 @@
   gap: var(--space-3);
 }
 
-/* `.micro-label` (index.css) supplies the uppercase treatment. */
-.quest-board__group-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
+/* `.micro-label` and `.quest-board__group-heading` (index.css) supply the treatment and the
+   layout. */
 
 /* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
 .quest-board__group-empty {
@@ -69,12 +65,7 @@
   border-left: 4px solid hsl(var(--quest-hue) 70% 55%);
 }
 
-.quest-card__header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
+/* `.quest-card__header` (index.css) supplies the layout. */
 
 /* Takes the leftover width so the verbs stay narrow and right-aligned. */
 .quest-card__name {
@@ -94,14 +85,7 @@
 /* `.hint-text` (index.css) supplies the rest — the redundant `margin: 0` is harmless on a
    `<span>`, which has no margin to reset. */
 
-.quest-card__idle,
-.quest-card__confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  font-size: var(--text-xs);
-}
+/* `.quest-card__idle, .quest-card__confirm` (index.css) supply the layout. */
 
 .quest-card__note {
   flex: 1;

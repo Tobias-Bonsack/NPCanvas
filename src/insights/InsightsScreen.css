@@ -47,12 +47,7 @@
   padding: var(--space-3);
 }
 
-.filter-bar__row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
+/* `.filter-bar__row` (index.css) supplies the layout. */
 
 /* The active values are the answer to "why am I looking at so little?", so they sit on their
    own line above the charts rather than being crowded in beside the controls. */
@@ -69,12 +64,7 @@
   background: var(--surface-0);
 }
 
-/* `.micro-label` (index.css) supplies the uppercase treatment. */
-.filter-bar__date {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
+/* `.micro-label` and `.filter-bar__date` (index.css) supply the treatment and the layout. */
 
 /* `.text-input` (index.css) supplies the rest; the size is a step down, the background sits a
    level darker for the reason `.filter-bar__search`'s does, and the date inputs reset the
@@ -96,14 +86,8 @@
   cursor: not-allowed;
 }
 
-/* `.error-text` (index.css) replaces the old `.filter-bar__error`. */
-
-.filter-bar__chips {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
+/* `.error-text` (index.css) replaces the old `.filter-bar__error`. `.filter-bar__chips`
+   (index.css) supplies the layout. */
 
 /* `.hue-chip` (index.css) supplies the padding and pill radius. Unpressed chips are outlines of
    their own hue, pressed ones are filled: the state has to be readable without comparing two
@@ -168,12 +152,7 @@
   padding: var(--space-4);
 }
 
-.insights__panel-head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
+/* `.insights__panel-head` (index.css) supplies the layout. */
 
 .insights__panel-title {
   margin: 0;
@@ -196,11 +175,7 @@
   list-style: none;
 }
 
-.insights__legend-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
+/* `.insights__legend-item` (index.css) supplies the layout. */
 
 .insights__legend-swatch {
   width: 0.75rem;
@@ -333,18 +308,9 @@
   cursor: crosshair;
 }
 
-.timeline__detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+/* `.timeline__detail` (index.css) supplies the layout. */
 
-/* `.micro-label` (index.css) supplies the uppercase treatment. */
-.timeline__detail-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
+/* `.micro-label` and `.timeline__detail-title` (index.css) supply the treatment and the layout. */
 
 /* ---- one dialogue row ---- */
 
@@ -454,12 +420,7 @@
   min-width: 0;
 }
 
-.npc-dossier__rename {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
+/* `.npc-dossier__rename` (index.css) supplies the layout. */
 
 .npc-dossier__title {
   margin: 0;
@@ -491,11 +452,7 @@
   font-size: var(--text-xs);
 }
 
-.npc-dossier__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
+/* `.npc-dossier__section` (index.css) supplies the layout. */
 
 .npc-dossier__chips {
   display: flex;
@@ -513,12 +470,6 @@
   align-items: center;
   gap: var(--space-1);
   color: var(--text-muted);
-}
-
-.npc-dossier__dot {
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: var(--radius-round);
 }
 
 /* The same hue the quest wears on its card and on the pins that fly its flag, at the same

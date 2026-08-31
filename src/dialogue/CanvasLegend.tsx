@@ -49,7 +49,7 @@ export function CanvasLegend({
           {relevanceTags.map((tag) => (
             <li key={tag.id} className="canvas-legend__item">
               <span
-                className="canvas-legend__swatch"
+                className="dot-swatch"
                 style={{ background: relevanceColor(tag.hue) }}
               />
               {tag.name}
@@ -58,7 +58,7 @@ export function CanvasLegend({
           {/* Named, because a neutral ring is a statement — "not classified yet" — and a reader
               who cannot find it in the legend will assume the colour simply failed to load. */}
           <li className="canvas-legend__item">
-            <span className="canvas-legend__swatch canvas-legend__swatch--neutral" />
+            <span className="dot-swatch canvas-legend__swatch--neutral" />
             Untagged
           </li>
         </ul>

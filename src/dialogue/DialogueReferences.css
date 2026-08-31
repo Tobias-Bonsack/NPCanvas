@@ -1,31 +1,10 @@
 /* A section of the dialogue panel, so it borrows the panel's own button and legend classes
-   rather than restating them — only what is specific to references lives here. */
-.dialogue-references {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--border);
-}
+   rather than restating them — only what is specific to references lives here.
+   `.dialogue-panel__section` (index.css) supplies the frame. */
 
-/* `.hint-text` (index.css) supplies the rest. */
+/* `.hint-text` and `.dialogue-references__list` (index.css) supply the rest and the layout. */
 
-.dialogue-references__list {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.dialogue-references__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
+/* `.dialogue-references__item` (index.css) supplies the layout. */
 
 .dialogue-references__link {
   flex: 1;
@@ -52,11 +31,7 @@
   color: var(--text-muted);
 }
 
-.dialogue-references__picking {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
+/* `.dialogue-references__picking` (index.css) supplies the layout. */
 
 .dialogue-references__picking-hint {
   margin: 0;

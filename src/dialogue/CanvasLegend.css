@@ -34,11 +34,7 @@
   color: var(--text);
 }
 
-.canvas-legend__swatch {
-  width: 0.625rem;
-  height: 0.625rem;
-  border-radius: var(--radius-round);
-}
+/* `.dot-swatch` (index.css) supplies the size/shape. */
 
 /* The same neutral `relevancePinBackground` falls back to for an untagged dialogue. */
 .canvas-legend__swatch--neutral {
