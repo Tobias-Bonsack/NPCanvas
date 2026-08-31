@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { segmentColor, segmentKeys, segmentLabel } from '../insights/relevance-segments.ts'
+import { segmentColor, segmentKeys, segmentLabel, totalOf } from '../insights/relevance-segments.ts'
 import type { ProjectFile, RelevanceTagId } from '../project/types.ts'
 import type { Moment } from './reel.ts'
 import type { JourneySoFar } from './tally.ts'
@@ -17,13 +17,13 @@ export function CinemaLedger({
   moment: Moment
 }): ReactElement | null {
   const current = journeyAt(tallies, moment.index)
-  const final = tallies[tallies.length - 1]
-  if (current === undefined || final === undefined) return null
+  if (current === undefined) return null
 
   const keys = segmentKeys(project.relevanceTags)
   const labels = segmentLabel(project.relevanceTags)
   const colors = segmentColor(project.relevanceTags)
   const currentTags = new Set<RelevanceTagId>(moment.dialogue.relevance)
+  const currentTotal = totalOf(current.segments.counts)
 
   return (
     <div className="cinema-ledger">
@@ -40,7 +40,6 @@ export function CinemaLedger({
       <ul className="cinema-ledger__tags">
         {keys.map((segment) => {
           const count = current.segments.counts.get(segment) ?? 0
-          const finalCount = final.segments.counts.get(segment) ?? 0
           const isCurrent = segment === 'untagged' ? currentTags.size === 0 : currentTags.has(segment)
           const justSeen = current.firstSeen.get(segment) === moment.index
           return (
@@ -58,7 +57,7 @@ export function CinemaLedger({
                 <span
                   className="cinema-ledger__tag-fill"
                   style={{
-                    width: `${finalCount === 0 ? 0 : (count / finalCount) * 100}%`,
+                    width: `${currentTotal === 0 ? 0 : (count / currentTotal) * 100}%`,
                     background: colors.get(segment),
                   }}
                 />
