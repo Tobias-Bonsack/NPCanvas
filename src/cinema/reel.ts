@@ -37,9 +37,12 @@ const SESSION_GAP_MS = 30 * 60_000
 // dwellMs constants, declared together so the formula below has nothing spelled inline.
 const BASE_MS = 800
 const MS_PER_CHAR = 40
-const MS_PER_FRAME = 300
 const MIN_DWELL_MS = 1500
 const MAX_DWELL_MS = 12_000
+
+// How long a single frame holds the stage during autoplay — flat, independent of how many
+// frames a moment has, so a fifty-frame moment doesn't flip faster than a three-frame one.
+export const MS_PER_FRAME = 300
 
 function dwellFor(dialogue: Dialogue): number {
   const raw = BASE_MS + dialogue.text.length * MS_PER_CHAR + dialogue.media.length * MS_PER_FRAME

@@ -146,9 +146,15 @@ describe('isAnnounceableMove', () => {
 })
 
 describe('frameMsFor', () => {
-  it("splits dwellMs evenly across a moment's frames at speed 1", () => {
-    const moment = momentOf('a', 0, 0, 4, 1200)
-    expect(frameMsFor(moment, 1)).toBe(300)
+  it('flips a multi-frame moment at a flat rate, independent of frame count', () => {
+    const few = momentOf('a', 0, 0, 4, 1200)
+    const many = momentOf('b', 1, 0, 50, 12_000)
+    expect(frameMsFor(few, 1)).toBe(frameMsFor(many, 1))
+  })
+
+  it('spends the whole dwell budget on a single-frame moment', () => {
+    const moment = momentOf('a', 0, 0, 1, 400)
+    expect(frameMsFor(moment, 1)).toBe(400)
   })
 
   it('divides again by speed', () => {
@@ -156,8 +162,10 @@ describe('frameMsFor', () => {
     expect(frameMsFor(moment, 4)).toBe(100)
   })
 
-  it('floors at MIN_FRAME_MS rather than strobing a many-frame line at high speed', () => {
+  it('floors at MIN_FRAME_MS rather than strobing at an extreme speed', () => {
     const moment = momentOf('a', 0, 0, 50, 1500)
-    expect(frameMsFor(moment, 4)).toBe(MIN_FRAME_MS)
+    // PLAY_SPEEDS tops out at 4, where the flat per-frame rate stays well above the floor —
+    // this exercises the floor itself, independent of what speeds happen to be offered today.
+    expect(frameMsFor(moment, 100 as never)).toBe(MIN_FRAME_MS)
   })
 })

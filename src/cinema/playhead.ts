@@ -1,4 +1,5 @@
 import { assertNever } from '../assert-never.ts'
+import { MS_PER_FRAME } from './reel.ts'
 import type { Moment, Reel } from './reel.ts'
 
 export const PLAY_SPEEDS = [0.5, 1, 2, 4] as const
@@ -53,8 +54,11 @@ export function isAnnounceableMove(action: PlayheadAction): boolean {
 const MIN_FRAME_MS = 60
 
 export function frameMsFor(moment: Moment, speed: PlaySpeed): number {
-  const perFrame = moment.dwellMs / Math.max(1, moment.dialogue.media.length) / speed
-  return Math.max(MIN_FRAME_MS, perFrame)
+  // A single-frame moment spends its whole read-time budget on that one frame; a multi-frame
+  // moment flips at a flat rate — see CLAUDE.md's `dwellMs` note and `MS_PER_FRAME` above it.
+  const frameCount = Math.max(1, moment.dialogue.media.length)
+  const perFrame = frameCount > 1 ? MS_PER_FRAME : moment.dwellMs
+  return Math.max(MIN_FRAME_MS, perFrame / speed)
 }
 
 function clampMoment(index: number, reel: Reel): number {
