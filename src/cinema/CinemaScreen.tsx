@@ -1,22 +1,16 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import type { CinemaViewState } from '../app/view-state.ts'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
-import { byId } from '../project/derived.ts'
 import type { ProjectFile } from '../project/types.ts'
-import { MediaView } from '../media/MediaView.tsx'
-import { PLAY_SPEEDS } from './playhead.ts'
+import { CinemaStage } from './CinemaStage.tsx'
+import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
 import { usePlayhead } from './use-playhead.ts'
-import type { Moment } from './reel.ts'
+import { questArcs } from './quest-arcs.ts'
 import { buildReel } from './reel.ts'
 import './cinema.css'
-
-const TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-})
 
 export function CinemaScreen({
   project,
@@ -30,10 +24,19 @@ export function CinemaScreen({
   onViewStateChange: (viewState: CinemaViewState) => void
 }): ReactElement {
   const reel = buildReel(project)
-  const zonesById = byId(project.zones)
+  const arcs = questArcs(project.quests, reel)
   const lastIndex = Math.max(0, reel.moments.length - 1)
   const initialMoment = Math.min(Math.max(viewState.playheadIndex, 0), lastIndex)
-  const [playhead, dispatch] = usePlayhead(reel, initialMoment)
+  const [playhead, rawDispatch] = usePlayhead(reel, initialMoment)
+
+  // `dispatch` calls from `tick` (inside usePlayhead) never pass through here, so the live
+  // region below sees only the deliberate moves this screen and the stage originate.
+  const [announcement, setAnnouncement] = useState('')
+  const lastAction = useRef<PlayheadAction | null>(null)
+  function dispatch(action: PlayheadAction): void {
+    lastAction.current = action
+    rawDispatch(action)
+  }
 
   // `at` is a one-shot intent (see route.ts): seek the playhead once, then clear it so the
   // address bar never accumulates a position for the back button to step through.
@@ -41,14 +44,23 @@ export function CinemaScreen({
   useEffect(() => {
     if (at === null) return
     const moment = reel.moments.find((candidate) => candidate.dialogue.id === at)
-    if (moment !== undefined) dispatch({ kind: 'seek', moment: moment.index })
+    if (moment !== undefined) rawDispatch({ kind: 'seek', moment: moment.index })
     navigate({ kind: 'cinema', at: null }, { replace: true })
-  }, [at, reel, dispatch])
+  }, [at, reel, rawDispatch])
 
   // Mirrored into the view state that survives a switch away and back — see view-state.ts.
   useEffect(() => {
     onViewStateChange({ playheadIndex: playhead.moment })
   }, [playhead.moment, onViewStateChange])
+
+  useEffect(() => {
+    const action = lastAction.current
+    lastAction.current = null
+    if (action === null || !isAnnounceableMove(action) || reel.moments.length === 0) return
+    const current = reel.moments[playhead.moment]
+    const state = playhead.playing ? 'Playing' : 'Paused'
+    setAnnouncement(`${state}. Line ${playhead.moment + 1} of ${reel.moments.length}: ${current.dialogue.npcName}.`)
+  }, [playhead.moment, playhead.frame, playhead.playing, reel])
 
   if (reel.moments.length === 0) {
     return (
@@ -68,7 +80,7 @@ export function CinemaScreen({
     switch (event.key) {
       case ' ':
         event.preventDefault()
-        dispatch({ kind: 'toggle' })
+        dispatch(playhead.playing ? { kind: 'pause' } : { kind: 'play' })
         return
       case 'ArrowLeft':
         event.preventDefault()
@@ -110,7 +122,6 @@ export function CinemaScreen({
   }
 
   const moment = reel.moments[playhead.moment]
-  const zoneName = moment.zoneId === null ? null : (zonesById.get(moment.zoneId)?.name ?? null)
   const frameCount = Math.max(1, moment.dialogue.media.length)
 
   return (
@@ -125,7 +136,16 @@ export function CinemaScreen({
       <div className="cinema__body">
         <div className="cinema__main">
           <div className="cinema__stage card">
-            <StageMoment moment={moment} frame={playhead.frame} zoneName={zoneName} />
+            <CinemaStage
+              moment={moment}
+              frame={playhead.frame}
+              project={project}
+              reel={reel}
+              arcs={arcs}
+              announcement={announcement}
+              onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
+              onSeekFrame={(frame) => dispatch({ kind: 'frame-seek', frame })}
+            />
           </div>
           <Transport playhead={playhead} dispatch={dispatch} />
           <div className="cinema__band card" aria-hidden="true" />
@@ -151,7 +171,11 @@ function Transport({
       <button type="button" className="button" onClick={() => dispatch({ kind: 'step', by: -1 })}>
         ◀
       </button>
-      <button type="button" className="button" onClick={() => dispatch({ kind: 'toggle' })}>
+      <button
+        type="button"
+        className="button"
+        onClick={() => dispatch(playhead.playing ? { kind: 'pause' } : { kind: 'play' })}
+      >
         {playhead.playing ? 'Pause' : 'Play'}
       </button>
       <button type="button" className="button" onClick={() => dispatch({ kind: 'step', by: 1 })}>
@@ -173,33 +197,6 @@ function Transport({
           </button>
         ))}
       </div>
-    </div>
-  )
-}
-
-function StageMoment({
-  moment,
-  frame,
-  zoneName,
-}: {
-  moment: Moment
-  frame: number
-  zoneName: string | null
-}): ReactElement {
-  const { dialogue } = moment
-  const media = dialogue.media[frame] ?? dialogue.media[0]
-  return (
-    <div className="cinema__moment">
-      <p className="cinema__moment-meta micro-label">
-        {dialogue.npcName}
-        {zoneName !== null && ` — ${zoneName}`} — {TIME_FORMAT.format(new Date(dialogue.spokenAt))}
-      </p>
-      {dialogue.text !== '' && <p className="cinema__moment-text">{dialogue.text}</p>}
-      {media !== undefined && (
-        <div className="cinema__moment-media">
-          <MediaView media={media} label={dialogue.npcName} fit="fill" />
-        </div>
-      )}
     </div>
   )
 }

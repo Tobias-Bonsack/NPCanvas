@@ -19,8 +19,35 @@ export type PlayheadAction =
   // to 0 the way `step`/`seek`/`jump` do — see the closing comment on #157.
   | { kind: 'frame'; by: 1 | -1 }
   | { kind: 'seek'; moment: number }
+  // Absolute, unlike `frame` — a frame dot names the frame it sits on, not an offset from
+  // wherever the playhead currently is.
+  | { kind: 'frame-seek'; frame: number }
   | { kind: 'jump'; to: JumpTarget }
   | { kind: 'speed'; speed: PlaySpeed }
+
+/**
+ * A screen reader hears this set and stays quiet for everything else — `tick` above all, which
+ * would talk continuously at speed. Named once here so #158's stage and #157's transport can't
+ * drift into announcing different actions.
+ */
+export function isAnnounceableMove(action: PlayheadAction): boolean {
+  switch (action.kind) {
+    case 'step':
+    case 'seek':
+    case 'frame-seek':
+    case 'jump':
+    case 'pause':
+      return true
+    case 'toggle':
+    case 'play':
+    case 'tick':
+    case 'frame':
+    case 'speed':
+      return false
+    default:
+      return assertNever(action)
+  }
+}
 
 // The fifty-frame Brock fight should still read as a film, not a strobe.
 const MIN_FRAME_MS = 60
@@ -83,6 +110,11 @@ export function playheadReducer(state: Playhead, action: PlayheadAction, reel: R
     case 'seek':
       if (reel.moments.length === 0) return state
       return { ...state, moment: clampMoment(action.moment, reel), frame: 0 }
+    case 'frame-seek': {
+      if (reel.moments.length === 0) return state
+      const count = frameCountAt(reel, state.moment)
+      return { ...state, frame: Math.min(Math.max(action.frame, 0), count - 1) }
+    }
     case 'jump':
       if (reel.moments.length === 0) return state
       return { ...state, moment: jumpTarget(state.moment, action.to, reel), frame: 0 }

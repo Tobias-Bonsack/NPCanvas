@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId, asMediaId } from '../project/ids.ts'
 import type { Dialogue, DialogueMedia } from '../project/types.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
-import { frameMsFor, playheadReducer } from './playhead.ts'
+import { frameMsFor, isAnnounceableMove, playheadReducer } from './playhead.ts'
 import type { Moment, Reel } from './reel.ts'
 
 const UNUSED_MAP = asMapId('unused-map')
@@ -97,6 +97,13 @@ describe('playheadReducer', () => {
     expect(playheadReducer(state, { kind: 'seek', moment: 3 }, reel)).toBe(state)
   })
 
+  it('clamps a frame-seek to the current moment’s frame count', () => {
+    const reel: Reel = { moments: [momentOf('a', 0, 0, 3)], sessions: [] }
+    expect(playheadReducer(playheadOf(0), { kind: 'frame-seek', frame: 99 }, reel).frame).toBe(2)
+    expect(playheadReducer(playheadOf(0), { kind: 'frame-seek', frame: -1 }, reel).frame).toBe(0)
+    expect(playheadReducer(playheadOf(0), { kind: 'frame-seek', frame: 1 }, reel).frame).toBe(1)
+  })
+
   it('jumps to the next session at its first moment', () => {
     const first = momentOf('a', 0, 0, 1)
     const second = momentOf('b', 1, 1, 1)
@@ -126,6 +133,15 @@ describe('playheadReducer', () => {
       sessions: [{ index: 0, firstMoment: only, lastMoment: only, gapMsBefore: 0 }],
     }
     expect(playheadReducer(playheadOf(0), { kind: 'jump', to: 'session-prev' }, reel).moment).toBe(0)
+  })
+})
+
+describe('isAnnounceableMove', () => {
+  it('announces a deliberate move but stays quiet for a tick', () => {
+    expect(isAnnounceableMove({ kind: 'step', by: 1 })).toBe(true)
+    expect(isAnnounceableMove({ kind: 'seek', moment: 2 })).toBe(true)
+    expect(isAnnounceableMove({ kind: 'pause' })).toBe(true)
+    expect(isAnnounceableMove({ kind: 'tick' })).toBe(false)
   })
 })
 
