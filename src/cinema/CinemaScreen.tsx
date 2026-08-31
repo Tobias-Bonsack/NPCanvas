@@ -141,7 +141,7 @@ export function CinemaScreen({
       </header>
       <div className="cinema__body">
         <aside className="cinema__quest-rail card">
-          <CinemaQuestRail arcs={arcs} momentIndex={playhead.moment} />
+          <CinemaQuestRail arcs={arcs} reel={reel} momentIndex={playhead.moment} />
         </aside>
         <div className="cinema__main">
           <div className="cinema__stage card">

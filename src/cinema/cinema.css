@@ -259,7 +259,7 @@
 
 .cinema__quest-rail {
   flex: none;
-  width: 12rem;
+  width: 16rem;
   padding: var(--space-3);
 }
 
@@ -270,18 +270,34 @@
 .cinema-quest-rail__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* Text stays `--text` (the theme's own high-contrast foreground) rather than a hue-tinted
+   colour — a saturated colour on its own tinted fill (the old recipe) reads too close in
+   luminance to be legible. The hue instead marks a left border, at full saturation so it stays
+   readable against both themes' fill. */
 .cinema-quest-rail__item {
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-3);
   border-radius: var(--radius-1);
-  font-size: var(--text-xs);
-  color: hsl(var(--quest-hue) 60% 40%);
-  background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
+  border-left: 4px solid hsl(var(--quest-hue) 70% 50%);
+  background: hsl(var(--quest-hue) var(--hue-chip-fill) / calc(var(--hue-chip-fill-alpha) * 1.6));
+}
+
+.cinema-quest-rail__name {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cinema-quest-rail__speaker {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
 }
 
 .cinema__rail {
