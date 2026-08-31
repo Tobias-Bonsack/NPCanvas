@@ -52,10 +52,12 @@
   justify-content: center;
 }
 
+/* No justify-content: center here on purpose — that would centre the whole variable-height
+   stack (text, tags, references) as one group, so the frame's position would shift with every
+   dialogue's text length. Top-anchored keeps the frame at a constant offset instead. */
 .cinema-stage {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: var(--space-3);
   width: 100%;
   max-width: 42rem;
