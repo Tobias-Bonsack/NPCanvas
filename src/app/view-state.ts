@@ -12,6 +12,7 @@ import type { QuestBoardMode } from '../quest/QuestBoard.tsx'
  */
 type ViewState = {
   canvas: CanvasViewState
+  cinema: CinemaViewState
   insights: InsightsViewState
   quests: QuestsViewState
 }
@@ -30,6 +31,12 @@ export type CanvasViewState = {
   viewport: Viewport | null
   /** `null` until the panel's resize handle is dragged once — the width the stylesheet gives it. */
   panelWidth: number | null
+}
+
+export type CinemaViewState = {
+  /** Ordinal position on the reel — see CLAUDE.md § "Cinema". Clamped to the reel's own bounds
+   * at render, since a quest merge or an undo can shrink the reel out from under it. */
+  playheadIndex: number
 }
 
 export type InsightsViewState = {
@@ -56,6 +63,7 @@ export const INITIAL_VIEW_STATE: ViewState = {
     viewport: null,
     panelWidth: null,
   },
+  cinema: { playheadIndex: 0 },
   insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null, timelineUnit: null },
   quests: { mode: { kind: 'idle' } },
 }

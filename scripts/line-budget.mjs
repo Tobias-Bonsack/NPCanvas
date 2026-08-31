@@ -21,6 +21,7 @@ const CEILINGS = new Map([
   ['capture', { ceiling: 7900, note: '~750 lines of headroom — the other busiest directory' }],
   ['project', { ceiling: 5800, note: '~540 lines of headroom — the schema and reducer' }],
   ['insights', { ceiling: 3900, note: '~430 lines of headroom' }],
+  ['cinema', { ceiling: 3200, note: "M22's new feature directory — room for the whole milestone" }],
   ['dialogue', { ceiling: 2700, note: '~390 lines of headroom' }],
   ['app', { ceiling: 1850, note: '~280 lines of headroom — mostly shell chrome' }],
   ['storage', { ceiling: 1300, note: '~200 lines of headroom' }],
@@ -34,7 +35,7 @@ const CEILINGS = new Map([
 
 // The sum of the ceilings above, checked separately so a reader sees the milestone's own
 // promise (src/ stays well under its pre-M21 size) rather than only per-directory numbers.
-const TOTAL_CEILING = 36200;
+const TOTAL_CEILING = 39400;
 
 function listSourceFiles(dir) {
   const out = [];

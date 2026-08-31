@@ -67,6 +67,14 @@ describe('parseRoute', () => {
     expect(parseRoute('#/settings')).toEqual({ kind: 'settings' })
   })
 
+  it('parses the bare cinema route', () => {
+    expect(parseRoute('#/cinema')).toEqual({ kind: 'cinema', at: null })
+  })
+
+  it('parses a cinema route naming a dialogue to seek to', () => {
+    expect(parseRoute('#/cinema?at=d1')).toEqual({ kind: 'cinema', at: asDialogueId('d1') })
+  })
+
   it('lands the pre-M3.5 #/map/<id> path on the canvas with the id dropped', () => {
     expect(parseRoute('#/map/m1')).toEqual({ kind: 'canvas', dialogueId: null, focus: null })
   })
@@ -98,6 +106,8 @@ describe('formatRoute', () => {
     { kind: 'quests', editQuestId: asQuestId('q1') },
     { kind: 'insights' },
     { kind: 'settings' },
+    { kind: 'cinema', at: null },
+    { kind: 'cinema', at: asDialogueId('d1') },
   ]
 
   it.each(ROUTES)('round-trips through parseRoute: %j', (route) => {
@@ -110,5 +120,9 @@ describe('formatRoute', () => {
 
   it('omits the query string entirely for the bare quests route', () => {
     expect(formatRoute({ kind: 'quests', editQuestId: null })).toBe('#/quests')
+  })
+
+  it('omits the query string entirely for the bare cinema route', () => {
+    expect(formatRoute({ kind: 'cinema', at: null })).toBe('#/cinema')
   })
 })

@@ -23,6 +23,12 @@ export type Route =
     }
   | { kind: 'insights' }
   | { kind: 'settings' }
+  | {
+      kind: 'cinema'
+      // One-shot, same pattern as `focus` — lets a link land the playhead on a particular line
+      // without the address bar accumulating a position for the back button to step through.
+      at: DialogueId | null
+    }
 
 const FALLBACK: Route = { kind: 'canvas', dialogueId: null, focus: null }
 
@@ -40,6 +46,10 @@ export function parseRoute(hash: string): Route {
       return { kind: 'insights' }
     case 'settings':
       return { kind: 'settings' }
+    case 'cinema': {
+      const atParam = new URLSearchParams(query).get('at')
+      return { kind: 'cinema', at: atParam ? asDialogueId(atParam) : null }
+    }
     // `map` is the pre-M3.5 path — every map is on screen now, but an old link must still land
     // on the canvas rather than render nothing.
     case 'canvas':
@@ -77,6 +87,8 @@ export function formatRoute(route: Route): string {
       return '#/insights'
     case 'settings':
       return '#/settings'
+    case 'cinema':
+      return route.at === null ? '#/cinema' : `#/cinema?at=${route.at}`
     case 'canvas': {
       const params = new URLSearchParams()
       if (route.dialogueId !== null) params.set('dialogue', route.dialogueId)

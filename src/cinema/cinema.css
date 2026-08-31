@@ -1,0 +1,82 @@
+/* Same sizing contract as `.map-screen`/`.insights` — see `.app-shell__main` (app.css). */
+.cinema {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+.cinema__bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* `.hint-text` (index.css) supplies margin/colour; the size is a step up. */
+.cinema__position {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.cinema__empty {
+  max-width: 34rem;
+  font-size: var(--text-xs);
+}
+
+.cinema__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-4);
+}
+
+.cinema__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The `.card` base (index.css) supplies the border/radius/surface; this is only the layout. */
+.cinema__stage {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.cinema__moment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 42rem;
+}
+
+/* pre-wrap: a logged line keeps the breaks it was typed with — a dialogue box's own line
+   breaks are part of what was seen. */
+.cinema__moment-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: var(--text-md);
+}
+
+.cinema__moment-media {
+  max-width: 32rem;
+}
+
+/* An empty frame reserved for the reel's density band — filled in by a later issue. */
+.cinema__band {
+  flex: none;
+  height: 4rem;
+}
+
+/* An empty frame reserved for quest-arc marks — filled in by a later issue. */
+.cinema__rail {
+  flex: none;
+  width: 16rem;
+}

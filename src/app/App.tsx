@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import type { ReactElement } from 'react'
+import { CinemaScreen } from '../cinema/CinemaScreen.tsx'
 import { InsightsScreen } from '../insights/InsightsScreen.tsx'
 import { MapScreen } from '../map/MapScreen.tsx'
 import { QuestBoard } from '../quest/QuestBoard.tsx'
@@ -13,7 +14,12 @@ import { RepairNotice } from './RepairNotice.tsx'
 import { SaveFailureBanner } from './SaveFailureBanner.tsx'
 import type { Route } from './route.ts'
 import { navigate, useRoute } from './route.ts'
-import type { CanvasViewState, InsightsViewState, QuestsViewState } from './view-state.ts'
+import type {
+  CanvasViewState,
+  CinemaViewState,
+  InsightsViewState,
+  QuestsViewState,
+} from './view-state.ts'
 import { INITIAL_VIEW_STATE } from './view-state.ts'
 import './app.css'
 
@@ -53,6 +59,10 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
     (quests: QuestsViewState) => setViewState((prev) => ({ ...prev, quests })),
     [],
   )
+  const onCinemaStateChange = useCallback(
+    (cinema: CinemaViewState) => setViewState((prev) => ({ ...prev, cinema })),
+    [],
+  )
   // The search palette can't do this itself: opening an NPC's dossier needs both routing and
   // the view state that lives here.
   const onOpenNpcDossier = useCallback((key: string) => {
@@ -76,6 +86,7 @@ function ReadyScreen({ state }: { state: ReadyState }): ReactElement {
           route={route}
           viewState={viewState}
           onCanvasStateChange={onCanvasStateChange}
+          onCinemaStateChange={onCinemaStateChange}
           onInsightsStateChange={onInsightsStateChange}
           onQuestsStateChange={onQuestsStateChange}
         />
@@ -90,13 +101,20 @@ function ReadyView({
   route,
   viewState,
   onCanvasStateChange,
+  onCinemaStateChange,
   onInsightsStateChange,
   onQuestsStateChange,
 }: {
   state: ReadyState
   route: Route
-  viewState: { canvas: CanvasViewState; insights: InsightsViewState; quests: QuestsViewState }
+  viewState: {
+    canvas: CanvasViewState
+    cinema: CinemaViewState
+    insights: InsightsViewState
+    quests: QuestsViewState
+  }
   onCanvasStateChange: (update: (prev: CanvasViewState) => CanvasViewState) => void
+  onCinemaStateChange: (cinema: CinemaViewState) => void
   onInsightsStateChange: (insights: InsightsViewState) => void
   onQuestsStateChange: (quests: QuestsViewState) => void
 }): ReactElement {
@@ -109,6 +127,16 @@ function ReadyView({
           route={route}
           viewState={viewState.canvas}
           onViewStateChange={onCanvasStateChange}
+        />
+      )
+
+    case 'cinema':
+      return (
+        <CinemaScreen
+          project={state.project}
+          route={route}
+          viewState={viewState.cinema}
+          onViewStateChange={onCinemaStateChange}
         />
       )
 
