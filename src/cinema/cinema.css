@@ -61,6 +61,8 @@
    not a blank grey box. Every captured frame is 160x144 (see the pixelated rule below). */
 .cinema-stage__frame {
   position: relative;
+  align-self: center;
+  width: 100%;
   max-width: 32rem;
 }
 
@@ -145,19 +147,10 @@
   font-size: var(--text-xs);
 }
 
-.cinema-stage__meta {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
 .cinema-stage__speaker {
   margin: 0;
+  align-self: center;
   font-weight: 600;
-}
-
-.cinema-stage__where {
-  margin: 0;
 }
 
 /* pre-wrap: a logged line keeps the breaks it was typed with — a dialogue box's own line
@@ -212,6 +205,8 @@
 
 .cinema__transport {
   flex: none;
+  align-self: center;
+  width: fit-content;
   display: flex;
   align-items: center;
   gap: var(--space-2);

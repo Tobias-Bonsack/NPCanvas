@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatRoute } from '../app/route.ts'
-import { dialogueSnippet, formatSpokenAt, zoneLabel } from '../dialogue-row/dialogue-summary.ts'
+import { dialogueSnippet } from '../dialogue-row/dialogue-summary.ts'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { byId } from '../project/derived.ts'
@@ -63,12 +63,7 @@ export function CinemaStage({
   onSeekFrame: (frame: number) => void
 }): ReactElement {
   const { dialogue } = moment
-  const zonesById = byId(project.zones)
-  const mapsById = byId(project.maps)
   const relevanceTagsById = byId(project.relevanceTags)
-
-  const zoneName = moment.zoneId === null ? null : (zonesById.get(moment.zoneId) ?? null)
-  const mapName = mapsById.get(dialogue.mapId)?.name ?? null
 
   const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
   const quests = questIndex.get(dialogue.id) ?? []
@@ -106,6 +101,8 @@ export function CinemaStage({
 
       {openingArc !== undefined && <ActCard kind="opens" quest={openingArc.quest} />}
 
+      <p className="cinema-stage__speaker">{dialogue.npcName}</p>
+
       <div className="cinema-stage__frame">
         {frameLayers.map((layer, index) => (
           <div
@@ -140,15 +137,6 @@ export function CinemaStage({
           </p>
         </div>
       )}
-
-      <header className="cinema-stage__meta">
-        <p className="cinema-stage__speaker">{dialogue.npcName}</p>
-        <p className="cinema-stage__where hint-text">
-          {[zoneName !== null ? zoneLabel(zoneName) : null, mapName, formatSpokenAt(dialogue.spokenAt)]
-            .filter((part): part is string => part !== null)
-            .join(' — ')}
-        </p>
-      </header>
 
       {dialogue.text !== '' && <p className="cinema-stage__text">{dialogue.text}</p>}
 

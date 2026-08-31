@@ -158,7 +158,6 @@ export function CinemaScreen({
               onSeekFrame={(frame) => dispatch({ kind: 'frame-seek', frame })}
             />
           </div>
-          <Transport playhead={playhead} dispatch={dispatch} />
           <div className="cinema__band card">
             <CinemaBand
               project={project}
@@ -180,6 +179,7 @@ export function CinemaScreen({
               />
             </div>
           )}
+          <Transport playhead={playhead} dispatch={dispatch} />
         </div>
         <aside className="cinema__rail card">
           <div aria-hidden="true">
