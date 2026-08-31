@@ -64,6 +64,19 @@
   outline-offset: 1px;
 }
 
+/* A panel left of its own content (Cinema's quest rail) mirrors both the border it shares with
+   its neighbour and the handle's edge — the handle is always on the seam, whichever side that
+   seam is on. */
+.side-panel--left {
+  border-left: none;
+  border-right: 1px solid var(--border);
+}
+
+.side-panel--left .side-panel__resizer {
+  left: auto;
+  right: -4px;
+}
+
 @media (max-width: 72rem) {
   .side-panel {
     --side-panel-width: 18rem;

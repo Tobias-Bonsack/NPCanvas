@@ -29,7 +29,12 @@ export function usePanelResize(
   asideRef: RefObject<HTMLElement | null>,
   onWidthChange: (width: number) => void,
   measureAvailableWidth: () => number,
+  // 'right' (default) is a panel to the right of its handle, dragging left widens it — the
+  // shape every existing caller has. 'left' mirrors both the drag and the arrow-key sign for a
+  // panel to the left of its own handle (dragging right widens it).
+  edge: 'left' | 'right' = 'right',
 ): PanelResizeApi {
+  const sign = edge === 'right' ? -1 : 1
   // Bookkeeping lives in a ref, as every drag in this repo does — only the flag the handle and
   // Escape listener read is state.
   const resizeRef = useRef<DragGesture<PanelResizeData> | null>(null)
@@ -70,12 +75,15 @@ export function usePanelResize(
     beginDrag(resizeRef, event, { startWidth, availableWidth: measureAvailableWidth() })
   }
 
-  // Handle is on the left edge, so travel to the left widens the panel — hence -dx.
+  // Right-edge handle: travel to the left widens the panel, hence -dx. Left-edge handle mirrors
+  // it (+dx) via `sign`.
   function moveResize(event: ReactPointerEvent<HTMLDivElement>): void {
     const move = moveDrag(resizeRef, event)
     if (move === null) return
     if (move.started) setResizing(true)
-    onWidthChange(clampPanelWidth(move.data.startWidth - move.dx, move.data.availableWidth))
+    onWidthChange(
+      clampPanelWidth(move.data.startWidth + sign * move.dx, move.data.availableWidth),
+    )
   }
 
   function endResize(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -97,12 +105,13 @@ export function usePanelResize(
   }
 
   function stepResize(event: ReactKeyboardEvent<HTMLDivElement>): void {
-    // The separator moves the way the arrow points; the panel is to its right, so left is wider.
+    // The separator moves the way the arrow points; `sign` accounts for which side the panel
+    // sits on relative to the handle.
     const step =
       event.key === 'ArrowLeft'
-        ? PANEL_WIDTH_STEP
+        ? -sign * PANEL_WIDTH_STEP
         : event.key === 'ArrowRight'
-          ? -PANEL_WIDTH_STEP
+          ? sign * PANEL_WIDTH_STEP
           : null
     if (step === null) return
     event.preventDefault()

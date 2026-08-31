@@ -37,6 +37,10 @@ export type CinemaViewState = {
   /** Ordinal position on the reel — see CLAUDE.md § "Cinema". Clamped to the reel's own bounds
    * at render, since a quest merge or an undo can shrink the reel out from under it. */
   playheadIndex: number
+  /** `null` until dragged once — the width the stylesheet gives each rail. Same shape as
+   * `CanvasViewState.panelWidth`, one per side since both rails are open at once. */
+  questRailWidth: number | null
+  railWidth: number | null
 }
 
 export type InsightsViewState = {
@@ -63,7 +67,7 @@ export const INITIAL_VIEW_STATE: ViewState = {
     viewport: null,
     panelWidth: null,
   },
-  cinema: { playheadIndex: 0 },
+  cinema: { playheadIndex: 0, questRailWidth: null, railWidth: null },
   insights: { filter: EMPTY_FILTER, dossierKey: null, timelineActive: null, timelineUnit: null },
   quests: { mode: { kind: 'idle' } },
 }

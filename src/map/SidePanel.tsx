@@ -24,6 +24,7 @@ export function SidePanel({
   width,
   onWidthChange,
   measureAvailableWidth,
+  edge = 'right',
   dropTarget,
   onDragOver,
   onDragLeave,
@@ -38,6 +39,10 @@ export function SidePanel({
   width: number | null
   onWidthChange: (width: number) => void
   measureAvailableWidth: () => number
+  /** Which side of the panel the handle — and the column it borders — sits on. Defaults to
+   * 'right' (a panel right of the canvas, handle on its left edge), the shape every existing
+   * caller has; 'left' mirrors both for a panel that sits left of its own content. */
+  edge?: 'left' | 'right'
   dropTarget?: boolean
   onDragOver?: (event: ReactDragEvent<HTMLElement>) => void
   onDragLeave?: (event: ReactDragEvent<HTMLElement>) => void
@@ -48,7 +53,7 @@ export function SidePanel({
   children: ReactNode
 }): ReactElement {
   const { resizing, band, beginResize, moveResize, endResize, cancelResize, stepResize } =
-    usePanelResize(panelRef, onWidthChange, measureAvailableWidth)
+    usePanelResize(panelRef, onWidthChange, measureAvailableWidth, edge)
 
   useEffect(() => {
     onResizingChange?.(resizing)
@@ -57,7 +62,9 @@ export function SidePanel({
   return (
     <aside
       ref={panelRef}
-      className={`side-panel ${className}`}
+      className={['side-panel', edge === 'left' ? 'side-panel--left' : null, className]
+        .filter((part) => part !== null)
+        .join(' ')}
       aria-label={ariaLabel}
       // The custom property, not `width` — SidePanel.css's media queries redefine it, so a
       // dragged width outranks all three declarations.

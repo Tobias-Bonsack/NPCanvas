@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import type { CinemaViewState } from '../app/view-state.ts'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import type { ProjectFile } from '../project/types.ts'
+import { MIN_PANEL_WIDTH } from '../dialogue/panel-width.ts'
+import { usePanelResize } from '../dialogue/use-panel-resize.ts'
 import { CinemaBand } from './CinemaBand.tsx'
 import { CinemaLedger } from './CinemaLedger.tsx'
 import { CinemaMinimap } from './CinemaMinimap.tsx'
@@ -54,9 +56,46 @@ export function CinemaScreen({
   }, [at, reel, rawDispatch])
 
   // Mirrored into the view state that survives a switch away and back — see view-state.ts.
+  // `onViewStateChange` replaces the whole object, so every setter here spreads `viewState`
+  // rather than sending just the field it changed.
+  // Read through a ref rather than closing over `viewState` directly — a width drag also goes
+  // through `onViewStateChange`, and putting `viewState` in this effect's deps would re-fire it
+  // on every drag frame for a field (`playheadIndex`) that hasn't actually moved.
+  const viewStateRef = useRef(viewState)
+  viewStateRef.current = viewState
   useEffect(() => {
-    onViewStateChange({ playheadIndex: playhead.moment })
+    onViewStateChange({ ...viewStateRef.current, playheadIndex: playhead.moment })
   }, [playhead.moment, onViewStateChange])
+
+  // Both rails resize independently, each clamped against the body's width minus the *other*
+  // rail's current rendered width — the same floor `clampPanelWidth` gives the canvas's own
+  // side panel, applied twice since Cinema keeps two columns open at once.
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const questRailRef = useRef<HTMLElement>(null)
+  const railRef = useRef<HTMLElement>(null)
+  const measureQuestRailAvailableWidth = useCallback(() => {
+    const railWidth = railRef.current?.getBoundingClientRect().width ?? MIN_PANEL_WIDTH
+    return (bodyRef.current?.clientWidth ?? 0) - railWidth
+  }, [])
+  const measureRailAvailableWidth = useCallback(() => {
+    const questRailWidth = questRailRef.current?.getBoundingClientRect().width ?? MIN_PANEL_WIDTH
+    return (bodyRef.current?.clientWidth ?? 0) - questRailWidth
+  }, [])
+  const setQuestRailWidth = useCallback(
+    (questRailWidth: number) => onViewStateChange({ ...viewState, questRailWidth }),
+    [viewState, onViewStateChange],
+  )
+  const setRailWidth = useCallback(
+    (railWidth: number) => onViewStateChange({ ...viewState, railWidth }),
+    [viewState, onViewStateChange],
+  )
+  const questRailResize = usePanelResize(
+    questRailRef,
+    setQuestRailWidth,
+    measureQuestRailAvailableWidth,
+    'left',
+  )
+  const railResize = usePanelResize(railRef, setRailWidth, measureRailAvailableWidth, 'right')
 
   useEffect(() => {
     const action = lastAction.current
@@ -82,6 +121,9 @@ export function CinemaScreen({
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+    // A rail's own resize handle owns arrow keys while focused (`stepResize`) — letting them
+    // also fall through to playhead transport would resize and seek in the same keystroke.
+    if ((event.target as HTMLElement).getAttribute('role') === 'separator') return
     switch (event.key) {
       case ' ':
         event.preventDefault()
@@ -139,9 +181,33 @@ export function CinemaScreen({
           {frameCount > 1 && ` — frame ${playhead.frame + 1} of ${frameCount}`}
         </p>
       </header>
-      <div className="cinema__body">
-        <aside className="cinema__quest-rail card">
+      <div className="cinema__body" ref={bodyRef}>
+        <aside
+          ref={questRailRef}
+          className="cinema__quest-rail card"
+          style={
+            viewState.questRailWidth === null
+              ? undefined
+              : { width: `${viewState.questRailWidth}px` }
+          }
+        >
           <CinemaQuestRail arcs={arcs} reel={reel} momentIndex={playhead.moment} />
+          <div
+            className="side-panel__resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Quest rail width"
+            aria-valuenow={Math.round(questRailResize.band?.width ?? MIN_PANEL_WIDTH)}
+            aria-valuemin={MIN_PANEL_WIDTH}
+            aria-valuemax={Math.round(questRailResize.band?.max ?? MIN_PANEL_WIDTH)}
+            tabIndex={0}
+            data-resizing={questRailResize.resizing ? 'true' : undefined}
+            onPointerDown={questRailResize.beginResize}
+            onPointerMove={questRailResize.moveResize}
+            onPointerUp={questRailResize.endResize}
+            onPointerCancel={questRailResize.cancelResize}
+            onKeyDown={questRailResize.stepResize}
+          />
         </aside>
         <div className="cinema__main">
           <div className="cinema__stage card">
@@ -165,7 +231,29 @@ export function CinemaScreen({
           </div>
           <Transport playhead={playhead} dispatch={dispatch} />
         </div>
-        <aside className="cinema__rail card">
+        <aside
+          ref={railRef}
+          className="cinema__rail card"
+          style={
+            viewState.railWidth === null ? undefined : { width: `${viewState.railWidth}px` }
+          }
+        >
+          <div
+            className="side-panel__resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Right rail width"
+            aria-valuenow={Math.round(railResize.band?.width ?? MIN_PANEL_WIDTH)}
+            aria-valuemin={MIN_PANEL_WIDTH}
+            aria-valuemax={Math.round(railResize.band?.max ?? MIN_PANEL_WIDTH)}
+            tabIndex={0}
+            data-resizing={railResize.resizing ? 'true' : undefined}
+            onPointerDown={railResize.beginResize}
+            onPointerMove={railResize.moveResize}
+            onPointerUp={railResize.endResize}
+            onPointerCancel={railResize.cancelResize}
+            onKeyDown={railResize.stepResize}
+          />
           <div aria-hidden="true">
             <CinemaMinimap project={project} reel={reel} momentIndex={playhead.moment} />
           </div>
