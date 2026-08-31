@@ -7,7 +7,7 @@ import { saveNow } from '../storage/autosave.ts'
 import { connectToNewDirectory } from '../storage/project-directory.ts'
 import type { Route } from './route.ts'
 import { formatRoute, navigate, useRoute } from './route.ts'
-import './Nav.css'
+import './app.css'
 
 // Real anchors, not buttons: the hash is the navigation mechanism, so middle-click,
 // bookmarking, and the back button all work without any handler of ours.

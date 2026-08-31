@@ -3,7 +3,7 @@ import type { DialogueMedia, MediaId } from '../project/types.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { resolveGalleryIndex, stepGalleryIndex } from './gallery-index.ts'
 import { MediaView } from './MediaView.tsx'
-import './MediaGallery.css'
+import './media.css'
 
 // Frames to page between, not a list read top to bottom. Holds no selection of its own — the
 // caller does, since the panel renders reorder/remove controls for the current frame underneath.

@@ -3,7 +3,6 @@ import { rectToPolygon } from '../map/geometry.ts'
 import { createEmptyProject } from '../project/data-file.ts'
 import { asDialogueId, asMapId, asQuestId, asZoneId } from '../project/ids.ts'
 import type { Dialogue, MapId, ProjectFile, Quest, Zone } from '../project/types.ts'
-import { dialogueSearchText } from './dialogue-search-text.ts'
 import { searchProject } from './search-index.ts'
 
 const OVERWORLD = asMapId('overworld')
@@ -46,14 +45,6 @@ function zone(id: string, name: string, mapId: MapId = OVERWORLD): Zone {
 function project(overrides: Partial<ProjectFile> = {}): ProjectFile {
   return { ...createEmptyProject('Test project'), ...overrides }
 }
-
-describe('dialogueSearchText', () => {
-  it('matches on the NPC name and on what was said', () => {
-    const line = dialogue('d1', 'Innkeeper', 'The road north is closed.')
-    expect(dialogueSearchText(line)).toContain('innkeeper')
-    expect(dialogueSearchText(line)).toContain('road north is closed')
-  })
-})
 
 describe('searchProject', () => {
   it('matches nothing for an empty or whitespace-only query', () => {

@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import './Disclosure.css'
+import './app.css'
 
 /**
  * Reference material one click away from the control it explains, rather than permanently on

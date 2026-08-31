@@ -1,3 +1,31 @@
+/* ---- MediaView ---- */
+
+/* The intrinsic width/height attributes reserve the right box before the bytes arrive; these
+   rules then let it shrink into whatever container it is in without distorting. */
+.media-view__image,
+.media-view__video {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-2);
+  background: var(--surface-0);
+}
+
+/* `width` rather than `max-width`: a ceiling only ever shrinks a picture, so a capture narrower
+   than the panel stayed at its own size however far the panel was dragged open. The intrinsic
+   width/height attributes above are what keep the proportions — the height follows. */
+.media-view__image--fill,
+.media-view__video--fill {
+  width: 100%;
+}
+
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
+.media-view__notice {
+  font-size: var(--text-xs);
+}
+
+/* ---- MediaGallery ---- */
+
 /* min-width: 0 so a wide picture cannot push the column it sits in — the panel and the dossier
    both scroll vertically and neither may ever scroll sideways. */
 .media-gallery {

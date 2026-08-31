@@ -6,7 +6,7 @@ import { ZoneChips } from '../insights/ZoneChips.tsx'
 import type { Dialogue, Zone } from '../project/types.ts'
 import { dialogueContentKind } from '../project/types.ts'
 import { dialogueSnippet, formatSpokenAt } from './dialogue-summary.ts'
-import './DialogueRow.css'
+import './dialogue-row.css'
 
 /**
  * One dialogue's identity — glyph, NPC, snippet, zones, timestamp — laid out in the one grid

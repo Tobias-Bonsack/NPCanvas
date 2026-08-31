@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react'
-import './RowActions.css'
+import './app.css'
 
 /**
  * A row's verbs — Rename, Colour, Delete and whatever else a row carries — collapsed to nothing

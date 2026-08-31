@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { asMapId, asZoneId } from '../project/ids.ts'
-import type { GameMap, Zone } from '../project/types.ts'
+import type { GameMap, MapId, Zone } from '../project/types.ts'
 import { rectToPolygon } from './geometry.ts'
 import type { Viewport } from './viewport.ts'
-import { MIN_ZONE_SIZE, handleAtCanvasPoint, meetsMinZoneSize } from './use-zone-tool.ts'
+import { MIN_ZONE_SIZE, handleAtCanvasPoint, meetsMinZoneSize, nextZoneName } from './use-zone-tool.ts'
 
 const MAP_ID = asMapId('overworld')
 
@@ -87,5 +87,39 @@ describe('meetsMinZoneSize', () => {
     expect(meetsMinZoneSize(rect, zoomedOut, NATIVE_MAP)).toBe(false)
     const bigEnough = { x: 0, y: 0, width: MIN_ZONE_SIZE * 2, height: MIN_ZONE_SIZE * 2 }
     expect(meetsMinZoneSize(bigEnough, zoomedOut, NATIVE_MAP)).toBe(true)
+  })
+})
+
+function namedZone(id: string, mapId: MapId, name: string): Zone {
+  return { id: asZoneId(id), mapId, name, polygon: ZONE.polygon, hue: 200 }
+}
+
+const CAVES = asMapId('caves')
+
+describe('nextZoneName', () => {
+  it('counts up from one on an empty map', () => {
+    expect(nextZoneName([], MAP_ID)).toBe('Zone 1')
+    expect(nextZoneName([namedZone('a', MAP_ID, 'Zone 1')], MAP_ID)).toBe('Zone 2')
+  })
+
+  it('fills the gap a deleted zone left instead of colliding with a later one', () => {
+    const zones = [namedZone('a', MAP_ID, 'Zone 1'), namedZone('c', MAP_ID, 'Zone 3')]
+    expect(nextZoneName(zones, MAP_ID)).toBe('Zone 2')
+  })
+
+  it('skips past renamed zones, which occupy no number', () => {
+    const zones = [namedZone('a', MAP_ID, 'Docks'), namedZone('b', MAP_ID, 'Zone 1')]
+    expect(nextZoneName(zones, MAP_ID)).toBe('Zone 2')
+  })
+
+  it('is scoped per map, so a second map starts from one again', () => {
+    const zones = [namedZone('a', MAP_ID, 'Zone 1'), namedZone('b', MAP_ID, 'Zone 2')]
+    expect(nextZoneName(zones, CAVES)).toBe('Zone 1')
+  })
+
+  it('never repeats a name already on the map', () => {
+    const zones = [namedZone('a', MAP_ID, 'Zone 1'), namedZone('b', MAP_ID, 'Zone 2')]
+    const grown = [...zones, namedZone('c', MAP_ID, nextZoneName(zones, MAP_ID))]
+    expect(new Set(grown.map((z) => z.name)).size).toBe(grown.length)
   })
 })

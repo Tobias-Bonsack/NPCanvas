@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 import { useAlertDialogFocus } from '../dialog-focus.ts'
 import { useFieldDraft } from '../use-field-draft.ts'
-import './EditableRow.css'
+import './app.css'
 
 // The rename + delete-confirm interaction every list in this app shares — see use-editable-row.ts
 // (split out only because react-refresh/only-export-components requires a component file to

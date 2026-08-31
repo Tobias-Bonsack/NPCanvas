@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { useSaveState } from '../project/store.ts'
 import type { SaveState } from '../project/types.ts'
 import { retrySave } from '../storage/autosave.ts'
-import './SaveFailureBanner.css'
+import './app.css'
 
 type FailedSave = Extract<SaveState, { kind: 'failed' }>
 

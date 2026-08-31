@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import type { ProjectRepairs } from '../project/types.ts'
-import './RepairNotice.css'
+import './app.css'
 
 type RepairedProject = Extract<ProjectRepairs, { kind: 'repaired' }>
 

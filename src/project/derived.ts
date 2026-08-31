@@ -1,7 +1,16 @@
 import { npcKey } from '../insights/filters.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
-import { dialogueSearchText } from '../search/dialogue-search-text.ts'
 import type { Dialogue, DialogueId } from './types.ts'
+
+/**
+ * Everything a dialogue is found by: NPC name and what was said, lowercased once per call. The
+ * one substring predicate the insights filter, the quest attach picker and the search palette
+ * all match against — see `filters.ts` and `QuestBoard.tsx`'s `DialoguePicker`, which import
+ * this instead of each keeping their own copy.
+ */
+export function dialogueSearchText(dialogue: Dialogue): string {
+  return `${dialogue.npcName} ${dialogue.text}`.toLowerCase()
+}
 
 // Each derivation caches on the identity of its own input array, never on `project` as a whole and
 // never on value — the same discipline `zone-index.ts` applies, so a zone drag doesn't rebuild the

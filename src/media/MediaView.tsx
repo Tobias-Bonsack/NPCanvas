@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { assertNever } from '../assert-never.ts'
 import type { DialogueMedia } from '../project/types.ts'
 import { useMediaUrl } from './media-url-cache.ts'
-import './MediaView.css'
+import './media.css'
 
 // `max-width: 100%` is a ceiling, so a 640px capture stays 640px in a dragged panel — but the
 // dossier's reading list wants it filled to the column width instead. Two values, both used.

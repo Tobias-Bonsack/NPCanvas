@@ -10,10 +10,24 @@ import type { Rect } from './geometry.ts'
 import { rectBetween, rectToPolygon, translatePolygon } from './geometry.ts'
 import type { Viewport } from './viewport.ts'
 import { screenToWorld } from './viewport.ts'
-import { nextZoneName } from './zone-name.ts'
 import type { ZoneHandle } from './zone-resize.ts'
 import { handleAtMapLocalPoint, resizePolygon } from './zone-resize.ts'
 import { nextZoneHue } from './zone-style.ts'
+
+// Lowest "Zone <n>" not already taken on this map — counting and adding one would collide as
+// soon as anything's been deleted. Exported for testability, like the other pure helpers above.
+export function nextZoneName(zones: readonly Zone[], mapId: MapId): string {
+  const taken = new Set<string>()
+  for (const zone of zones) {
+    if (zone.mapId === mapId) taken.add(zone.name)
+  }
+
+  for (let n = 1; n <= taken.size; n += 1) {
+    const name = `Zone ${n}`
+    if (!taken.has(name)) return name
+  }
+  return `Zone ${taken.size + 1}`
+}
 
 // A preview: zone/reshaped lands once, on pointerup, so autosave sees one change per drag.
 export type ZoneDragPreview = { id: ZoneId; polygon: Polygon }

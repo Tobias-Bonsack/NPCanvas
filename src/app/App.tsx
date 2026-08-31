@@ -15,7 +15,7 @@ import type { Route } from './route.ts'
 import { navigate, useRoute } from './route.ts'
 import type { CanvasViewState, InsightsViewState, QuestsViewState } from './view-state.ts'
 import { INITIAL_VIEW_STATE } from './view-state.ts'
-import './App.css'
+import './app.css'
 
 type ReadyState = Extract<AppState, { kind: 'ready' }>
 

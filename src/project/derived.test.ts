@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId, asQuestId } from './ids.ts'
 import type { Dialogue, Quest } from './types.ts'
-import { dialogueSearchTexts, npcLineCounts, questIndexFor, searchTextOf } from './derived.ts'
+import {
+  dialogueSearchText,
+  dialogueSearchTexts,
+  npcLineCounts,
+  questIndexFor,
+  searchTextOf,
+} from './derived.ts'
 
 const OVERWORLD = asMapId('overworld')
 
@@ -61,6 +67,14 @@ describe('npcLineCounts', () => {
   it('trims npcName the way npcKey does, grouping blank names together', () => {
     const dialogues = [dialogue('d1', 'Innkeeper ', 'Hello'), dialogue('d2', ' Innkeeper', 'Hi')]
     expect(npcLineCounts(dialogues).get('Innkeeper')).toBe(2)
+  })
+})
+
+describe('dialogueSearchText', () => {
+  it('matches on the NPC name and on what was said', () => {
+    const line = dialogue('d1', 'Innkeeper', 'The road north is closed.')
+    expect(dialogueSearchText(line)).toContain('innkeeper')
+    expect(dialogueSearchText(line)).toContain('road north is closed')
   })
 })
 

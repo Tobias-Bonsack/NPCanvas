@@ -6,7 +6,7 @@ import { dialogueSearchTexts } from '../project/derived.ts'
 import type { Dialogue, DialogueId, Zone, ZoneId } from '../project/types.ts'
 import { DialogueRowContent } from './DialogueRow.tsx'
 import { resolveZones } from './dialogue-summary.ts'
-import './DialoguePicker.css'
+import './dialogue-row.css'
 
 const PICKER_LIMIT = 25
 

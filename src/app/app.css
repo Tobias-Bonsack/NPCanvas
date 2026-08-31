@@ -1,0 +1,321 @@
+/* ---- App ---- */
+
+/* A definite height, not a floor: every screen below already asks to scroll inside itself
+   (`.dialogue-panel`, `.map-screen__sidebar`, `.quest-board`, `.insights`), and `flex: 1;
+   min-height: 0` can only resolve against a height that exists. With `min-height` alone the
+   tallest child stretched the shell past the viewport and the page scrolled instead — taking
+   the nav bar and the canvas off screen, which is the one thing a sibling panel must not do.
+   `overflow: hidden` keeps a future child that forgets its own overflow rule from bringing the
+   page scrollbar back. */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* A pass-through flex item: the view it wraps (`.map-screen`, `.quest-board`, `.insights`) is
+   what actually sets `flex: 1; min-height: 0` and scrolls itself — this just has to forward the
+   same sizing contract down one level rather than letting the `<main>` itself become the thing
+   that overflows. */
+.app-shell__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Nav ---- */
+
+.nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: var(--space-2);
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-1);
+}
+
+.nav__brand {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.nav__list {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav__link {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-2);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition:
+    color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+
+.nav__link:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.nav__history {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/* Builds on the shared `.button` treatment (index.css) — only the size and the always-on text
+   colour (rather than the base's muted-until-hover) differ. */
+.nav__history-button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+.nav__history-button:disabled {
+  color: var(--text-muted);
+}
+
+/* No `margin-left: auto` of its own — `.nav__history` is the first item that claims the free
+   space, and a second auto margin here would split that space instead of sitting flush after
+   it. Builds on the shared `.button` treatment (index.css) — same box, always-on text colour. */
+.nav__project {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+
+/* The folder can be named anything; a long one must not push the nav's own items around. */
+.nav__project-name {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav__project-action {
+  color: var(--text-muted);
+}
+
+/* A flex child of .nav in its own right: the region is permanent, only its contents change. */
+.nav__save-region {
+  display: flex;
+  align-items: center;
+}
+
+/* `.hint-text` (index.css) supplies the margin/colour; the size is a step up. */
+.nav__save {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+/* Builds on the shared `.button` treatment (index.css) — outlined in the danger colour and
+   flatter (radius-1) rather than filled, and the danger colour survives hover. */
+.nav__save-review {
+  border-color: var(--danger);
+  border-radius: var(--radius-1);
+  background: transparent;
+  color: var(--danger);
+}
+
+/* `:not(:disabled)` matches the base rule's own specificity (index.css), so this colour is not
+   silently outranked by the base's own hover colour. */
+.nav__save-review:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+.nav__link[aria-current='page'] {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* ---- Disclosure ---- */
+
+/* See Disclosure.tsx. */
+.disclosure {
+  font-size: var(--text-2xs);
+}
+
+/* The `.disclosure-summary` base (index.css) hides the default marker (a triangle in Chromium,
+   "▶ "/"▼ " text in some others) and supplies the focus ring; this is only the resting look and
+   the hover underline. */
+.disclosure__summary {
+  display: inline-block;
+  color: var(--accent);
+}
+
+.disclosure__summary:hover {
+  text-decoration: underline;
+}
+
+.disclosure__body {
+  margin-top: var(--space-1);
+  max-width: 34rem;
+  color: var(--text-muted);
+}
+
+/* ---- EditableRow ---- */
+
+/* See EditableRow.tsx. The default look for a rename form or a delete confirmation; a caller
+   with a tighter space (PinLayer's canvas-space confirm, HeldNote's own block) passes its own
+   `className` and keeps its own rule instead. */
+.editable-row__form,
+.editable-row__confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+}
+
+.editable-row__input {
+  flex: 1;
+  min-width: 6rem;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--space-1) var(--space-2);
+}
+
+/* ---- RowActions ---- */
+
+/* See RowActions.tsx. The host — the row's own `<li>` or header — opts in with
+   `row-actions-host`; this is the one reveal rule every list shares, so a fifth call site gets
+   it for free by adding both classes rather than copying a rule. Collapsed to `max-width: 0`
+   rather than `display: none`, so a Tab-only pass still reaches every verb — the button is
+   merely clipped to nothing until focus lands inside it, at which point `:focus-within` below
+   uncollapses it again. `max-width`/`gap` stay instant (#96 scopes transitions to colour,
+   opacity and transform, never layout); `opacity` is the one property of this reveal that
+   animates. */
+.row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.row-actions-host:hover .row-actions,
+.row-actions-host:focus-within .row-actions {
+  gap: var(--space-1);
+  max-width: 30rem;
+  opacity: 1;
+}
+
+/* ---- RepairNotice ---- */
+
+/* `.shell-banner` (index.css) supplies the frame; this is only the accent ink that tells it apart
+   from the save-failure banner sharing the same slot and geometry. */
+.repair-notice {
+  border-left: 3px solid var(--accent);
+}
+
+.repair-notice__title {
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+
+/* `.hint-text` (index.css) supplies the colour; the size is a step up, and the redundant
+   `margin: 0` is harmless on this flex child, which has no margin to reset. */
+.repair-notice__message {
+  font-size: var(--text-xs);
+}
+
+/* `.shell-banner__dismiss` (index.css) supplies the rest; only the push-right differs. */
+.repair-notice__dismiss {
+  margin-left: auto;
+}
+
+/* ---- SaveFailureBanner ---- */
+
+/* `.shell-banner` (index.css) supplies the frame. The app's danger ink, matching every other
+   destructive affordance, is the only thing this adds. */
+.save-banner {
+  border-left: 3px solid var(--danger);
+}
+
+.save-banner__title {
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+/* `.hint-text` (index.css) supplies the colour; the size is a step up. */
+.save-banner__message {
+  font-size: var(--text-xs);
+}
+
+/* The `.button--primary` base (index.css) supplies the rest; the size is a step down from the
+   base, the border stays transparent, and the hover brightens a touch more. */
+.save-banner__action {
+  font-size: var(--text-xs);
+  margin-left: auto;
+  border-color: transparent;
+  white-space: nowrap;
+}
+
+.save-banner__action:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* `.shell-banner__dismiss` (index.css) supplies the rest — no override needed here, unlike the
+   repair notice's own, since `.save-banner__action` already carries the push-right. */
+
+/* ---- ErrorBoundary ---- */
+
+.error-boundary {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  align-items: flex-start;
+}
+
+/* `.fatal-title`, `.lead-text` and `.message-box` (index.css) replace the old
+   `.error-boundary__title`/`__lead`/`__message`. */
+
+.error-boundary__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* The `.button--primary` base (index.css) supplies the rest; the size stays at the page's own
+   ambient scale rather than the base's own `--text-sm`, the border stays transparent rather
+   than accent-coloured (so the "quiet" variant below only has a colour to swap, not a border to
+   add), and the hover brightens a touch more than the base's own hover. */
+.error-boundary__button {
+  font-size: var(--text-md);
+  border-color: transparent;
+}
+
+.error-boundary__button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+/* Reload is the last resort, so it must not compete with the picker for the first click. */
+.error-boundary__button--quiet {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text);
+}

@@ -1,7 +1,7 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { connectToNewDirectory, describeError } from '../storage/project-directory.ts'
-import './ErrorBoundary.css'
+import './app.css'
 
 /** `ok` carries no message and `caught` always has one — a nullable field would allow neither. */
 type ErrorBoundaryState = { kind: 'ok' } | { kind: 'caught'; message: string }
