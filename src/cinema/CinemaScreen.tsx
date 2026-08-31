@@ -167,7 +167,7 @@ export function CinemaScreen({
         </div>
         <aside className="cinema__rail card">
           <div aria-hidden="true">
-            <CinemaMinimap project={project} momentIndex={playhead.moment} />
+            <CinemaMinimap project={project} reel={reel} momentIndex={playhead.moment} />
           </div>
           <CinemaLedger project={project} tallies={tallies} moment={moment} />
         </aside>

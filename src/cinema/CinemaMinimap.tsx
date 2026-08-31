@@ -4,17 +4,20 @@ import { mapCanvasRect, mapLocalToCanvas, mapsBounds } from '../map/canvas-layou
 import type { TrailVertex } from '../map/trail-path.ts'
 import { trailVertices } from '../map/trail-path.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
-import type { GameMap, Point, ProjectFile, Zone } from '../project/types.ts'
+import type { GameMap, Point, ProjectFile, Zone, ZoneId } from '../project/types.ts'
+import type { Reel } from './reel.ts'
 
-// A schematic, never the map image — see CLAUDE.md § "Cinema" and #161. The viewBox comes from
-// mapsBounds once and does not move with the playhead: the finished journey has to read as pale,
-// unwalked ground from the first frame, which a camera following the playhead would hide.
+// A schematic, never the map image — see CLAUDE.md § "Cinema" and #161. Only what the playhead
+// has already walked shows: the trail stops at the playhead, and a zone only appears once a
+// moment inside it has played, so the inset never spoils ground not yet visited.
 // aria-hidden — the stage already names the current zone as text; see CinemaStage.
 export function CinemaMinimap({
   project,
+  reel,
   momentIndex,
 }: {
   project: ProjectFile
+  reel: Reel
   momentIndex: number
 }): ReactElement | null {
   const bounds = useMemo(() => mapsBounds(project.maps), [project.maps])
@@ -24,6 +27,13 @@ export function CinemaMinimap({
     () => trailVertices(project.maps, project.dialogues),
     [project.maps, project.dialogues],
   )
+  const visitedZoneIds = useMemo(() => {
+    const ids = new Set<ZoneId>()
+    for (const moment of reel.moments.slice(0, momentIndex + 1)) {
+      if (moment.zoneId !== null) ids.add(moment.zoneId)
+    }
+    return ids
+  }, [reel, momentIndex])
 
   if (bounds === null) return null
 
@@ -31,8 +41,8 @@ export function CinemaMinimap({
   // from the bounds' own extent instead, the same reasoning CLAUDE.md records for the trail.
   const unit = Math.max(bounds.width, bounds.height) / 1000
   const walked = vertices.slice(0, momentIndex + 1)
-  const unwalked = vertices.slice(momentIndex)
   const current = vertices[momentIndex] ?? null
+  const visitedZones = project.zones.filter((zone) => visitedZoneIds.has(zone.id))
 
   return (
     <svg
@@ -43,16 +53,9 @@ export function CinemaMinimap({
       {project.maps.map((map) => (
         <MapOutline key={map.id} map={map} unit={unit} />
       ))}
-      {project.zones.map((zone) => (
+      {visitedZones.map((zone) => (
         <ZoneShape key={zone.id} zone={zone} maps={project.maps} unit={unit} />
       ))}
-      {unwalked.length > 1 && (
-        <polyline
-          className="cinema-minimap__trail-ahead"
-          points={vertexPoints(unwalked)}
-          strokeWidth={unit * 3}
-        />
-      )}
       {walked.length > 1 && (
         <polyline
           className="cinema-minimap__trail-walked"

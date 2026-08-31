@@ -330,13 +330,6 @@
   stroke: hsl(var(--zone-hue) 60% 50%);
 }
 
-.cinema-minimap__trail-ahead {
-  fill: none;
-  stroke: var(--border);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 .cinema-minimap__trail-walked {
   fill: none;
   stroke: var(--trail);
