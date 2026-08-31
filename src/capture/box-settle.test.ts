@@ -42,14 +42,11 @@ describe('nextSettle', () => {
     expect(state.repeats).toBe(1)
   })
 
-  it('settles once the same box has been read settleTicks times', () => {
-    const { settled } = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS)
-    expect(settled).toEqual([HELLO])
-  })
-
-  it('settles exactly once however long the box stays on screen', () => {
-    const { settled } = feed(NOTHING_SEEN, HELLO, SETTLE_TICKS + 20)
-    expect(settled).toEqual([HELLO])
+  it.each([
+    ['settles once the same box has been read settleTicks times', SETTLE_TICKS],
+    ['settles exactly once however long the box stays on screen', SETTLE_TICKS + 20],
+  ])('%s', (_name, times) => {
+    expect(feed(NOTHING_SEEN, HELLO, times).settled).toEqual([HELLO])
   })
 
   it('resets repeats and emitted when the transcript changes', () => {

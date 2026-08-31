@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Rect } from '../map/geometry.ts'
 import { asCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile, Glyph } from '../project/types.ts'
 import { TILE_SIZE } from './capture-profile.ts'
@@ -83,21 +84,14 @@ describe('sampleNative', () => {
     const native = blankNative()
     drawTile(native, D, 1, 0)
     drawTile(native, ARROW, 6, 3)
-    const frame = toFrame(native)
 
-    const sampled = sampleNative(frame, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
-    const bits = binarise(sampled, inkThreshold(sampled, wholeScreen()))
-
-    expect(Array.from(bits)).toEqual(Array.from(native.ink))
+    expect(Array.from(sampledBits(native))).toEqual(Array.from(native.ink))
   })
 
   it('samples the centre of a native pixel, not its edge, where a 7.1875-wide ink pixel would be lost', () => {
     const native = blankNative()
     setPixel(native, 17, 5)
-    const frame = toFrame(native)
-
-    const sampled = sampleNative(frame, screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
-    const bits = binarise(sampled, inkThreshold(sampled, wholeScreen()))
+    const bits = sampledBits(native)
 
     expect(bits[5 * NATIVE_WIDTH + 17]).toBe(1)
     expect(bits[5 * NATIVE_WIDTH + 16]).toBe(0)
@@ -146,11 +140,7 @@ describe('inkThreshold', () => {
   })
 
   it('finds no ink at all in a uniform region', () => {
-    const sampled = sampleNative(toFrame(blankNative()), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
-
-    const bits = binarise(sampled, inkThreshold(sampled, wholeScreen()))
-
-    expect(bits.some((bit) => bit === 1)).toBe(false)
+    expect(sampledBits(blankNative()).some((bit) => bit === 1)).toBe(false)
   })
 })
 
@@ -200,10 +190,8 @@ describe('readTiles', () => {
     drawTile(native, D, 1, 0)
     drawTile(native, U, 1, 1)
     drawTile(native, U, 1, 2)
-    const sampled = sampleNative(toFrame(native), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
-    const bits = binarise(sampled, inkThreshold(sampled, wholeScreen()))
 
-    const grid = readTiles(bits, NATIVE_WIDTH, { x: 0, y: 0, width: 40, height: 20 })
+    const grid = readTiles(sampledBits(native), NATIVE_WIDTH, { x: 0, y: 0, width: 40, height: 20 })
 
     expect(grid.columns).toBe(5)
     expect(grid.rows).toBe(2)
@@ -232,17 +220,22 @@ describe('readTiles', () => {
 
 describe('matchGlyph', () => {
   const tile = mustParse(D)
+  const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
+  const relearned: Glyph = { char: 'D', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
 
-  it('matches an exact bitmap', () => {
-    expect(matchGlyph(tile, ALPHABET)?.char).toBe('D')
-  })
+  const badBits: Glyph = { char: 'X', bits: 'nonsense' }
 
-  it('refuses a bitmap nothing is close to', () => {
-    expect(matchGlyph(mustParse('ffffffffffffffff'), ALPHABET)).toBe(null)
-  })
-
-  it('refuses a tile one pixel off rather than reading the glyph beside it', () => {
-    expect(matchGlyph(flipBits(D, [[4, 2]]), ALPHABET)).toBe(null)
+  it.each<[string, Uint8Array, Glyph[], string | null]>([
+    ['matches an exact bitmap', tile, ALPHABET, 'D'],
+    ['refuses a bitmap nothing is close to', mustParse('ffffffffffffffff'), ALPHABET, null],
+    ['refuses a tile one pixel off rather than reading the glyph beside it', flipBits(D, [[4, 2]]), ALPHABET, null],
+    ["matches a bit-exact tile one bit away, as Gen 1's own o/c one-pixel gap requires", tile, [...ALPHABET, nearlyD], 'D'],
+    ['reads a re-learned bitmap as the character it was taught', mustParse(relearned.bits), [...ALPHABET, relearned], 'D'],
+    ['ignores a bitmap that is not 16 hex characters', tile, [badBits], null],
+    ['reads a bitmap written in upper case hex', tile, [{ char: 'D', bits: D.toUpperCase() }], 'D'],
+    ['skips a malformed bitmap beside a valid one rather than throwing', tile, [badBits, { char: 'D', bits: D }], 'D'],
+  ])('%s', (_name, bits, alphabet, expected) => {
+    expect(matchGlyph(bits, alphabet)?.char ?? null).toBe(expected)
   })
 
   // Regression: under a four-bit tolerance, an alphabet holding `P`/`e` but not these read
@@ -257,32 +250,6 @@ describe('matchGlyph', () => {
     for (const bits of Object.values(unlearned)) {
       expect(matchGlyph(mustParse(bits), known)).toBe(null)
     }
-  })
-
-  it('matches a bit-exact tile with a candidate one bit away, as Gen 1\'s own o/c one-pixel gap requires', () => {
-    const nearlyD: Glyph = { char: 'O', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
-
-    expect(matchGlyph(tile, [...ALPHABET, nearlyD])?.char).toBe('D')
-  })
-
-  it('reads a re-learned bitmap as the character it was taught', () => {
-    const relearned: Glyph = { char: 'D', bits: toGlyphBits(flipBits(D, [[0, 7]])) }
-
-    expect(matchGlyph(mustParse(relearned.bits), [...ALPHABET, relearned])?.char).toBe('D')
-  })
-
-  it('ignores a bitmap that is not 16 hex characters', () => {
-    expect(matchGlyph(tile, [{ char: 'X', bits: 'nonsense' }])).toBe(null)
-  })
-
-  it('reads a bitmap written in upper case hex', () => {
-    expect(matchGlyph(tile, [{ char: 'D', bits: D.toUpperCase() }])?.char).toBe('D')
-  })
-
-  it('skips a malformed bitmap beside a valid one rather than throwing', () => {
-    const alphabet: Glyph[] = [{ char: 'X', bits: 'nonsense' }, { char: 'D', bits: D }]
-
-    expect(matchGlyph(tile, alphabet)?.char).toBe('D')
   })
 
   it('hits after the cached index is replaced by an equal-valued but differently-identified array, as mergeGlyphs always returns', () => {
@@ -308,27 +275,24 @@ describe('forgetGlyph', () => {
     expect(forgotten.some((glyph) => glyph.bits === ARROW)).toBe(false)
   })
 
-  it('matches a bitmap written in upper case hex, the way matchGlyph does', () => {
-    expect(forgetGlyph([...ALPHABET], U.toUpperCase()).map((glyph) => glyph.char)).toEqual([
-      'D',
-      'ß',
-      '',
-    ])
+  it.each<[string, Glyph[], string, string[]]>([
+    ['matches a bitmap written in upper case hex, the way matchGlyph does', [...ALPHABET], U.toUpperCase(), ['D', 'ß', '']],
+    [
+      'removes every entry sharing a bitmap, so a hand-edited duplicate cannot survive',
+      [...ALPHABET, { char: 'O', bits: U.toUpperCase() }],
+      U,
+      ['D', 'ß', ''],
+    ],
+  ])('%s', (_name, alphabet, bits, expected) => {
+    expect(forgetGlyph(alphabet, bits).map((glyph) => glyph.char)).toEqual(expected)
   })
 
-  it('hands back the identical array reference when the bitmap is not in the alphabet, so the reducer costs it no undo step', () => {
+  it.each<[string, string]>([
+    ['the bitmap is not in the alphabet, so the reducer costs it no undo step', '0000000000000000'],
+    ['the bitmap is not 16 hex characters', 'nonsense'],
+  ])('hands back the identical array reference when %s', (_name, bits) => {
     const alphabet = [...ALPHABET]
-    expect(forgetGlyph(alphabet, '0000000000000000')).toBe(alphabet)
-  })
-
-  it('hands back the same array for a bitmap that is not 16 hex characters', () => {
-    const alphabet = [...ALPHABET]
-    expect(forgetGlyph(alphabet, 'nonsense')).toBe(alphabet)
-  })
-
-  it('removes every entry sharing a bitmap, so a hand-edited duplicate cannot survive', () => {
-    const doubled: Glyph[] = [...ALPHABET, { char: 'O', bits: U.toUpperCase() }]
-    expect(forgetGlyph(doubled, U).map((glyph) => glyph.char)).toEqual(['D', 'ß', ''])
+    expect(forgetGlyph(alphabet, bits)).toBe(alphabet)
   })
 })
 
@@ -404,52 +368,36 @@ describe('readTextBox', () => {
     expect(second).toEqual({ text: 'DUß', unknown: [], unreadable: 0 })
   })
 
-  it('reads a text rect flush against the screen\'s top-left corner', () => {
+  const LAST_COL = NATIVE_WIDTH / TILE_SIZE - 1
+  const LAST_ROW = NATIVE_HEIGHT / TILE_SIZE - 1
+
+  it.each<[string, [string, number, number][], Rect, string]>([
+    [
+      "flush against the screen's top-left corner",
+      [[D, 0, 0], [U, 1, 0]],
+      { x: 0, y: 0, width: 16, height: 8 },
+      'DU',
+    ],
+    [
+      "flush against the screen's bottom-right edge",
+      [[D, LAST_COL - 1, LAST_ROW], [U, LAST_COL, LAST_ROW]],
+      { x: NATIVE_WIDTH - 16, y: NATIVE_HEIGHT - 8, width: 16, height: 8 },
+      'DU',
+    ],
+    [
+      // 2nd tile off-image reads space, trimmed — not a throw.
+      'overhanging the screen edge as background',
+      [[D, LAST_COL, 0]],
+      { x: NATIVE_WIDTH - 8, y: 0, width: 16, height: 8 },
+      'D',
+    ],
+  ])('reads a text rect %s', (_name, tiles, textRect, text) => {
     const native = blankNative()
-    drawTile(native, D, 0, 0)
-    drawTile(native, U, 1, 0)
+    for (const [bits, column, row] of tiles) drawTile(native, bits, column, row)
 
-    const reading = readTextBox(
-      toFrame(native),
-      profile({ textRect: { x: 0, y: 0, width: 16, height: 8 } }),
-      ALPHABET,
-    )
+    const reading = readTextBox(toFrame(native), profile({ textRect }), ALPHABET)
 
-    expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
-  })
-
-  it('reads a text rect flush against the screen\'s bottom-right edge', () => {
-    const native = blankNative()
-    drawTile(native, D, NATIVE_WIDTH / TILE_SIZE - 2, NATIVE_HEIGHT / TILE_SIZE - 1)
-    drawTile(native, U, NATIVE_WIDTH / TILE_SIZE - 1, NATIVE_HEIGHT / TILE_SIZE - 1)
-
-    const reading = readTextBox(
-      toFrame(native),
-      profile({
-        textRect: {
-          x: NATIVE_WIDTH - 16,
-          y: NATIVE_HEIGHT - 8,
-          width: 16,
-          height: 8,
-        },
-      }),
-      ALPHABET,
-    )
-
-    expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
-  })
-
-  it('reads a text rect overhanging the screen edge as background, not a throw', () => {
-    const native = blankNative()
-    drawTile(native, D, NATIVE_WIDTH / TILE_SIZE - 1, 0)
-
-    const reading = readTextBox(
-      toFrame(native),
-      profile({ textRect: { x: NATIVE_WIDTH - 8, y: 0, width: 16, height: 8 } }),
-      ALPHABET,
-    )
-
-    expect(reading).toEqual({ text: 'D', unknown: [], unreadable: 0 }) // 2nd tile off-image reads space, trimmed
+    expect(reading).toEqual({ text, unknown: [], unreadable: 0 })
   })
 })
 
@@ -612,6 +560,13 @@ function screenRect(): { x: number; y: number; width: number; height: number } {
 
 function wholeScreen(): { x: number; y: number; width: number; height: number } {
   return { x: 0, y: 0, width: NATIVE_WIDTH, height: NATIVE_HEIGHT }
+}
+
+/** `sampleNative` then `binarise` over the whole screen — the idiom most tests here only need
+ * the bits from, not the intermediate sampled buffer. */
+function sampledBits(native: NativeImage): Uint8Array {
+  const sampled = sampleNative(toFrame(native), screenRect(), NATIVE_WIDTH, NATIVE_HEIGHT)
+  return binarise(sampled, inkThreshold(sampled, wholeScreen()))
 }
 
 /** 8 rows of `#` and `.`, as the 16 hex characters a `Glyph` stores. */

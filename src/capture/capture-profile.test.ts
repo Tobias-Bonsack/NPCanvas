@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Rect } from '../map/geometry.ts'
 import { asCaptureProfileId } from '../project/ids.ts'
 import type { CaptureProfile } from '../project/types.ts'
 import type { ScreenMapping } from './capture-profile.ts'
@@ -37,87 +38,69 @@ function profile(overrides: Partial<CaptureProfile> = {}): CaptureProfile {
 }
 
 describe('snapToTileGrid', () => {
-  it('grows a sloppy rectangle outwards to whole tiles', () => {
-    expect(snapToTileGrid({ x: 9, y: 97, width: 130, height: 30 }, NATIVE_BOUNDS)).toEqual({
-      x: 8,
-      y: 96,
-      width: 136,
-      height: 32,
-    })
-  })
-
-  it('leaves a rectangle already on the grid alone', () => {
-    const rect = { x: 8, y: 96, width: 144, height: 40 }
-    expect(snapToTileGrid(rect, NATIVE_BOUNDS)).toEqual(rect)
-  })
-
-  it('clamps a rectangle dragged off the top-left edge', () => {
-    expect(snapToTileGrid({ x: -30, y: -5, width: 50, height: 20 }, NATIVE_BOUNDS)).toEqual({
-      x: 0,
-      y: 0,
-      width: 24,
-      height: 16,
-    })
-  })
-
-  it('clamps a rectangle dragged past the bottom-right edge', () => {
-    expect(snapToTileGrid({ x: 140, y: 130, width: 90, height: 60 }, NATIVE_BOUNDS)).toEqual({
-      x: 136,
-      y: 128,
-      width: 24,
-      height: 16,
-    })
-  })
-
-  it('never returns less than one tile', () => {
-    expect(snapToTileGrid({ x: 20, y: 20, width: 0, height: 0 }, NATIVE_BOUNDS)).toEqual({
-      x: 16,
-      y: 16,
-      width: 8,
-      height: 8,
-    })
-  })
-
-  it('normalizes a rectangle dragged up and to the left', () => {
-    expect(snapToTileGrid({ x: 64, y: 64, width: -40, height: -40 }, NATIVE_BOUNDS)).toEqual({
-      x: 24,
-      y: 24,
-      width: 40,
-      height: 40,
-    })
-  })
-
-  it('drops a ragged last column when the native size is not a multiple of a tile', () => {
-    expect(snapToTileGrid({ x: 60, y: 0, width: 20, height: 10 }, { width: 68, height: 68 })).toEqual({
-      x: 56,
-      y: 0,
-      width: 8,
-      height: 16,
-    })
+  it.each<[string, Rect, { width: number; height: number }, Rect]>([
+    [
+      'grows a sloppy rectangle outwards to whole tiles',
+      { x: 9, y: 97, width: 130, height: 30 },
+      NATIVE_BOUNDS,
+      { x: 8, y: 96, width: 136, height: 32 },
+    ],
+    [
+      'leaves a rectangle already on the grid alone',
+      { x: 8, y: 96, width: 144, height: 40 },
+      NATIVE_BOUNDS,
+      { x: 8, y: 96, width: 144, height: 40 },
+    ],
+    [
+      'clamps a rectangle dragged off the top-left edge',
+      { x: -30, y: -5, width: 50, height: 20 },
+      NATIVE_BOUNDS,
+      { x: 0, y: 0, width: 24, height: 16 },
+    ],
+    [
+      'clamps a rectangle dragged past the bottom-right edge',
+      { x: 140, y: 130, width: 90, height: 60 },
+      NATIVE_BOUNDS,
+      { x: 136, y: 128, width: 24, height: 16 },
+    ],
+    [
+      'never returns less than one tile',
+      { x: 20, y: 20, width: 0, height: 0 },
+      NATIVE_BOUNDS,
+      { x: 16, y: 16, width: 8, height: 8 },
+    ],
+    [
+      'normalizes a rectangle dragged up and to the left',
+      { x: 64, y: 64, width: -40, height: -40 },
+      NATIVE_BOUNDS,
+      { x: 24, y: 24, width: 40, height: 40 },
+    ],
+    [
+      'drops a ragged last column when the native size is not a multiple of a tile',
+      { x: 60, y: 0, width: 20, height: 10 },
+      { width: 68, height: 68 },
+      { x: 56, y: 0, width: 8, height: 16 },
+    ],
+  ])('%s', (_name, rect, bounds, expected) => {
+    expect(snapToTileGrid(rect, bounds)).toEqual(expected)
   })
 })
 
 describe('snapInsideTileGrid', () => {
-  it('keeps only the whole tiles the rectangle covers', () => {
-    expect(snapInsideTileGrid({ x: 9, y: 39, width: 47, height: 24 })).toEqual({
-      x: 16,
-      y: 40,
-      width: 40,
-      height: 16,
-    })
-  })
-
-  it('leaves a rectangle that is already tile-aligned alone', () => {
-    expect(snapInsideTileGrid({ x: 8, y: 96, width: 144, height: 40 })).toEqual({
-      x: 8,
-      y: 96,
-      width: 144,
-      height: 40,
-    })
-  })
-
-  it('finds nothing when not one whole tile fits', () => {
-    expect(snapInsideTileGrid({ x: 3, y: 3, width: 9, height: 9 })).toBe(null)
+  it.each<[string, Rect, Rect | null]>([
+    [
+      'keeps only the whole tiles the rectangle covers',
+      { x: 9, y: 39, width: 47, height: 24 },
+      { x: 16, y: 40, width: 40, height: 16 },
+    ],
+    [
+      'leaves a rectangle that is already tile-aligned alone',
+      { x: 8, y: 96, width: 144, height: 40 },
+      { x: 8, y: 96, width: 144, height: 40 },
+    ],
+    ['finds nothing when not one whole tile fits', { x: 3, y: 3, width: 9, height: 9 }, null],
+  ])('%s', (_name, rect, expected) => {
+    expect(snapInsideTileGrid(rect)).toEqual(expected)
   })
 })
 
@@ -157,22 +140,19 @@ describe('profileApplies', () => {
 })
 
 describe('roundRect', () => {
-  it('lands a dragged rectangle on whole frame pixels', () => {
-    expect(roundRect({ x: 199.54, y: 80.46, width: 481.38, height: 431.72 })).toEqual({
-      x: 200,
-      y: 80,
-      width: 481,
-      height: 432,
-    })
-  })
-
-  it('normalizes before rounding', () => {
-    expect(roundRect({ x: 60.4, y: 60.4, width: -40.2, height: -40.2 })).toEqual({
-      x: 20,
-      y: 20,
-      width: 40,
-      height: 40,
-    })
+  it.each<[string, Rect, Rect]>([
+    [
+      'lands a dragged rectangle on whole frame pixels',
+      { x: 199.54, y: 80.46, width: 481.38, height: 431.72 },
+      { x: 200, y: 80, width: 481, height: 432 },
+    ],
+    [
+      'normalizes before rounding',
+      { x: 60.4, y: 60.4, width: -40.2, height: -40.2 },
+      { x: 20, y: 20, width: 40, height: 40 },
+    ],
+  ])('%s', (_name, rect, expected) => {
+    expect(roundRect(rect)).toEqual(expected)
   })
 })
 
