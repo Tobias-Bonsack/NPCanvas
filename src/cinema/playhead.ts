@@ -2,9 +2,9 @@ import { assertNever } from '../assert-never.ts'
 import type { Moment, Reel } from './reel.ts'
 
 export const PLAY_SPEEDS = [0.5, 1, 2, 4] as const
-export type PlaySpeed = (typeof PLAY_SPEEDS)[number]
+type PlaySpeed = (typeof PLAY_SPEEDS)[number]
 
-export type JumpTarget = 'start' | 'end' | 'session-next' | 'session-prev'
+type JumpTarget = 'start' | 'end' | 'session-next' | 'session-prev'
 
 /** Two cursors, not one — a line is its text and its pictures; see CLAUDE.md § "Cinema". */
 export type Playhead = { moment: number; frame: number; playing: boolean; speed: PlaySpeed }
