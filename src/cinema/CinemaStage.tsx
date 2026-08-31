@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { formatRoute } from '../app/route.ts'
 import { dialogueSnippet } from '../dialogue-row/dialogue-summary.ts'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { MediaView } from '../media/MediaView.tsx'
@@ -166,10 +165,6 @@ export function CinemaStage({
           ))}
         </ul>
       )}
-
-      <a className="button cinema-stage__canvas-link" href={formatRoute({ kind: 'canvas', dialogueId: dialogue.id, focus: null })}>
-        Open on canvas
-      </a>
 
       {closingArc !== undefined && <ActCard kind="seals" quest={closingArc.quest} />}
     </div>

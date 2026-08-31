@@ -48,12 +48,16 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-5);
+  display: flex;
+  justify-content: center;
 }
 
 .cinema-stage {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: var(--space-3);
+  width: 100%;
   max-width: 42rem;
 }
 
@@ -177,10 +181,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.cinema-stage__canvas-link {
-  align-self: flex-start;
 }
 
 .cinema-stage__act-card {
