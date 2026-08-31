@@ -1,11 +1,11 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useChartWidth } from '../insights/chart-width.ts'
 import { zoneLabel } from '../dialogue-row/dialogue-summary.ts'
 import { zoneHueStyle } from '../map/zone-style.ts'
 import { byId } from '../project/derived.ts'
 import type { ProjectFile } from '../project/types.ts'
-import type { BandLayout, BandNotch, BandSlot } from './band-layout.ts'
+import type { BandNotch, BandSlot } from './band-layout.ts'
 import { MAX_SLOT_HEIGHT, bandLayout } from './band-layout.ts'
 import type { Moment, Reel } from './reel.ts'
 
@@ -23,18 +23,14 @@ export function CinemaBand({
   reel,
   moment,
   onSeekMoment,
-  onLayout,
 }: {
   project: ProjectFile
   reel: Reel
   moment: Moment
   onSeekMoment: (index: number) => void
-  /** Hands the axis this band just computed up — see #160: a second layout call would drift. */
-  onLayout?: (layout: BandLayout, width: number) => void
 }): ReactElement {
   const [svgRef, width] = useChartWidth<SVGSVGElement>(DEFAULT_WIDTH)
   const layout = useMemo(() => bandLayout(reel, width), [reel, width])
-  useEffect(() => onLayout?.(layout, width), [layout, width, onLayout])
   const zonesById = byId(project.zones)
 
   const momentIndexById = useMemo(

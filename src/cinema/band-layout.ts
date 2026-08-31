@@ -15,7 +15,7 @@ export type BandNotch = {
   label: string
 }
 
-export type BandLayout = {
+type BandLayout = {
   slots: BandSlot[]
   notches: BandNotch[]
 }

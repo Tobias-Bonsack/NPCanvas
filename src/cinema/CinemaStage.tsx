@@ -8,8 +8,6 @@ import type { DialogueMedia, ProjectFile, Quest } from '../project/types.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
 import type { Moment, Reel } from './reel.ts'
-import { arcStateAt } from './quest-arcs.ts'
-import type { QuestArc } from './quest-arcs.ts'
 
 // A hard cut between two very different captures (the talk-animation's colour flash, most of
 // all) reads as flicker. Crossfading over this long softens it without hiding the cut itself.
@@ -47,7 +45,6 @@ export function CinemaStage({
   frame,
   project,
   reel,
-  arcs,
   announcement,
   onSeekMoment,
   onSeekFrame,
@@ -56,7 +53,6 @@ export function CinemaStage({
   frame: number
   project: ProjectFile
   reel: Reel
-  arcs: readonly QuestArc[]
   announcement: string
   onSeekMoment: (index: number) => void
   onSeekFrame: (frame: number) => void
@@ -87,18 +83,11 @@ export function CinemaStage({
   const frameCount = Math.max(1, dialogue.media.length)
   const frameLayers = useFrameLayers(media)
 
-  const openingArc = arcs.find((arc) => arc.firstMoment === moment.index)
-  const closingArc = arcs.find(
-    (arc) => arc.lastMoment === moment.index && arcStateAt(arc, moment.index) === 'done',
-  )
-
   return (
     <div className="cinema-stage">
       <p className="visually-hidden" aria-live="polite">
         {announcement}
       </p>
-
-      {openingArc !== undefined && <ActCard kind="opens" quest={openingArc.quest} />}
 
       <p className="cinema-stage__speaker">{dialogue.npcName}</p>
 
@@ -165,17 +154,6 @@ export function CinemaStage({
           ))}
         </ul>
       )}
-
-      {closingArc !== undefined && <ActCard kind="seals" quest={closingArc.quest} />}
-    </div>
-  )
-}
-
-function ActCard({ kind, quest }: { kind: 'opens' | 'seals'; quest: Quest }): ReactElement {
-  return (
-    <div className="cinema-stage__act-card" style={questAccentStyle(quest)} role="status">
-      <p className="micro-label">{kind === 'opens' ? 'Chapter opens' : 'Chapter seals'}</p>
-      <p className="cinema-stage__act-name">{questName(quest)}</p>
     </div>
   )
 }

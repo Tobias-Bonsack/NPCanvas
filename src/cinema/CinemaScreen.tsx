@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactElement } from 'react'
 import type { CinemaViewState } from '../app/view-state.ts'
 import type { Route } from '../app/route.ts'
 import { navigate } from '../app/route.ts'
 import type { ProjectFile } from '../project/types.ts'
-import type { BandLayout } from './band-layout.ts'
 import { CinemaBand } from './CinemaBand.tsx'
 import { CinemaLedger } from './CinemaLedger.tsx'
 import { CinemaMinimap } from './CinemaMinimap.tsx'
-import { CinemaQuestBars } from './CinemaQuestBars.tsx'
+import { CinemaQuestRail } from './CinemaQuestRail.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
 import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
@@ -39,10 +38,6 @@ export function CinemaScreen({
   // region below sees only the deliberate moves this screen and the stage originate.
   const [announcement, setAnnouncement] = useState('')
   const lastAction = useRef<PlayheadAction | null>(null)
-  const [bandAxis, setBandAxis] = useState<{ layout: BandLayout; width: number } | null>(null)
-  // Stable across renders — CinemaBand's effect depends on this identity, and an inline arrow
-  // here would otherwise re-fire every render this triggers, looping forever.
-  const onBandLayout = useCallback((layout: BandLayout, width: number) => setBandAxis({ layout, width }), [])
   function dispatch(action: PlayheadAction): void {
     lastAction.current = action
     rawDispatch(action)
@@ -145,6 +140,9 @@ export function CinemaScreen({
         </p>
       </header>
       <div className="cinema__body">
+        <aside className="cinema__quest-rail card">
+          <CinemaQuestRail arcs={arcs} momentIndex={playhead.moment} />
+        </aside>
         <div className="cinema__main">
           <div className="cinema__stage card">
             <CinemaStage
@@ -152,7 +150,6 @@ export function CinemaScreen({
               frame={playhead.frame}
               project={project}
               reel={reel}
-              arcs={arcs}
               announcement={announcement}
               onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
               onSeekFrame={(frame) => dispatch({ kind: 'frame-seek', frame })}
@@ -164,21 +161,8 @@ export function CinemaScreen({
               reel={reel}
               moment={moment}
               onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
-              onLayout={onBandLayout}
             />
           </div>
-          {arcs.length > 0 && bandAxis !== null && (
-            <div className="cinema__quest-bars card">
-              <CinemaQuestBars
-                arcs={arcs}
-                slots={bandAxis.layout.slots}
-                width={bandAxis.width}
-                reel={reel}
-                momentIndex={playhead.moment}
-                onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
-              />
-            </div>
-          )}
           <Transport playhead={playhead} dispatch={dispatch} />
         </div>
         <aside className="cinema__rail card">

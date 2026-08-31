@@ -183,26 +183,6 @@
   list-style: none;
 }
 
-.cinema-stage__act-card {
-  padding: var(--space-3);
-  border: 1px solid hsl(var(--quest-hue) var(--hue-chip-border));
-  border-radius: var(--radius-md);
-  background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
-  animation: cinema-act-card-enter var(--duration-base) ease-out;
-}
-
-@keyframes cinema-act-card-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-}
-
-.cinema-stage__act-name {
-  margin: 0;
-  font-weight: 600;
-}
-
 .cinema__transport {
   flex: none;
   align-self: center;
@@ -271,67 +251,31 @@
   font-size: 9px;
 }
 
-.cinema__quest-bars {
+.cinema__quest-rail {
   flex: none;
-  padding: var(--space-2) var(--space-3);
+  width: 12rem;
+  padding: var(--space-3);
 }
 
-.cinema-quest-bars {
-  display: block;
-  width: 100%;
-  height: auto;
+.cinema-quest-rail__empty {
+  font-size: var(--text-xs);
 }
 
-.cinema-quest-bars__row[data-state='unseen'] {
-  opacity: 0.4;
+.cinema-quest-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.cinema-quest-bars__bar {
-  cursor: pointer;
-}
-
-.cinema-quest-bars__bar:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.cinema-quest-bars__track {
-  fill: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
-}
-
-.cinema-quest-bars__fill {
-  fill: hsl(var(--quest-hue) 70% 55%);
-}
-
-.cinema-quest-bars__row[data-state='done'] .cinema-quest-bars__fill {
-  fill: hsl(var(--quest-hue) 60% 45%);
-}
-
-.cinema-quest-bars__seal {
-  fill: hsl(var(--quest-hue) 60% 45%);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.cinema-quest-bars__progress {
-  fill: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 9px;
-}
-
-.cinema-quest-bars__mark {
-  cursor: pointer;
-}
-
-.cinema-quest-bars__mark rect {
-  fill: var(--surface-1);
-  stroke: hsl(var(--quest-hue) 70% 30%);
-  stroke-width: 1;
-}
-
-.cinema-quest-bars__mark:focus-visible rect {
-  stroke: var(--accent);
-  stroke-width: 1.5;
+.cinema-quest-rail__item {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-1);
+  font-size: var(--text-xs);
+  color: hsl(var(--quest-hue) 60% 40%);
+  background: hsl(var(--quest-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }
 
 .cinema__rail {
