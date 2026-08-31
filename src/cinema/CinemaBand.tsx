@@ -64,14 +64,28 @@ export function CinemaBand({
   const zoneName = moment.zoneId === null ? null : (zonesById.get(moment.zoneId) ?? null)
   const valueText = `${moment.dialogue.npcName}${zoneName !== null ? `, ${zoneLabel(zoneName)}` : ''}`
 
+  // Nothing not yet played shows on the band — neither its slot nor a line to or from it.
+  const walkedSlots = layout.slots.filter((slot) => slot.moment.index <= moment.index)
+
   const currentSlot: BandSlot | undefined = layout.slots[moment.index]
-  const arcs = currentSlot === undefined
+  const outgoing = currentSlot === undefined
     ? []
     : moment.dialogue.references.flatMap((targetId) => {
         const targetIndex = momentIndexById.get(targetId)
-        const targetSlot = targetIndex === undefined ? undefined : layout.slots[targetIndex]
+        if (targetIndex === undefined || targetIndex > moment.index) return []
+        const targetSlot = layout.slots[targetIndex]
         return targetSlot === undefined ? [] : [{ from: currentSlot, to: targetSlot }]
       })
+  // The reverse of `dialogue.references` — a walked line that points at the current one gets its
+  // arc too, not just the current line's own outgoing references.
+  const incoming = currentSlot === undefined
+    ? []
+    : reel.moments.slice(0, moment.index).flatMap((candidate) => {
+        if (!candidate.dialogue.references.includes(moment.dialogue.id)) return []
+        const sourceSlot = layout.slots[candidate.index]
+        return sourceSlot === undefined ? [] : [{ from: sourceSlot, to: currentSlot }]
+      })
+  const arcs = [...outgoing, ...incoming]
 
   return (
     <svg
@@ -90,7 +104,7 @@ export function CinemaBand({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      {layout.slots.map((slot) => (
+      {walkedSlots.map((slot) => (
         <rect
           key={slot.moment.dialogue.id}
           className="cinema-band__slot"
