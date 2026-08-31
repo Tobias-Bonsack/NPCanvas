@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "deadcode": "node scripts/dead-exports.mjs",
     "comment-budget": "node scripts/comment-budget.mjs",
+    "line-budget": "node scripts/line-budget.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview"

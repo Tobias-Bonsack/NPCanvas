@@ -67,6 +67,7 @@ npm run preview        # serve dist/ locally; served under /NPCanvas/
 npm run lint           # eslint (flat config)
 npm run deadcode       # scripts/dead-exports.mjs: fails on an export nothing outside its file uses
 npm run comment-budget # scripts/comment-budget.mjs: CI tripwire on comment-line ratio per file
+npm run line-budget    # scripts/line-budget.mjs: CI tripwire on line count per src/ directory
 npm test                # vitest run (single pass)
 npm run test:watch     # vitest in watch mode
 ```
