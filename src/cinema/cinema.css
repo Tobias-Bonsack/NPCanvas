@@ -266,6 +266,10 @@
   fill: var(--accent);
 }
 
+.cinema-band__journey-slot[data-ahead] {
+  opacity: 0.35;
+}
+
 .cinema-band__arc {
   fill: none;
   stroke: var(--reference);
@@ -350,7 +354,15 @@
 .cinema__rail {
   flex: none;
   width: 16rem;
+  min-height: 0;
   padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+}
+
+.cinema__rail > [aria-hidden='true'] {
+  flex: 1;
+  min-height: 0;
 }
 
 .cinema-minimap {
@@ -385,4 +397,96 @@
 
 .cinema-minimap__current {
   fill: var(--trail);
+}
+
+.cinema-ledger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.cinema-ledger__stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.cinema-ledger__stat {
+  display: contents;
+}
+
+.cinema-ledger__stat dt {
+  color: var(--text-muted);
+}
+
+.cinema-ledger__stat dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.cinema-ledger__tags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cinema-ledger__tag {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  border-radius: var(--radius-1);
+  transition: background-color var(--duration-base) ease-out;
+}
+
+.cinema-ledger__tag[data-zero] {
+  opacity: 0.4;
+}
+
+.cinema-ledger__tag[data-current] {
+  background: var(--surface-2);
+}
+
+.cinema-ledger__tag-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-round);
+}
+
+.cinema-ledger__tag-count {
+  font-family: var(--font-mono);
+}
+
+.cinema-ledger__tag-bar {
+  grid-column: 1 / -1;
+  display: block;
+  height: 3px;
+  border-radius: var(--radius-round);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.cinema-ledger__tag-fill {
+  display: block;
+  height: 100%;
+}
+
+.cinema-ledger__tag[data-just-seen] {
+  animation: cinema-ledger-just-seen var(--duration-base) ease-out;
+}
+
+@keyframes cinema-ledger-just-seen {
+  from {
+    background: var(--accent);
+  }
 }

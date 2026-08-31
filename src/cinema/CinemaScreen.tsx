@@ -6,6 +6,7 @@ import { navigate } from '../app/route.ts'
 import type { ProjectFile } from '../project/types.ts'
 import type { BandLayout } from './band-layout.ts'
 import { CinemaBand } from './CinemaBand.tsx'
+import { CinemaLedger } from './CinemaLedger.tsx'
 import { CinemaMinimap } from './CinemaMinimap.tsx'
 import { CinemaQuestBars } from './CinemaQuestBars.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
@@ -14,6 +15,7 @@ import type { Playhead, PlayheadAction } from './playhead.ts'
 import { usePlayhead } from './use-playhead.ts'
 import { questArcs } from './quest-arcs.ts'
 import { buildReel } from './reel.ts'
+import { journeyTally } from './tally.ts'
 import './cinema.css'
 
 export function CinemaScreen({
@@ -131,6 +133,7 @@ export function CinemaScreen({
 
   const moment = reel.moments[playhead.moment]
   const frameCount = Math.max(1, moment.dialogue.media.length)
+  const tallies = journeyTally(reel, project.relevanceTags)
 
   return (
     <section className="cinema" tabIndex={0} onKeyDown={onKeyDown}>
@@ -161,6 +164,7 @@ export function CinemaScreen({
               project={project}
               reel={reel}
               moment={moment}
+              tallies={tallies}
               onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
               onLayout={onBandLayout}
             />
@@ -178,8 +182,11 @@ export function CinemaScreen({
             </div>
           )}
         </div>
-        <aside className="cinema__rail card" aria-hidden="true">
-          <CinemaMinimap project={project} momentIndex={playhead.moment} />
+        <aside className="cinema__rail card">
+          <div aria-hidden="true">
+            <CinemaMinimap project={project} momentIndex={playhead.moment} />
+          </div>
+          <CinemaLedger project={project} tallies={tallies} moment={moment} />
         </aside>
       </div>
     </section>
