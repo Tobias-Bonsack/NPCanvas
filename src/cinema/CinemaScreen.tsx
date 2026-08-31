@@ -6,6 +6,7 @@ import { navigate } from '../app/route.ts'
 import type { ProjectFile } from '../project/types.ts'
 import type { BandLayout } from './band-layout.ts'
 import { CinemaBand } from './CinemaBand.tsx'
+import { CinemaMinimap } from './CinemaMinimap.tsx'
 import { CinemaQuestBars } from './CinemaQuestBars.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
 import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
@@ -177,7 +178,9 @@ export function CinemaScreen({
             </div>
           )}
         </div>
-        <aside className="cinema__rail card" aria-hidden="true" />
+        <aside className="cinema__rail card" aria-hidden="true">
+          <CinemaMinimap project={project} momentIndex={playhead.moment} />
+        </aside>
       </div>
     </section>
   )

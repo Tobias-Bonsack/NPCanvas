@@ -347,8 +347,42 @@
   stroke-width: 1.5;
 }
 
-/* Empty for now — nothing yet needs the aside. */
 .cinema__rail {
   flex: none;
   width: 16rem;
+  padding: var(--space-3);
+}
+
+.cinema-minimap {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cinema-minimap__map {
+  fill: none;
+  stroke: var(--border);
+}
+
+.cinema-minimap__zone {
+  fill: hsl(var(--zone-hue) 55% 45% / 0.35);
+  stroke: hsl(var(--zone-hue) 60% 50%);
+}
+
+.cinema-minimap__trail-ahead {
+  fill: none;
+  stroke: var(--border);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cinema-minimap__trail-walked {
+  fill: none;
+  stroke: var(--trail);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cinema-minimap__current {
+  fill: var(--trail);
 }
