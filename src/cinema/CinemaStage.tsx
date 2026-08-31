@@ -59,6 +59,8 @@ export function CinemaStage({
 }): ReactElement {
   const { dialogue } = moment
   const relevanceTagsById = byId(project.relevanceTags)
+  const zonesById = byId(project.zones)
+  const zone = moment.zoneId === null ? undefined : zonesById.get(moment.zoneId)
 
   const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
   const quests = questIndex.get(dialogue.id) ?? []
@@ -89,7 +91,10 @@ export function CinemaStage({
         {announcement}
       </p>
 
-      <p className="cinema-stage__speaker">{dialogue.npcName}</p>
+      <p className="cinema-stage__speaker">
+        {dialogue.npcName}
+        {zone !== undefined && <span className="cinema-stage__zone hint-text"> — {zone.name}</span>}
+      </p>
 
       <div className="cinema-stage__frame">
         {frameLayers.map((layer, index) => (
