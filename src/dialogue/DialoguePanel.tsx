@@ -230,7 +230,7 @@ export function DialoguePanel({
             }
             keepPicture={{
               label: 'Keep the picture only',
-              onKeep: () => void write(captureState.profile, captureState.frame, null),
+              onKeep: () => void write(captureState.frame, null),
             }}
             onConfirm={(learned) =>
               onGlyphsLearned(

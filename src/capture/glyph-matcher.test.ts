@@ -300,7 +300,7 @@ describe('readTextBox', () => {
   it('transcribes a known alphabet exactly', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
+    const reading = readTextBox(toNative(native), profile(), ALPHABET)
 
     expect(reading).toEqual({ text: 'DU', unknown: [], unreadable: 0 })
   })
@@ -309,7 +309,7 @@ describe('readTextBox', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
     write(native, 1, 'ß', { ß: SHARP_S })
-    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
+    const reading = readTextBox(toNative(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('DU ß')
   })
@@ -317,7 +317,7 @@ describe('readTextBox', () => {
   it('reads an empty tile as a space and never asks about it', () => {
     const native = blankNative()
     write(native, 0, 'D U', { D, U })
-    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
+    const reading = readTextBox(toNative(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('D U')
     expect(reading.unknown).toEqual([])
@@ -327,7 +327,7 @@ describe('readTextBox', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
     drawTile(native, ARROW, 4 + TEXT_RECT.x / 8, 1 + TEXT_RECT.y / 8)
-    const reading = readTextBox(toFrame(native), profile(), ALPHABET)
+    const reading = readTextBox(toNative(native), profile(), ALPHABET)
 
     expect(reading.text).toBe('DU')
     expect(reading.unknown).toEqual([])
@@ -336,7 +336,7 @@ describe('readTextBox', () => {
   it('reports an unrecognised tile with its grid position instead of inventing a character', () => {
     const native = blankNative()
     write(native, 0, 'DUß', { D, U, ß: SHARP_S })
-    const reading = readTextBox(toFrame(native), profile(), [
+    const reading = readTextBox(toNative(native), profile(), [
       { char: 'D', bits: D },
       { char: 'U', bits: U },
     ])
@@ -348,7 +348,7 @@ describe('readTextBox', () => {
   it('asks about a repeated character once, and still counts both tiles for box-settle.ts to read', () => {
     const native = blankNative()
     write(native, 0, 'DUU', { D, U })
-    const reading = readTextBox(toFrame(native), profile(), [{ char: 'D', bits: D }])
+    const reading = readTextBox(toNative(native), profile(), [{ char: 'D', bits: D }])
 
     expect(reading.unknown.map((tile) => tile.column)).toEqual([1])
     expect(reading.unknown[0].bits).toBe(U)
@@ -358,7 +358,7 @@ describe('readTextBox', () => {
   it('transcribes completely once the unknown tiles have been learned', () => {
     const native = blankNative()
     write(native, 0, 'DUß', { D, U, ß: SHARP_S })
-    const frame = toFrame(native)
+    const frame = toNative(native)
     const partial: Glyph[] = [{ char: 'D', bits: D }, { char: 'U', bits: U }]
 
     const first = readTextBox(frame, profile(), partial)
@@ -395,7 +395,7 @@ describe('readTextBox', () => {
     const native = blankNative()
     for (const [bits, column, row] of tiles) drawTile(native, bits, column, row)
 
-    const reading = readTextBox(toFrame(native), profile({ textRect }), ALPHABET)
+    const reading = readTextBox(toNative(native), profile({ textRect }), ALPHABET)
 
     expect(reading).toEqual({ text, unknown: [], unreadable: 0 })
   })
@@ -405,7 +405,7 @@ describe('readTextBox caching', () => {
   it('returns the identical reading object for two identical frames', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const frame = toFrame(native)
+    const frame = toNative(native)
     const testProfile = profile({ id: asCaptureProfileId('cache-test-1') })
 
     const first = readTextBox(frame, testProfile, ALPHABET)
@@ -418,11 +418,11 @@ describe('readTextBox caching', () => {
     const testProfile = profile({ id: asCaptureProfileId('cache-test-2') })
     const before = blankNative()
     write(before, 0, 'DU', { D, U })
-    const first = readTextBox(toFrame(before), testProfile, ALPHABET)
+    const first = readTextBox(toNative(before), testProfile, ALPHABET)
 
     const after = blankNative()
     write(after, 0, 'UU', { U })
-    const second = readTextBox(toFrame(after), testProfile, ALPHABET)
+    const second = readTextBox(toNative(after), testProfile, ALPHABET)
 
     expect(second).not.toBe(first)
     expect(second.text).toBe('UU')
@@ -432,10 +432,10 @@ describe('readTextBox caching', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
     const testProfile = profile({ id: asCaptureProfileId('cache-test-3') })
-    const first = readTextBox(toFrame(native), testProfile, ALPHABET)
+    const first = readTextBox(toNative(native), testProfile, ALPHABET)
 
     drawTile(native, ARROW, 6, 3) // outside TEXT_RECT (tile columns 1..5, row 1)
-    const second = readTextBox(toFrame(native), testProfile, ALPHABET)
+    const second = readTextBox(toNative(native), testProfile, ALPHABET)
 
     expect(second).toBe(first)
   })
@@ -443,7 +443,7 @@ describe('readTextBox caching', () => {
   it('invalidates on a changed glyphs array even when the frame is identical', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const frame = toFrame(native)
+    const frame = toNative(native)
     const testProfile = profile({ id: asCaptureProfileId('cache-test-4') })
 
     const first = readTextBox(frame, testProfile, ALPHABET)
@@ -456,7 +456,7 @@ describe('readTextBox caching', () => {
   it('invalidates on a changed profile id even when the frame is identical', () => {
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const frame = toFrame(native)
+    const frame = toNative(native)
 
     const first = readTextBox(frame, profile({ id: asCaptureProfileId('cache-test-5a') }), ALPHABET)
     const second = readTextBox(frame, profile({ id: asCaptureProfileId('cache-test-5b') }), ALPHABET)
@@ -472,9 +472,9 @@ describe('readTextBox caching', () => {
     const nativeB = blankNative()
     write(nativeB, 0, 'U', { U })
 
-    const first = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
-    const second = readTextBox(toFrame(nativeB), testProfile, ALPHABET)
-    const third = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
+    const first = readTextBox(toNative(nativeA), testProfile, ALPHABET)
+    const second = readTextBox(toNative(nativeB), testProfile, ALPHABET)
+    const third = readTextBox(toNative(nativeA), testProfile, ALPHABET)
 
     expect(first.text).toBe('D')
     expect(second.text).toBe('U')
@@ -490,8 +490,8 @@ describe('readTextBox scratch reuse', () => {
     const nativeB = blankNative()
     write(nativeB, 0, 'UD', { D, U })
 
-    const first = readTextBox(toFrame(nativeA), testProfile, ALPHABET)
-    const second = readTextBox(toFrame(nativeB), testProfile, ALPHABET)
+    const first = readTextBox(toNative(nativeA), testProfile, ALPHABET)
+    const second = readTextBox(toNative(nativeB), testProfile, ALPHABET)
 
     expect(first.text).toBe('DU')
     expect(second.text).toBe('UD')
@@ -501,31 +501,29 @@ describe('readTextBox scratch reuse', () => {
     const testProfile = profile({ id: asCaptureProfileId('scratch-test-2') })
     const native = blankNative()
     write(native, 0, 'Dß', { D, ß: SHARP_S })
-    const first = readTextBox(toFrame(native), testProfile, [{ char: 'D', bits: D }])
+    const first = readTextBox(toNative(native), testProfile, [{ char: 'D', bits: D }])
     const firstUnknownBits = first.unknown[0]?.bits
 
     const other = blankNative()
     write(other, 0, 'UU', { U })
-    readTextBox(toFrame(other), testProfile, ALPHABET)
+    readTextBox(toNative(other), testProfile, ALPHABET)
 
     expect(first.unknown[0]?.bits).toBe(firstUnknownBits)
     expect(first.unknown[0]?.bits).toBe(SHARP_S)
   })
 
-  it('reallocates the scratch set for a profile with different native dimensions', () => {
+  it('reallocates the scratch set for a profile with a larger text rect', () => {
     const small = profile({ id: asCaptureProfileId('scratch-test-3a') })
     const native = blankNative()
     write(native, 0, 'DU', { D, U })
-    const smallReading = readTextBox(toFrame(native), small, ALPHABET)
-    expect(smallReading.text).toBe('DU')
+    expect(readTextBox(toNative(native), small, ALPHABET).text).toBe('DU')
 
     const large = profile({
       id: asCaptureProfileId('scratch-test-3b'),
-      nativeWidth: NATIVE_WIDTH * 2,
-      nativeHeight: NATIVE_HEIGHT * 2,
-      screenRect: { x: SCREEN_ORIGIN.x, y: SCREEN_ORIGIN.y, width: NATIVE_WIDTH * SCALE, height: NATIVE_HEIGHT * SCALE },
+      textRect: { x: 0, y: 0, width: NATIVE_WIDTH, height: NATIVE_HEIGHT },
     })
-    expect(() => readTextBox(toFrame(native), large, ALPHABET)).not.toThrow() // dimension mismatch reads as background, not a crash
+    // A text rect reaching past the screen reads as background, never a crash.
+    expect(() => readTextBox(toNative(native), large, ALPHABET)).not.toThrow()
   })
 })
 
@@ -611,6 +609,19 @@ function write(image: NativeImage, line: number, text: string, font: Record<stri
 }
 
 /** The native image nearest-neighbour upscaled by a non-integer factor, as an emulator window hands the capture API. */
+// What `grabNativeFrame` hands `readTextBox`: the console's own screen, nothing around it.
+function toNative(image: NativeImage): PixelBuffer {
+  const data = new Uint8ClampedArray(image.width * image.height * 4)
+  for (let index = 0; index < image.width * image.height; index++) {
+    const colour: Pixel = image.ink[index] === 1 ? INK : FIELD
+    data[index * 4] = colour[0]
+    data[index * 4 + 1] = colour[1]
+    data[index * 4 + 2] = colour[2]
+    data[index * 4 + 3] = 255
+  }
+  return { width: image.width, height: image.height, data }
+}
+
 function toFrame(image: NativeImage): PixelBuffer {
   const data = new Uint8ClampedArray(FRAME_WIDTH * FRAME_HEIGHT * 4)
   for (let y = 0; y < FRAME_HEIGHT; y++) {

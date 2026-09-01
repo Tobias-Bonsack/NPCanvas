@@ -1,4 +1,4 @@
-import type { CaptureProfile, Glyph, Point } from '../project/types.ts'
+import type { CaptureProfile, Glyph } from '../project/types.ts'
 import type { ScreenMeasurement } from './auto-calibrate.ts'
 import { measureCalibration } from './auto-calibrate.ts'
 import { screenPng } from './capture-to-dialogue.ts'
@@ -110,59 +110,44 @@ async function requestFromWorker<T>(
 
 type WorkerRequestPayload = { message: unknown; transfer: Transferable[] }
 
-// `frame` stays on the main thread either way; only a bitmap derived from it is transferred, so
-// the worker never needs the canonical pixels handed back.
+// `native` is sent as a structured clone rather than transferred: it is 90 KB, and the caller
+// still holds the only copy of that frame for the held queue and the picture.
 export async function readBox(
-  frame: ImageData,
-  origin: Point,
+  native: ImageData,
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
 ): Promise<TextBoxReading> {
   const active = readWorker()
-  if (active === null) return readTextBox(frame, profile, glyphs, origin)
-
-  let bitmap: ImageBitmap
-  try {
-    bitmap = await createImageBitmap(frame)
-  } catch {
-    return readTextBox(frame, profile, glyphs, origin)
-  }
+  if (active === null) return readTextBox(native, profile, glyphs)
 
   const changed = glyphs !== lastSentGlyphs
   if (changed) lastSentGlyphs = glyphs
   try {
     return await requestFromWorker(active, pendingReads, (sequence) => ({
-      message: { kind: 'read', sequence, bitmap, origin, profile, glyphs: changed ? glyphs : undefined },
-      transfer: [bitmap],
+      message: { kind: 'read', sequence, native, profile, glyphs: changed ? glyphs : undefined },
+      transfer: [],
     }))
   } catch {
     // Either way, read the frame already in hand rather than losing the box. A dead worker also
     // resets `lastSentGlyphs`, since the next worker starts with no alphabet of its own yet.
     if (workerUnavailable) lastSentGlyphs = null
-    return readTextBox(frame, profile, glyphs, origin)
+    return readTextBox(native, profile, glyphs)
   }
 }
 
-export async function encodeBox(frame: ImageData, origin: Point, profile: CaptureProfile): Promise<File> {
+export async function encodeBox(native: ImageData): Promise<File> {
   const active = readWorker()
-  if (active === null) return screenPng(frame, profile, origin)
-
-  let bitmap: ImageBitmap
-  try {
-    bitmap = await createImageBitmap(frame)
-  } catch {
-    return screenPng(frame, profile, origin)
-  }
+  if (active === null) return screenPng(native)
 
   try {
     const blob = await requestFromWorker(active, pendingEncodes, (sequence) => ({
-      message: { kind: 'encode', sequence, bitmap, origin, profile },
-      transfer: [bitmap],
+      message: { kind: 'encode', sequence, native },
+      transfer: [],
     }))
     // The name is a label only — `importDialogueMedia` derives the real one in `media/`.
     return new File([blob], 'capture.png', { type: 'image/png' })
   } catch {
-    return screenPng(frame, profile, origin)
+    return screenPng(native)
   }
 }
 

@@ -47,7 +47,7 @@ export type CaptureApi = {
   // An unreadable tile stops the chain here, before anything is written.
   capture: () => Promise<void>
   // transcript === null is a box that couldn't be read whole: the picture is kept, the line isn't.
-  write: (target: CaptureProfile, frame: ImageData, transcript: string | null) => Promise<void>
+  write: (frame: ImageData, transcript: string | null) => Promise<void>
   onGlyphsLearned: (
     target: CaptureProfile,
     alphabet: readonly Glyph[],
@@ -101,23 +101,19 @@ export function useCapture(
         })
         return
       }
-      await write(profile, frame, reading.text)
+      await write(frame, reading.text)
     } catch (error) {
       setCaptureState({ kind: 'failed', message: describeError(error) })
     }
   }
 
-  async function write(
-    target: CaptureProfile,
-    frame: ImageData,
-    transcript: string | null,
-  ): Promise<void> {
+  async function write(frame: ImageData, transcript: string | null): Promise<void> {
     setCaptureState({ kind: 'capturing' })
     try {
       // The document as it stands now, not as this render saw it — a learner can stand open
       // for minutes while the panel keeps taking edits.
       const into = currentDialogue(dialogueId) ?? dialogue
-      const result = await captureIntoDialogue(into, target, frame, transcript)
+      const result = await captureIntoDialogue(into, frame, transcript)
       setCaptureState({ kind: 'done', message: describeCapture(result) })
     } catch (error) {
       setCaptureState({ kind: 'failed', message: describeError(error) })
@@ -145,7 +141,7 @@ export function useCapture(
       })
       return
     }
-    void write(target, frame, reading.text)
+    void write(frame, reading.text)
   }
 
   // capture is a new function every render; the ref keeps the window binding stable.

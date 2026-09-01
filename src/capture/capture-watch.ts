@@ -10,14 +10,13 @@ import type {
   Glyph,
   PendingCapture,
   PendingCaptureId,
-  Point,
 } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
 import { isTextFieldFocused } from '../text-field-focus.ts'
 import { activeCaptureProfile } from './active-profile.ts'
 import type { SettleState } from './box-settle.ts'
 import { NOTHING_SEEN, boxReadingFrom, nextSettle } from './box-settle.ts'
-import { getCaptureSource, grabFrame } from './capture-session.ts'
+import { getCaptureSource, grabNativeFrame } from './capture-session.ts'
 import { appendOutcome, captureBlocker } from './capture-to-dialogue.ts'
 import { encodeBox, readBox } from './capture-worker.ts'
 import type { UnknownTile } from './glyph-matcher.ts'
@@ -45,7 +44,7 @@ export type WatchState =
 
 // Carries `captureId` because a held frame belongs to whichever capture was being recorded when it
 // was read, never to whatever the watcher is recording into when it is later replayed.
-type HeldFrame = { captureId: PendingCaptureId; frame: ImageData; origin: Point }
+type HeldFrame = { captureId: PendingCaptureId; frame: ImageData }
 
 type HeldState = {
   waiting: number
@@ -61,8 +60,7 @@ type HeldReplay = {
   failures: readonly string[]
 }
 
-// Matches `frameRate: { ideal: 10 }` in `connectCaptureSource` — polling faster would just re-read
-// the same source frame.
+// Matches `frameRate: { ideal: 10 }` in `connectCaptureSource`; faster re-reads the same frame.
 const POLL_MS = 100
 
 // Three ticks at 100ms; `autosave-decision.ts`'s "every 600 ms" settle-cadence note assumes this value.
@@ -266,11 +264,8 @@ async function tick(mine: number): Promise<void> {
   }
 
   let frame: ImageData
-  let origin: Point
   try {
-    const grabbed = await grabFrame(profile.screenRect)
-    frame = grabbed.pixels
-    origin = grabbed.origin
+    frame = await grabNativeFrame(profile)
   } catch (error) {
     // A grab can wait seconds for a frame that never comes; a deliberate Stop that bumped the
     // session must not be overwritten by its rejection.
@@ -284,9 +279,8 @@ async function tick(mine: number): Promise<void> {
   failures = 0
 
   const glyphs = app.project.glyphs
-  const reading = await readBox(frame, origin, profile, glyphs)
-  // A worker round trip is an await like any other; a reply arriving after a stop/start/profile
-  // switch bumped the session must not be acted on.
+  const reading = await readBox(frame, profile, glyphs)
+  // A reply arriving after a stop/start/profile switch bumped the session must not be acted on.
   if (mine !== session) return
   const step = nextSettle(settle, boxReadingFrom(reading), SETTLE_TICKS)
   settle = step.state
@@ -300,23 +294,18 @@ async function tick(mine: number): Promise<void> {
   // than writing out of order. A capture not yet open has nowhere for the frame to wait, so the
   // box is simply not captured.
   if (currentCaptureId !== null && (settled.kind === 'held' || holdsFrameFor(currentCaptureId))) {
-    hold(currentCaptureId, frame, origin)
+    hold(currentCaptureId, frame)
     return
   }
   if (settled.kind === 'held') return
 
-  writeIntoQueue(profile, frame, origin, settled.text)
+  writeIntoQueue(frame, settled.text)
 }
 
 // Synchronous, and deliberately not awaited by the tick: resolving *which* capture this box
 // belongs to must happen now, before the next tick reads `currentCaptureId`, but the encode and
 // disk write do not — queuing them lets `schedule` arm the next poll immediately.
-function writeIntoQueue(
-  profile: CaptureProfile,
-  frame: ImageData,
-  origin: Point,
-  transcript: string,
-): void {
+function writeIntoQueue(frame: ImageData, transcript: string): void {
   if (currentCaptureId !== null && currentPendingCapture(currentCaptureId) === null) {
     // Placed or deleted since the last tick. Not 'gone' — the conversation itself is not gone,
     // only the capture that was holding it; falling through starts a fresh one for this box.
@@ -328,7 +317,7 @@ function writeIntoQueue(
   // `openCapture` only ever leaves this null with no project open, which the tick already refused.
   if (captureId === null) return
 
-  queueWrite(captureId, profile, frame, origin, transcript)
+  queueWrite(captureId, frame, transcript)
 }
 
 // One FIFO chain per capture, run in order — `appendWithoutOverlap` joins a scrolled box to the
@@ -337,17 +326,11 @@ function writeIntoQueue(
 const writeQueues = new Map<PendingCaptureId, Promise<void>>()
 
 // A failure here doesn't break the chain for boxes queued after it.
-function queueWrite(
-  captureId: PendingCaptureId,
-  profile: CaptureProfile,
-  frame: ImageData,
-  origin: Point,
-  transcript: string,
-): void {
+function queueWrite(captureId: PendingCaptureId, frame: ImageData, transcript: string): void {
   const previous = writeQueues.get(captureId) ?? Promise.resolve()
   const next = previous.then(async () => {
     try {
-      switch (await writeIntoCapture(captureId, profile, frame, origin, transcript)) {
+      switch (await writeIntoCapture(captureId, frame, transcript)) {
         case 'appended':
           bump('appended', transcript)
           break
@@ -401,16 +384,14 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
 // caller allowed to judge a frame by outcome rather than by a deliberate press.
 async function writeIntoCapture(
   captureId: PendingCaptureId,
-  profile: CaptureProfile,
   frame: ImageData,
-  origin: Point,
   transcript: string,
 ): Promise<'appended' | 'unchanged' | 'gone'> {
   const target = currentPendingCapture(captureId)
   if (target === null) return 'gone'
   if (appendOutcome(target.text, transcript).text !== 'appended') return 'unchanged'
 
-  const { media } = await importDialogueMedia(captureId, await encodeBox(frame, origin, profile))
+  const { media } = await importDialogueMedia(captureId, await encodeBox(frame))
   dispatch({ kind: 'pending-capture/media-added', captureId, media })
 
   // Re-reads the document: encoding and writing the picture takes long enough for the capture to
@@ -480,8 +461,8 @@ function bump(counter: 'repeated' | 'dropped' | 'appended' | 'conversations', la
   })
 }
 
-function hold(captureId: PendingCaptureId, frame: ImageData, origin: Point): void {
-  heldFrames.push({ captureId, frame, origin })
+function hold(captureId: PendingCaptureId, frame: ImageData): void {
+  heldFrames.push({ captureId, frame })
   let dropped = held.dropped
   while (heldFrames.length > HELD_LIMIT) {
     heldFrames.shift()
@@ -500,7 +481,7 @@ export function heldUnknownTiles(profile: CaptureProfile, glyphs: readonly Glyph
   const tiles: UnknownTile[] = []
   const seen = new Set<string>()
   for (const entry of heldFrames) {
-    for (const tile of readTextBox(entry.frame, profile, glyphs, entry.origin).unknown) {
+    for (const tile of readTextBox(entry.frame, profile, glyphs).unknown) {
       if (seen.has(tile.bits)) continue
       seen.add(tile.bits)
       tiles.push(tile)
@@ -555,14 +536,14 @@ async function replayInto(
       replay.gone += 1
       continue
     }
-    const reading = readTextBox(entry.frame, profile, glyphs, entry.origin)
+    const reading = readTextBox(entry.frame, profile, glyphs)
     if (reading.unknown.length > 0 || blocked.has(entry.captureId)) {
       blocked.add(entry.captureId)
       replay.stillHeld += 1
       continue
     }
     try {
-      const written = await writeIntoCapture(entry.captureId, profile, entry.frame, entry.origin, reading.text)
+      const written = await writeIntoCapture(entry.captureId, entry.frame, reading.text)
       release(entry)
       if (written === 'appended') {
         replay.appended += 1

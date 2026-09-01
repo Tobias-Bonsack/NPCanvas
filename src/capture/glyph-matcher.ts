@@ -213,24 +213,17 @@ function glyphIndex(glyphs: readonly Glyph[]): ReadonlyMap<string, Glyph> {
 
 let cachedGlyphIndex: { glyphs: readonly Glyph[]; byBits: ReadonlyMap<string, Glyph> } | null = null
 
-// `glyphs` is a separate argument because a profile doesn't carry one — the font is the console's,
-// shared by every profile aimed at it. Lines join with a single space; Pokémon Gen 1 breaks
-// between words and never inside one, so a line end is always a word boundary.
+// `native` is the screen at its own resolution — `grabNativeFrame` hands the browser the downscale
+// (`capture-session.ts`), so nothing here ever sees the upscaled frame. `glyphs` is a separate
+// argument because a profile doesn't carry one — the font is the console's, shared by every profile
+// aimed at it. Lines join with a single space; Pokémon Gen 1 breaks between words and never inside
+// one, so a line end is always a word boundary.
 export function readTextBox(
-  frame: PixelBuffer,
+  native: PixelBuffer,
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
-  origin: Point = ORIGIN_ZERO,
 ): TextBoxReading {
   const scratch = scratchFor(profile)
-  const native = sampleNative(
-    frame,
-    profile.screenRect,
-    profile.nativeWidth,
-    profile.nativeHeight,
-    origin,
-    scratch.native,
-  )
   const region = regionBytes(native, profile.textRect, scratch.region)
 
   if (
@@ -251,11 +244,8 @@ export function readTextBox(
 // Reused across ticks instead of allocated fresh; reallocated whole only on a profile switch,
 // never tick to tick.
 type ReadScratch = {
-  nativeWidth: number
-  nativeHeight: number
   regionWidth: number
   regionHeight: number
-  native: Uint8ClampedArray
   region: Uint8ClampedArray
   bits: Uint8Array
   grid: TileGrid
@@ -264,8 +254,6 @@ type ReadScratch = {
 let scratch: ReadScratch | null = null
 
 function scratchFor(profile: CaptureProfile): ReadScratch {
-  const nativeWidth = profile.nativeWidth
-  const nativeHeight = profile.nativeHeight
   const regionWidth = Math.round(profile.textRect.width)
   const regionHeight = Math.round(profile.textRect.height)
   const columns = Math.floor(profile.textRect.width / TILE_SIZE)
@@ -273,8 +261,6 @@ function scratchFor(profile: CaptureProfile): ReadScratch {
 
   if (
     scratch !== null &&
-    scratch.nativeWidth === nativeWidth &&
-    scratch.nativeHeight === nativeHeight &&
     scratch.regionWidth === regionWidth &&
     scratch.regionHeight === regionHeight &&
     scratch.grid.columns === columns &&
@@ -284,11 +270,8 @@ function scratchFor(profile: CaptureProfile): ReadScratch {
   }
 
   scratch = {
-    nativeWidth,
-    nativeHeight,
     regionWidth,
     regionHeight,
-    native: new Uint8ClampedArray(nativeWidth * nativeHeight * BYTES_PER_PIXEL),
     region: new Uint8ClampedArray(regionWidth * regionHeight * BYTES_PER_PIXEL),
     bits: new Uint8Array(regionWidth * regionHeight),
     grid: { columns, rows, cells: new Uint8Array(columns * rows * TILE_SIZE) },

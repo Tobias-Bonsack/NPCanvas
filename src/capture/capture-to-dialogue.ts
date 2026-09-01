@@ -2,13 +2,13 @@ import { assertNever } from '../assert-never.ts'
 import { discardMediaFile } from '../media/discard-media.ts'
 import { importDialogueMedia } from '../media/import-media.ts'
 import { currentDialogue, dispatch } from '../project/store.ts'
-import type { CaptureProfile, Dialogue, DialogueMedia, Glyph, Point } from '../project/types.ts'
+import type { CaptureProfile, Dialogue, DialogueMedia, Glyph } from '../project/types.ts'
 import { appendWithoutOverlap } from './append-overlap.ts'
 import { profileApplies } from './capture-profile.ts'
 import type { CaptureSource } from './capture-session.ts'
-import { grabFrame } from './capture-session.ts'
+import { grabNativeFrame } from './capture-session.ts'
 import type { PixelBuffer, TextBoxReading } from './glyph-matcher.ts'
-import { readTextBox, sampleNative } from './glyph-matcher.ts'
+import { readTextBox } from './glyph-matcher.ts'
 
 // The picture is the **whole console screen**, text box included, even though the transcript
 // already carries the words: the transcript is derived, and the frame it came from is the record,
@@ -63,26 +63,20 @@ export function captureBlocker(
   return null
 }
 
-// Grabs the **whole** frame rather than cropping to `profile.screenRect`: this frame is handed
-// back to `DialoguePanel`/`CaptureBar`, which re-read it after the alphabet grows, outside this
-// crop's own accounting. Only `capture-watch.ts`'s tick, which owns every frame end to end, crops.
+// The frame is handed back to `DialoguePanel`/`CaptureBar`, which re-read it after the alphabet
+// grows — always against the profile it was grabbed for, since a native frame is that profile's
+// screen and nothing else's.
 export async function readLiveBox(
   profile: CaptureProfile,
   glyphs: readonly Glyph[],
 ): Promise<BoxRead> {
-  const { pixels } = await grabFrame()
-  return { frame: pixels, reading: readTextBox(pixels, profile, glyphs) }
+  const frame = await grabNativeFrame(profile)
+  return { frame, reading: readTextBox(frame, profile, glyphs) }
 }
 
 // Native resolution, not the frame's — the emulator's upscaling is not information, and a
 // 160x144 PNG of a two-colour screen is a couple of kilobytes per line logged.
-export async function screenPng(
-  frame: PixelBuffer,
-  profile: CaptureProfile,
-  origin?: Point,
-): Promise<File> {
-  const native = sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
-
+export async function screenPng(native: PixelBuffer): Promise<File> {
   const canvas = document.createElement('canvas')
   canvas.width = native.width
   canvas.height = native.height
@@ -106,11 +100,10 @@ export async function screenPng(
 // `spokenAt` is deliberately untouched: it records when heard, not when captured.
 export async function captureIntoDialogue(
   dialogue: Dialogue,
-  profile: CaptureProfile,
   frame: PixelBuffer,
   transcript: string | null,
 ): Promise<CaptureResult> {
-  const { media } = await importDialogueMedia(dialogue.id, await screenPng(frame, profile))
+  const { media } = await importDialogueMedia(dialogue.id, await screenPng(frame))
   dispatch({ kind: 'dialogue/media-added', dialogueId: dialogue.id, media })
 
   // Re-reads the document rather than using the argument: deleting the pin mid-encode would

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
-import type { Point, PixelRect } from '../project/types.ts'
 import { describeError } from '../storage/project-directory.ts'
+import type { ScreenMapping } from './capture-profile.ts'
 
 // `requesting` is its own state rather than a boolean beside `idle` — the picker is modal and
 // takes seconds, and a Connect button that stays pressable during it would race a second call.
@@ -48,7 +48,7 @@ export function useCaptureSource(): CaptureSource {
 }
 
 // Must be called from a click handler — `getDisplayMedia` requires transient user activation, the
-// same rule as `requestPermission`. The picker runs **once**; every later `grabFrame` is a
+// same rule as `requestPermission`. The picker runs **once**; every later `grabNativeFrame` is a
 // `drawImage` with no prompt.
 export async function connectCaptureSource(): Promise<ConnectOutcome> {
   if (state.kind === 'requesting') return 'cancelled'
@@ -93,28 +93,53 @@ export function disconnectCaptureSource(): void {
   setState(IDLE)
 }
 
-type FrameCrop = {
-  pixels: ImageData
-  origin: Point
+// The screen at its own resolution, never the frame it was upscaled onto — 160x144x4 is 90 KB
+// where the crop is 17 MB, and nothing downstream ever wanted the upscale. Measured on a
+// 3840x2088 source: 0.7 ms here against 16 ms for reading the crop back and sampling it in JS,
+// bit-identical output either way.
+export async function grabNativeFrame(mapping: ScreenMapping): Promise<ImageData> {
+  const element = await readyVideo()
+  const { nativeWidth, nativeHeight } = mapping
+  const rect = mapping.screenRect
+  const context = nativeContext(nativeWidth, nativeHeight)
+
+  const bitmap = await resized(element, rect, nativeWidth, nativeHeight)
+  if (bitmap === null) {
+    // Same nearest-neighbour sampling, without the resize options — measured byte-identical, and
+    // the only path left if a browser rejects them.
+    context.imageSmoothingEnabled = false
+    context.drawImage(element, rect.x, rect.y, rect.width, rect.height, 0, 0, nativeWidth, nativeHeight)
+  } else {
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close()
+  }
+  return context.getImageData(0, 0, nativeWidth, nativeHeight)
 }
 
-// `createImageBitmap(video, sx, sy, sw, sh)` cuts the frame where the browser can do it, so the
-// whole surface is never drawn to a canvas.
-export async function grabFrame(rect?: PixelRect): Promise<FrameCrop> {
-  const { element, crop } = await readyCrop(rect)
-  const bitmap = await createImageBitmap(element, crop.x, crop.y, crop.width, crop.height)
+// Deliberately not clamped to the frame: a screen rect reaching past the edge must keep its scale,
+// and the browser fills what falls outside with transparent black. Clamping would stretch the
+// screen onto the native grid and every glyph would miss.
+async function resized(
+  element: HTMLVideoElement,
+  rect: { x: number; y: number; width: number; height: number },
+  width: number,
+  height: number,
+): Promise<ImageBitmap | null> {
   try {
-    const canvas = new OffscreenCanvas(crop.width, crop.height)
-    const context = canvas.getContext('2d', { willReadFrequently: true })
-    if (context === null) throw new Error('This browser provided no 2D canvas context.')
-    context.drawImage(bitmap, 0, 0)
-    return { pixels: context.getImageData(0, 0, crop.width, crop.height), origin: { x: crop.x, y: crop.y } }
-  } finally {
-    bitmap.close()
+    return await createImageBitmap(
+      element,
+      Math.round(rect.x),
+      Math.round(rect.y),
+      Math.round(rect.width),
+      Math.round(rect.height),
+      { resizeWidth: width, resizeHeight: height, resizeQuality: 'pixelated' },
+    )
+  } catch {
+    return null
   }
 }
 
-async function readyCrop(rect: PixelRect | undefined): Promise<{ element: HTMLVideoElement; crop: PixelRect }> {
+async function readyVideo(): Promise<HTMLVideoElement> {
   const element = video
   if (state.kind !== 'live' || element === null) {
     throw new Error('Connect a screen or window before capturing a frame.')
@@ -123,23 +148,24 @@ async function readyCrop(rect: PixelRect | undefined): Promise<{ element: HTMLVi
   if (element.readyState < element.HAVE_CURRENT_DATA) {
     await waitForVideo(element, 'loadeddata', FRAME_TIMEOUT_MS, 'The capture source stopped sending frames.')
   }
-
-  const frameWidth = element.videoWidth
-  const frameHeight = element.videoHeight
-  if (frameWidth === 0 || frameHeight === 0) throw new Error('The capture source has no frame yet.')
-
-  const crop = rect === undefined ? { x: 0, y: 0, width: frameWidth, height: frameHeight } : growAndClamp(rect, frameWidth, frameHeight)
-  return { element, crop }
+  if (element.videoWidth === 0 || element.videoHeight === 0) {
+    throw new Error('The capture source has no frame yet.')
+  }
+  return element
 }
 
-// Grown by one pixel per side so nearest-neighbour sampling from a native pixel's centre near the
-// rectangle's own edge cannot fall outside the crop.
-function growAndClamp(rect: PixelRect, frameWidth: number, frameHeight: number): PixelRect {
-  const left = Math.max(0, Math.floor(rect.x) - 1)
-  const top = Math.max(0, Math.floor(rect.y) - 1)
-  const right = Math.min(frameWidth, Math.ceil(rect.x + rect.width) + 1)
-  const bottom = Math.min(frameHeight, Math.ceil(rect.y + rect.height) + 1)
-  return { x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) }
+let nativeCanvas: OffscreenCanvas | null = null
+
+function nativeContext(width: number, height: number): OffscreenCanvasRenderingContext2D {
+  nativeCanvas ??= new OffscreenCanvas(width, height)
+  if (nativeCanvas.width !== width || nativeCanvas.height !== height) {
+    nativeCanvas.width = width
+    nativeCanvas.height = height
+  }
+  // Read straight back with `getImageData` every tick — the pattern this flag exists for.
+  const context = nativeCanvas.getContext('2d', { willReadFrequently: true })
+  if (context === null) throw new Error('This browser provided no 2D canvas context.')
+  return context
 }
 
 // Calibration is minutes of dragging rectangles over a picture while the live source keeps

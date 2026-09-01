@@ -56,26 +56,22 @@ console.log(`profiles    ${profiles.map((p) => `${p.name} (text ${p.textRect.wid
 console.log(`node        ${process.version} on ${process.platform}`)
 console.log('')
 
-// The stored media *is* the native image, so a profile that maps it onto itself makes
-// `sampleNative` an identity copy and every later stage see exactly the bytes the worker saw.
-function nativeProfile(profile) {
-  return { ...profile, screenRect: { x: 0, y: 0, width: profile.nativeWidth, height: profile.nativeHeight } }
-}
+// The stored media *is* what `grabNativeFrame` now hands the reader, so the corpus feeds
+// `readTextBox` directly - no sampling stage in between, exactly as in the app.
 
 // ---------------------------------------------------------------- A. the 10 Hz read
 
 section('A. readTextBox - the watcher tick')
 
 for (const profile of profiles) {
-  const local = nativeProfile(profile)
   // Distinct frames every iteration: this is the cache-miss cost, what a *new* box costs.
   const cold = measure(rounds, corpus.length, () => {
-    for (const frame of corpus) readTextBox(frame, local, glyphs)
+    for (const frame of corpus) readTextBox(frame, profile, glyphs)
   })
   // What the same box costs on every tick after the first - the watcher's actual steady state.
   const still = corpus[Math.floor(corpus.length / 2)]
   const warm = measure(rounds, corpus.length, () => {
-    for (let i = 0; i < corpus.length; i++) readTextBox(still, local, glyphs)
+    for (let i = 0; i < corpus.length; i++) readTextBox(still, profile, glyphs)
   })
   row(`${profile.name} - new box (cache miss)`, cold)
   row(`${profile.name} - unchanged box (cache hit)`, warm)
@@ -86,8 +82,9 @@ for (const profile of profiles) {
 section('B. stage breakdown - profile ' + profiles[0].name)
 
 {
-  const profile = nativeProfile(profiles[0])
+  const profile = profiles[0]
   const { textRect, nativeWidth, nativeHeight } = profile
+  const identity = { x: 0, y: 0, width: nativeWidth, height: nativeHeight }
   const regionWidth = Math.round(textRect.width)
   const regionHeight = Math.round(textRect.height)
   const columns = Math.floor(textRect.width / TILE_SIZE)
@@ -96,14 +93,12 @@ section('B. stage breakdown - profile ' + profiles[0].name)
   const scratchBits = new Uint8Array(regionWidth * regionHeight)
   const scratchGrid = { columns, rows: tileRows, cells: new Uint8Array(columns * tileRows * TILE_SIZE) }
 
-  const natives = corpus.map((frame) =>
-    sampleNative(frame, profile.screenRect, nativeWidth, nativeHeight, { x: 0, y: 0 }),
-  )
+  const natives = corpus
   const thresholds = natives.map((native) => inkThreshold(native, textRect))
   const grids = natives.map((native, i) => readTiles(binarise(native, thresholds[i], textRect), regionWidth, textRect))
 
-  row('sampleNative (identity, 160x144)', measure(rounds, corpus.length, () => {
-    for (const frame of corpus) sampleNative(frame, profile.screenRect, nativeWidth, nativeHeight, { x: 0, y: 0 }, scratchNative)
+  row('sampleNative - no longer on this path', measure(rounds, corpus.length, () => {
+    for (const frame of corpus) sampleNative(frame, identity, nativeWidth, nativeHeight, { x: 0, y: 0 }, scratchNative)
   }))
   row('inkThreshold (Otsu over textRect)', measure(rounds, corpus.length, () => {
     for (const native of natives) inkThreshold(native, textRect)
@@ -122,46 +117,6 @@ section('B. stage breakdown - profile ' + profiles[0].name)
   row('toGlyphBits alone (per non-empty tile)', measure(rounds, corpus.length, () => {
     for (const grid of grids) hashAll(grid)
   }))
-}
-
-// ---------------------------------------------------------------- C. sampling from a real frame
-
-section('C. sampleNative - native source vs. the upscaled crop the app really gets')
-
-{
-  const profile = profiles[0]
-  const crop = growAndClamp(profile.screenRect, profile.frameWidth, profile.frameHeight)
-  const frames = corpus.slice(0, 8).map((native) => upscaleInto(native, profile.screenRect, crop))
-  const origin = { x: crop.x, y: crop.y }
-  const dest = new Uint8ClampedArray(profile.nativeWidth * profile.nativeHeight * 4)
-  const local = nativeProfile(profile)
-
-  row(`from 160x144 (${mb(corpus[0])})`, measure(rounds, frames.length, () => {
-    for (let i = 0; i < frames.length; i++) {
-      sampleNative(corpus[i], local.screenRect, profile.nativeWidth, profile.nativeHeight, { x: 0, y: 0 }, dest)
-    }
-  }))
-  row(`from ${crop.width}x${crop.height} crop (${mb(frames[0])})`, measure(rounds, frames.length, () => {
-    for (const frame of frames) {
-      sampleNative(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin, dest)
-    }
-  }))
-  row('full readTextBox on that crop', measure(rounds, frames.length, () => {
-    for (const frame of frames) readTextBox(frame, profile, glyphs, origin)
-  }))
-
-  // Not a proposal, a ceiling: the column indices do not depend on `y`, and the four byte stores
-  // are one 32-bit store. This says how much of `sampleNative` is arithmetic rather than copying.
-  const columnLut = new Int32Array(profile.nativeWidth)
-  const fastDest = new Uint8ClampedArray(profile.nativeWidth * profile.nativeHeight * 4)
-  row('  same, with a per-row column LUT + 32-bit copy', measure(rounds, frames.length, () => {
-    for (const frame of frames) {
-      sampleNativeFast(frame, profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin, fastDest, columnLut)
-    }
-  }))
-  const reference = sampleNative(frames[0], profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin)
-  sampleNativeFast(frames[0], profile.screenRect, profile.nativeWidth, profile.nativeHeight, origin, fastDest, columnLut)
-  console.log(`    LUT variant is byte-identical: ${reference.data.every((byte, i) => byte === fastDest[i])}`)
 }
 
 // ---------------------------------------------------------------- D. calibration
@@ -225,12 +180,11 @@ function fitScreenRect(frameWidth, frameHeight, nativeWidth, nativeHeight) {
 section('E. reading outcome over the whole corpus')
 
 for (const profile of profiles) {
-  const local = nativeProfile(profile)
   const counts = { empty: 0, clean: 0, partial: 0 }
   let unreadableTotal = 0
   const unknownBits = new Map()
   for (const frame of corpus) {
-    const reading = readTextBox(frame, local, glyphs)
+    const reading = readTextBox(frame, profile, glyphs)
     unreadableTotal += reading.unreadable
     for (const tile of reading.unknown) unknownBits.set(tile.bits, (unknownBits.get(tile.bits) ?? 0) + 1)
     if (reading.unknown.length > 0) counts.partial++
@@ -249,11 +203,10 @@ for (const profile of profiles) {
 {
   // Which profile a frame was captured under is not stored, so the honest coverage figure is the
   // better of the two readings - the profile picker is the player's, and they pick the right one.
-  const locals = profiles.map(nativeProfile)
   let clean = 0
   let unreadable = 0
   for (const frame of corpus) {
-    const readings = locals.map((local) => readTextBox(frame, local, glyphs))
+    const readings = profiles.map((profile) => readTextBox(frame, profile, glyphs))
     const best = readings.reduce((a, b) => (a.unreadable <= b.unreadable ? a : b))
     if (best.unknown.length === 0 && best.text !== '') clean++
     unreadable += best.unreadable
@@ -263,28 +216,6 @@ for (const profile of profiles) {
 }
 
 // ---------------------------------------------------------------- helpers
-
-// The LUT variant benchmarked in section C - kept here, not in `src/`, until a measurement says
-// the read is worth optimising at all.
-function sampleNativeFast(frame, screenRect, nativeWidth, nativeHeight, origin, dest, columnLut) {
-  const rectX = screenRect.x - origin.x
-  const rectY = screenRect.y - origin.y
-  const scaleX = screenRect.width / nativeWidth
-  const scaleY = screenRect.height / nativeHeight
-  const maxX = frame.width - 1
-  const maxY = frame.height - 1
-  for (let x = 0; x < nativeWidth; x++) {
-    columnLut[x] = Math.min(maxX, Math.max(0, Math.floor(rectX + (x + 0.5) * scaleX)))
-  }
-  const source = new Uint32Array(frame.data.buffer, frame.data.byteOffset, frame.data.length >> 2)
-  const target = new Uint32Array(dest.buffer, dest.byteOffset, dest.length >> 2)
-  for (let y = 0; y < nativeHeight; y++) {
-    const sourceRow = Math.min(maxY, Math.max(0, Math.floor(rectY + (y + 0.5) * scaleY))) * frame.width
-    const targetRow = y * nativeWidth
-    for (let x = 0; x < nativeWidth; x++) target[targetRow + x] = source[sourceRow + columnLut[x]]
-  }
-  return { width: nativeWidth, height: nativeHeight, data: dest }
-}
 
 function matchAll(grid) {
   let matched = 0
@@ -308,6 +239,7 @@ function hashAll(grid) {
 
 // Nearest neighbour, the same upscale an emulator does - `detectScreenRect` fits the lattice that
 // makes, so a smoothed synthetic frame would measure a signal the app was not built to read.
+// Calibration is the only stage that still sees a frame this size.
 function upscaleInto(native, screenRect, crop) {
   const data = new Uint8ClampedArray(crop.width * crop.height * 4)
   const scaleX = screenRect.width / native.width
