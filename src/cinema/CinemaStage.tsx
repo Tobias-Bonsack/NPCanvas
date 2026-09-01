@@ -1,11 +1,9 @@
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { byId } from '../project/derived.ts'
-import type { DialogueMedia, ProjectFile, Quest } from '../project/types.ts'
-import { indexQuestsByDialogue } from '../quest/quest-index.ts'
-import { questAccentStyle } from '../quest/quest-style.ts'
+import type { DialogueMedia, ProjectFile } from '../project/types.ts'
 import type { Moment } from './reel.ts'
 
 // A hard cut between two very different captures (the talk-animation's colour flash, most of
@@ -56,9 +54,6 @@ export function CinemaStage({
   const relevanceTagsById = byId(project.relevanceTags)
   const zonesById = byId(project.zones)
   const zone = moment.zoneId === null ? undefined : zonesById.get(moment.zoneId)
-
-  const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
-  const quests = questIndex.get(dialogue.id) ?? []
 
   const relevanceTags = dialogue.relevance.flatMap((id) => {
     const tag = relevanceTagsById.get(id)
@@ -128,21 +123,6 @@ export function CinemaStage({
       )}
 
       {dialogue.text !== '' && <p className="cinema-stage__text">{dialogue.text}</p>}
-
-      {quests.length > 0 && (
-        <ul className="cinema-stage__chips">
-          {quests.map((quest) => (
-            <li key={quest.id} className="hue-chip" style={questAccentStyle(quest)}>
-              {questName(quest)}
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   )
-}
-
-function questName(quest: Quest): string {
-  const trimmed = quest.name.trim()
-  return trimmed === '' ? 'Untitled quest' : trimmed
 }
