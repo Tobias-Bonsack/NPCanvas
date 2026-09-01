@@ -9,7 +9,7 @@ export type BandSlot = {
 }
 
 export const MIN_SLOT_HEIGHT = 4
-export const MAX_SLOT_HEIGHT = 36
+export const MAX_SLOT_HEIGHT = 44
 
 // The Brock fight's 50 frames is the reference point named in #159 — a line with this many
 // frames sits at the top of the log scale, and anything past it still clamps there rather than

@@ -235,7 +235,8 @@
 .cinema-band__arc {
   fill: none;
   stroke: var(--reference);
-  stroke-width: 1.5;
+  stroke-width: 2.5;
+  stroke-linecap: round;
 }
 
 /* Both rails are draggable from the seam they share with `.cinema__main` — see

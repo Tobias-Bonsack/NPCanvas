@@ -11,10 +11,12 @@ import type { Moment, Reel } from './reel.ts'
 
 // viewBox units, and (per chart-width.ts) one viewBox unit is one real CSS pixel.
 const DEFAULT_WIDTH = 720
-const PLOT_TOP = 4
+const ARC_LIFT = 24
+// Must be >= ARC_LIFT, or the tallest slot's arc peaks above y=0 and the SVG's default
+// `overflow: hidden` clips it.
+const PLOT_TOP = ARC_LIFT
 const SLOT_BASELINE = PLOT_TOP + MAX_SLOT_HEIGHT
 const HEIGHT = SLOT_BASELINE + 4
-const ARC_LIFT = 20
 
 /** The whole reel at one slot per line — see CLAUDE.md § "Cinema" and #159. */
 export function CinemaBand({
@@ -66,27 +68,23 @@ export function CinemaBand({
   const zoneName = moment.zoneId === null ? null : (zonesById.get(moment.zoneId) ?? null)
   const valueText = `${moment.dialogue.npcName}${zoneName !== null ? `, ${zoneLabel(zoneName)}` : ''}`
 
-  // slots[i].moment.index === i, since `walked` is the reel's own prefix — the current moment is
-  // always the last slot.
-  const currentSlot: BandSlot | undefined = slots[moment.index]
-  const outgoing = currentSlot === undefined
-    ? []
-    : moment.dialogue.references.flatMap((targetId) => {
-        const targetIndex = momentIndexById.get(targetId)
-        if (targetIndex === undefined || targetIndex > moment.index) return []
-        const targetSlot = slots[targetIndex]
-        return targetSlot === undefined ? [] : [{ from: currentSlot, to: targetSlot }]
-      })
-  // The reverse of `dialogue.references` — a walked line that points at the current one gets its
-  // arc too, not just the current line's own outgoing references.
-  const incoming = currentSlot === undefined
-    ? []
-    : reel.moments.slice(0, moment.index).flatMap((candidate) => {
-        if (!candidate.dialogue.references.includes(moment.dialogue.id)) return []
-        const sourceSlot = slots[candidate.index]
-        return sourceSlot === undefined ? [] : [{ from: sourceSlot, to: currentSlot }]
-      })
-  const arcs = [...outgoing, ...incoming]
+  // slots[i].moment.index === i, since `walked` is the reel's own prefix. Every reference between
+  // two already-walked lines gets its arc, not just ones touching the current moment — a link
+  // stays visible on the band once both ends have played, regardless of where the playhead sits.
+  const arcs = useMemo(
+    () =>
+      walked.flatMap((candidate) => {
+        const fromSlot = slots[candidate.index]
+        if (fromSlot === undefined) return []
+        return candidate.dialogue.references.flatMap((targetId) => {
+          const targetIndex = momentIndexById.get(targetId)
+          if (targetIndex === undefined || targetIndex > candidate.index) return []
+          const toSlot = slots[targetIndex]
+          return toSlot === undefined ? [] : [{ from: fromSlot, to: toSlot }]
+        })
+      }),
+    [walked, slots, momentIndexById],
+  )
 
   return (
     <svg
