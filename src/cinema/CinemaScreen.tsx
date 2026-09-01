@@ -205,9 +205,7 @@ export function CinemaScreen({
               moment={moment}
               frame={playhead.frame}
               project={project}
-              reel={reel}
               announcement={announcement}
-              onSeekMoment={(index) => dispatch({ kind: 'seek', moment: index })}
               onSeekFrame={(frame) => dispatch({ kind: 'frame-seek', frame })}
             />
           </div>

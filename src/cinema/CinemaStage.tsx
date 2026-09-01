@@ -6,7 +6,7 @@ import { byId } from '../project/derived.ts'
 import type { DialogueMedia, ProjectFile, Quest } from '../project/types.ts'
 import { indexQuestsByDialogue } from '../quest/quest-index.ts'
 import { questAccentStyle } from '../quest/quest-style.ts'
-import type { Moment, Reel } from './reel.ts'
+import type { Moment } from './reel.ts'
 
 // A hard cut between two very different captures (the talk-animation's colour flash, most of
 // all) reads as flicker. Crossfading over this long softens it without hiding the cut itself.
@@ -43,17 +43,13 @@ export function CinemaStage({
   moment,
   frame,
   project,
-  reel,
   announcement,
-  onSeekMoment,
   onSeekFrame,
 }: {
   moment: Moment
   frame: number
   project: ProjectFile
-  reel: Reel
   announcement: string
-  onSeekMoment: (index: number) => void
   onSeekFrame: (frame: number) => void
 }): ReactElement {
   const { dialogue } = moment
@@ -63,17 +59,6 @@ export function CinemaStage({
 
   const questIndex = useMemo(() => indexQuestsByDialogue(project.quests), [project.quests])
   const quests = questIndex.get(dialogue.id) ?? []
-
-  // `reel`, not `project.dialogues` — a reference to a line an unparseable `spokenAt` left out
-  // of the reel has nowhere for the playhead to seek, so its control simply doesn't render.
-  const momentIndexById = useMemo(
-    () => new Map(reel.moments.map((candidate) => [candidate.dialogue.id, candidate.index])),
-    [reel],
-  )
-  const references = dialogue.references.flatMap((id) => {
-    const index = momentIndexById.get(id)
-    return index === undefined ? [] : [{ index, dialogue: reel.moments[index].dialogue }]
-  })
 
   const relevanceTags = dialogue.relevance.flatMap((id) => {
     const tag = relevanceTagsById.get(id)
@@ -149,18 +134,6 @@ export function CinemaStage({
           {quests.map((quest) => (
             <li key={quest.id} className="hue-chip" style={questAccentStyle(quest)}>
               {questName(quest)}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {references.length > 0 && (
-        <ul className="cinema-stage__references">
-          {references.map((target) => (
-            <li key={target.dialogue.id}>
-              <button type="button" className="button" onClick={() => onSeekMoment(target.index)}>
-                {target.dialogue.npcName}
-              </button>
             </li>
           ))}
         </ul>
