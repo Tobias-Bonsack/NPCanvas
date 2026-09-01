@@ -29,11 +29,11 @@ export function CinemaLedger({
     <div className="cinema-ledger">
       <dl className="cinema-ledger__stats">
         <div className="cinema-ledger__stat">
-          <dt>Lines</dt>
+          <dt>All dialogue</dt>
           <dd>{current.moments}</dd>
         </div>
         <div className="cinema-ledger__stat">
-          <dt>NPCs met</dt>
+          <dt>Unique NPCs</dt>
           <dd>{current.npcsMet.size}</dd>
         </div>
       </dl>
