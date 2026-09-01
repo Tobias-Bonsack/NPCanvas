@@ -1,9 +1,8 @@
 import type { PointerEvent as ReactPointerEvent, ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import type { CaptureProfile, PixelRect, Point } from '../project/types.ts'
-import { detectScreenRect, detectTextRect } from './auto-calibrate.ts'
 import type { FrozenFrame } from './capture-session.ts'
-import { sampleNative } from './glyph-matcher.ts'
+import { measureScreen } from './capture-worker.ts'
 import type { ProfileCalibration, ScreenMapping } from './capture-profile.ts'
 import {
   DEFAULT_NATIVE_HEIGHT,
@@ -61,6 +60,7 @@ export function CaptureCalibration({
   const [zoom, setZoom] = useState<Zoom>('fit')
   const [drag, setDrag] = useState<Drag | null>(null)
   const [measureFailed, setMeasureFailed] = useState(false)
+  const [measuring, setMeasuring] = useState(false)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -87,16 +87,23 @@ export function CaptureCalibration({
 
   // Writes the same state a drag writes, so what is measured is drawn, nudgeable and still saved
   // by hand. A failure changes nothing — half a calibration is worse than none.
-  function measure(): void {
-    const detected = detectScreenRect(frame.pixels, nativeWidth, nativeHeight)
-    if (detected === null) {
+  async function measure(): Promise<void> {
+    setMeasuring(true)
+    try {
+      const measured = await measureScreen(frame.pixels, nativeWidth, nativeHeight)
+      if (measured.screenRect === null) {
+        setMeasureFailed(true)
+        return
+      }
+      setMeasureFailed(false)
+      setScreenRect(measured.screenRect)
+      setTextRect(measured.textRect)
+      setStep('text')
+    } catch {
       setMeasureFailed(true)
-      return
+    } finally {
+      setMeasuring(false)
     }
-    setMeasureFailed(false)
-    setScreenRect(detected.screenRect)
-    setTextRect(detectTextRect(sampleNative(frame.pixels, detected.screenRect, nativeWidth, nativeHeight)))
-    setStep('text')
   }
 
   function onPointerDown(event: ReactPointerEvent<SVGSVGElement>): void {
@@ -209,9 +216,10 @@ export function CaptureCalibration({
             <button
               type="button"
               className="button capture-calibration__toggle capture-calibration__toggle--action"
-              onClick={measure}
+              onClick={() => void measure()}
+              disabled={measuring}
             >
-              Measure it
+              {measuring ? 'Measuring…' : 'Measure it'}
             </button>
           </fieldset>
 

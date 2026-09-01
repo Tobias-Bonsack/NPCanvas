@@ -6,6 +6,7 @@ import {
   detectTextRect,
   edgeEnergy,
   fitLattice,
+  measureCalibration,
 } from './auto-calibrate.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
 
@@ -176,6 +177,29 @@ describe('detectTextRect', () => {
   })
 })
 
+describe('measureCalibration', () => {
+  it('measures both rectangles off one frame', () => {
+    const frame = frameOf(patternedWithTextBox(), SCALE, SCALE)
+
+    expect(measureCalibration(frame, NATIVE_WIDTH, NATIVE_HEIGHT)).toEqual({
+      screenRect: {
+        x: ORIGIN.x,
+        y: ORIGIN.y,
+        width: Math.round(NATIVE_WIDTH * SCALE),
+        height: Math.round(NATIVE_HEIGHT * SCALE),
+      },
+      textRect: { x: 8, y: 40, width: 48, height: 16 },
+    })
+  })
+
+  it('answers with two nulls rather than half a calibration', () => {
+    expect(measureCalibration(blankFrame(), NATIVE_WIDTH, NATIVE_HEIGHT)).toEqual({
+      screenRect: null,
+      textRect: null,
+    })
+  })
+})
+
 // ---- synthetic frames ----
 
 // Content on all four edges (bright, against dark window chrome) so the bounding box is the
@@ -213,6 +237,25 @@ function nativeWithTextBox(): PixelBuffer {
     if (inside && x % 4 === 1 && y % 5 === 2) return INK // sparse text-like scatter, not a wall
     return FIELD
   })
+}
+
+// Both at once: a lattice strong enough to measure, and a box to find in the result.
+function patternedWithTextBox(): (x: number, y: number) => Pixel {
+  const background = patterned()
+  // Exactly `MIN_BOX_HEIGHT` apart, with the frame's own last row left to `patterned`.
+  const top = 38
+  const bottom = NATIVE_HEIGHT - 2
+  const left = 7
+  const right = 56
+  return (x, y) => {
+    const onBorder =
+      ((y === top || y === bottom) && x >= left && x <= right) ||
+      ((x === left || x === right) && y >= top && y <= bottom)
+    if (onBorder) return INK
+    const inside = x > left && x < right && y > top && y < bottom
+    if (inside) return x % 4 === 1 && y % 5 === 2 ? INK : FIELD
+    return background(x, y)
+  }
 }
 
 function frameOf(

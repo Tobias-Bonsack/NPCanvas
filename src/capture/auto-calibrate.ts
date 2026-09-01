@@ -1,7 +1,7 @@
 import type { PixelRect } from '../project/types.ts'
 import { TILE_SIZE, roundRect, snapInsideTileGrid } from './capture-profile.ts'
 import type { PixelBuffer } from './glyph-matcher.ts'
-import { binarise, inkThreshold, luminanceAt } from './glyph-matcher.ts'
+import { binarise, inkThreshold, luminanceAt, sampleNative } from './glyph-matcher.ts'
 
 // The screen is a nearest-neighbour upscale of a 160x144 image, so the frame repeats every native
 // column `pitch` times and the difference between neighbouring columns is zero except on a
@@ -236,6 +236,21 @@ function median(values: number[]): number {
   if (values.length === 0) return 0
   const sorted = [...values].sort((left, right) => left - right)
   return sorted[Math.floor(sorted.length / 2)]
+}
+
+export type ScreenMeasurement = { screenRect: PixelRect | null; textRect: PixelRect | null }
+
+// Both rectangles in one call, so the worker and its main-thread fallback cannot drift apart.
+// A frame with no lattice yields two nulls rather than half a calibration.
+export function measureCalibration(
+  frame: PixelBuffer,
+  nativeWidth: number,
+  nativeHeight: number,
+): ScreenMeasurement {
+  const detected = detectScreenRect(frame, nativeWidth, nativeHeight)
+  if (detected === null) return { screenRect: null, textRect: null }
+  const native = sampleNative(frame, detected.screenRect, nativeWidth, nativeHeight)
+  return { screenRect: detected.screenRect, textRect: detectTextRect(native) }
 }
 
 // Found by its border, not its emptiness — the interior is the text, so the box is marked by the

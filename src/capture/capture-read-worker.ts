@@ -1,11 +1,14 @@
 import type { CaptureProfile, Glyph } from '../project/types.ts'
+import type { ScreenMeasurement } from './auto-calibrate.ts'
+import { measureCalibration } from './auto-calibrate.ts'
 import type { PixelBuffer, TextBoxReading } from './glyph-matcher.ts'
 import { readTextBox, sampleNative } from './glyph-matcher.ts'
 
-// The watcher's read and picture encode, off the main thread. This worker imports only
-// `glyph-matcher.ts` and its type dependencies — no `store.ts`, no `reducer.ts`, nothing that
-// touches `document` — since the store, every `dispatch`, and both capture queues must stay on
-// the main thread (CLAUDE.md § "Async IO never enters the reducer").
+// The watcher's read, the picture encode and the calibration measurement, off the main thread.
+// This worker imports only the pure `glyph-matcher.ts` / `auto-calibrate.ts` pair and their type
+// dependencies — no `store.ts`, no `reducer.ts`, nothing that touches `document` — since the store,
+// every `dispatch`, and both capture queues must stay on the main thread (CLAUDE.md § "Async IO
+// never enters the reducer").
 
 type Origin = { x: number; y: number }
 
@@ -29,11 +32,22 @@ type EncodeRequest = {
   profile: CaptureProfile
 }
 
-type WorkerRequest = ReadRequest | EncodeRequest
+// The one request the player waits on: 110 ms on a 3840x2088 frame, and it is a button press,
+// not a tick.
+type CalibrateRequest = {
+  kind: 'calibrate'
+  sequence: number
+  bitmap: ImageBitmap
+  nativeWidth: number
+  nativeHeight: number
+}
+
+type WorkerRequest = ReadRequest | EncodeRequest | CalibrateRequest
 
 type WorkerResponse =
   | { kind: 'read'; sequence: number; reading: TextBoxReading }
   | { kind: 'encoded'; sequence: number; blob: Blob }
+  | { kind: 'calibrated'; sequence: number; measurement: ScreenMeasurement }
   | { kind: 'error'; sequence: number; message: string }
 
 // This project's tsconfig carries only the `DOM` lib, whose `self` is `Window`. Adding the
@@ -57,6 +71,10 @@ scope.onmessage = (event) => {
       const frame = decode(request.bitmap)
       const reading = readTextBox(frame, request.profile, retainedGlyphs, request.origin)
       scope.postMessage({ kind: 'read', sequence: request.sequence, reading }, [])
+    } else if (request.kind === 'calibrate') {
+      const frame = decode(request.bitmap)
+      const measurement = measureCalibration(frame, request.nativeWidth, request.nativeHeight)
+      scope.postMessage({ kind: 'calibrated', sequence: request.sequence, measurement }, [])
     } else {
       const frame = decode(request.bitmap)
       encodePng(frame, request.profile, request.origin)
