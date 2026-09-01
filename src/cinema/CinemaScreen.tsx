@@ -11,7 +11,6 @@ import { CinemaLedger } from './CinemaLedger.tsx'
 import { CinemaMinimap } from './CinemaMinimap.tsx'
 import { CinemaQuestRail } from './CinemaQuestRail.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
-import { formatSpokenAt } from '../dialogue-row/dialogue-summary.ts'
 import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
 import { usePlayhead } from './use-playhead.ts'
@@ -110,9 +109,7 @@ export function CinemaScreen({
   if (reel.moments.length === 0) {
     return (
       <section className="cinema">
-        <header className="cinema__bar">
-          <h1 className="screen-title">Cinema</h1>
-        </header>
+        <h1 className="screen-title">Cinema</h1>
         <p className="cinema__empty hint-text">
           Nothing to play yet. Cinema plays back dialogue in the order it was spoken, and no
           logged line has a time attached.
@@ -170,35 +167,10 @@ export function CinemaScreen({
   }
 
   const moment = reel.moments[playhead.moment]
-  const frameCount = Math.max(1, moment.dialogue.media.length)
   const tallies = journeyTally(reel, project.relevanceTags)
-  const progressPct =
-    lastIndex === 0 ? 100 : Math.round((playhead.moment / lastIndex) * 100)
 
   return (
     <section className="cinema" tabIndex={0} onKeyDown={onKeyDown}>
-      <header className="cinema__bar">
-        <h1 className="screen-title">Cinema</h1>
-        <div className="cinema__position">
-          <p className="cinema__position-text hint-text">
-            Line {playhead.moment + 1} of {reel.moments.length}
-            {frameCount > 1 && ` — frame ${playhead.frame + 1} of ${frameCount}`}
-            {' · '}Session {moment.sessionIndex + 1} of {reel.sessions.length}
-            {' · '}
-            {formatSpokenAt(moment.dialogue.spokenAt)}
-          </p>
-          <div
-            className="cinema__progress"
-            role="progressbar"
-            aria-label="Position in reel"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progressPct}
-          >
-            <div className="cinema__progress-fill" style={{ width: `${progressPct}%` }} />
-          </div>
-        </div>
-      </header>
       <div className="cinema__body" ref={bodyRef}>
         <aside
           ref={questRailRef}
