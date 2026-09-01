@@ -244,10 +244,10 @@ export function CinemaScreen({
             onPointerCancel={railResize.cancelResize}
             onKeyDown={railResize.stepResize}
           />
+          <CinemaLedger project={project} tallies={tallies} moment={moment} />
           <div aria-hidden="true">
             <CinemaMinimap project={project} reel={reel} momentIndex={playhead.moment} />
           </div>
-          <CinemaLedger project={project} tallies={tallies} moment={moment} />
         </aside>
       </div>
     </section>
