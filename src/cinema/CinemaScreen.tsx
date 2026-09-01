@@ -272,9 +272,10 @@ function Transport({
       <button
         type="button"
         className="button"
+        aria-label={playhead.playing ? 'Pause' : 'Play'}
         onClick={() => dispatch(playhead.playing ? { kind: 'pause' } : { kind: 'play' })}
       >
-        {playhead.playing ? 'Pause' : 'Play'}
+        {playhead.playing ? '⏸' : '▶'}
       </button>
       <button type="button" className="button" onClick={() => dispatch({ kind: 'step', by: 1 })}>
         ▶
