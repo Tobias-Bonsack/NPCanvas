@@ -284,7 +284,7 @@ function Transport({
         ⏭
       </button>
       <label className="cinema__speed">
-        <span>×{playhead.speed}</span>
+        <span className="cinema__speed-value">×{playhead.speed.toFixed(2)}</span>
         <input
           type="range"
           min={SPEED_MIN}

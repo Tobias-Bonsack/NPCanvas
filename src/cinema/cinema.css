@@ -194,6 +194,11 @@
   align-items: center;
   gap: var(--space-2);
   margin-left: auto;
+}
+
+.cinema__speed-value {
+  display: inline-block;
+  min-width: 3.5em;
   font-variant-numeric: tabular-nums;
 }
 
