@@ -279,6 +279,29 @@
   background: hsl(var(--quest-hue) var(--hue-chip-fill) / calc(var(--hue-chip-fill-alpha) * 1.6));
 }
 
+/* The playhead is sitting on the moment this quest starts, ends, or closes (`arcEventAt`). The
+   outline is the part that has to survive `prefers-reduced-motion` collapsing every duration to
+   0s — it holds for as long as the playhead stays on that moment, so a paused or scrubbing
+   viewer still sees which row just changed. Green comes for free: railHueStyle already swaps
+   `--quest-hue` to QUEST_DONE_HUE for a closed quest. */
+.cinema-quest-rail__item[data-event] {
+  --event-ring: color-mix(in srgb, hsl(var(--quest-hue) 70% 55%) 55%, transparent);
+  outline: 2px solid hsl(var(--quest-hue) 70% 55%);
+  outline-offset: 1px;
+  animation: cinema-event-ring calc(var(--duration-base) * 2) var(--ease-standard);
+}
+
+/* A started quest is genuinely appearing in the list, so it enters rather than only flashing. */
+.cinema-quest-rail__item[data-event='started'] {
+  animation:
+    cinema-event-ring calc(var(--duration-base) * 2) var(--ease-standard),
+    cinema-event-enter calc(var(--duration-base) * 2) var(--ease-standard);
+}
+
+.cinema-quest-rail__item[data-event='closed'] {
+  animation: cinema-event-ring calc(var(--duration-base) * 2) var(--ease-standard) 2;
+}
+
 .cinema-quest-rail__name {
   margin: 0;
   font-size: var(--text-md);
@@ -387,14 +410,20 @@
   opacity: 0.4;
 }
 
+/* The line on stage carries this tag. Same recipe as a quest-rail event, in the tag's own colour:
+   a held outline for the paused viewer, the ring pulse for the moving one. */
 .cinema-ledger__tag[data-current] {
+  --event-ring: color-mix(in srgb, var(--segment-color) 55%, transparent);
   background: var(--surface-2);
+  outline: 1px solid var(--segment-color);
+  animation: cinema-event-ring calc(var(--duration-base) * 2) var(--ease-standard);
 }
 
 .cinema-ledger__tag-swatch {
   width: 8px;
   height: 8px;
   border-radius: var(--radius-round);
+  background: var(--segment-color);
 }
 
 .cinema-ledger__tag-count {
@@ -413,14 +442,40 @@
 .cinema-ledger__tag-fill {
   display: block;
   height: 100%;
+  background: var(--segment-color);
 }
 
-.cinema-ledger__tag[data-just-seen] {
-  animation: cinema-ledger-just-seen var(--duration-base) ease-out;
+/* The first time the journey ever sees this tag. On the swatch rather than the row, because the
+   row is running the `data-current` pulse in the same moment — first-seen is always also
+   current — and two animations on one element's box-shadow would fight. */
+.cinema-ledger__tag[data-just-seen] .cinema-ledger__tag-swatch {
+  animation: cinema-ledger-first-seen calc(var(--duration-base) * 2) var(--ease-standard);
 }
 
-@keyframes cinema-ledger-just-seen {
+@keyframes cinema-ledger-first-seen {
   from {
-    background: var(--accent);
+    transform: scale(0.2);
+  }
+  60% {
+    transform: scale(2);
+  }
+}
+
+/* Shared by both rails: an expanding ring that fades, drawn in whatever colour the element set
+   as `--event-ring`. box-shadow, not outline — an outline can't be spread and faded, and the
+   held outline is a separate, non-animated declaration. */
+@keyframes cinema-event-ring {
+  from {
+    box-shadow: 0 0 0 0 var(--event-ring);
+  }
+  to {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+@keyframes cinema-event-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
   }
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { asDialogueId, asMapId, asQuestId } from '../project/ids.ts'
 import type { Dialogue, Quest, QuestStatus } from '../project/types.ts'
-import type { ArcState, QuestArc } from './quest-arcs.ts'
-import { ARC_STATES, arcProgressAt, arcStateAt, questArcs } from './quest-arcs.ts'
+import type { ArcEvent, ArcState, QuestArc } from './quest-arcs.ts'
+import { ARC_EVENTS, ARC_STATES, arcEventAt, arcProgressAt, arcStateAt, questArcs } from './quest-arcs.ts'
 import type { Moment, Reel } from './reel.ts'
 
 const UNUSED_MAP = asMapId('unused-map')
@@ -112,6 +112,45 @@ describe('arcStateAt', () => {
     const q2 = quest('q2', 'open', ['b', 'e'])
     const arcs = questArcs([q1, q2], reel)
     expect(arcs.map((arc) => arcStateAt(arc, 2))).toEqual(['open', 'open'])
+  })
+})
+
+describe('ARC_EVENTS', () => {
+  it('lists started, closed and last-line in that order', () => {
+    expect(ARC_EVENTS).toEqual(['started', 'closed', 'last-line'])
+  })
+})
+
+describe('arcEventAt', () => {
+  const reel = reelOf(['a', 'b', 'c', 'd', 'e'])
+
+  const cases: { status: QuestStatus; index: number; expected: ArcEvent | null; label: string }[] = [
+    { status: 'open', index: 0, expected: null, label: 'one before firstMoment has no event' },
+    { status: 'open', index: 1, expected: 'started', label: 'exactly firstMoment is started' },
+    { status: 'open', index: 2, expected: null, label: 'a moment between the two ends has no event' },
+    { status: 'open', index: 3, expected: 'last-line', label: 'lastMoment of an open quest is last-line' },
+    { status: 'done', index: 3, expected: 'closed', label: 'lastMoment of a done quest is closed' },
+    { status: 'done', index: 4, expected: null, label: 'past lastMoment has no event' },
+  ]
+
+  for (const { status, index, expected, label } of cases) {
+    it(label, () => {
+      const q = quest('q', status, ['b', 'd'])
+      const [arc] = questArcs([q], reel)
+      expect(arcEventAt(arc, index)).toBe(expected)
+    })
+  }
+
+  it('reports closed, not started, for a done quest whose only line is one moment', () => {
+    const q = quest('q', 'done', ['b'])
+    const [arc] = questArcs([q], reel)
+    expect(arcEventAt(arc, 1)).toBe('closed')
+  })
+
+  it('reports started for an open quest whose only line is one moment', () => {
+    const q = quest('q', 'open', ['b'])
+    const [arc] = questArcs([q], reel)
+    expect(arcEventAt(arc, 1)).toBe('started')
   })
 })
 

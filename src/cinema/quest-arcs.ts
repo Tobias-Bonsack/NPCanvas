@@ -4,6 +4,9 @@ import type { Reel } from './reel.ts'
 export const ARC_STATES = ['unseen', 'open', 'done'] as const
 export type ArcState = (typeof ARC_STATES)[number]
 
+export const ARC_EVENTS = ['started', 'closed', 'last-line'] as const
+export type ArcEvent = (typeof ARC_EVENTS)[number]
+
 /** One quest's span over the reel's ordinal axis — see CLAUDE.md § "Cinema". */
 export type QuestArc = {
   quest: Quest
@@ -34,6 +37,15 @@ export function arcStateAt(arc: QuestArc, index: number): ArcState {
   if (index < arc.firstMoment) return 'unseen'
   if (index >= arc.lastMoment && arc.quest.status === 'done') return 'done'
   return 'open'
+}
+
+// 'closed' outranks 'started' for the one-line quest that both opens and finishes at the same
+// moment — the close is the stronger thing to say about it.
+export function arcEventAt(arc: QuestArc, index: number): ArcEvent | null {
+  if (index === arc.lastMoment && arc.quest.status === 'done') return 'closed'
+  if (index === arc.firstMoment) return 'started'
+  if (index === arc.lastMoment) return 'last-line'
+  return null
 }
 
 export function arcProgressAt(arc: QuestArc, index: number): { reached: number; total: number } {

@@ -3,7 +3,7 @@ import type { Quest } from '../project/types.ts'
 import { QUEST_DONE_HUE, questHueStyle } from '../quest/quest-style.ts'
 import type { Reel } from './reel.ts'
 import type { ArcState, QuestArc } from './quest-arcs.ts'
-import { arcStateAt } from './quest-arcs.ts'
+import { arcEventAt, arcStateAt } from './quest-arcs.ts'
 
 function questName(quest: Quest): string {
   const trimmed = quest.name.trim()
@@ -57,11 +57,16 @@ export function CinemaQuestRail({
         <ul className="cinema-quest-rail__list" aria-label="Active quests">
           {active.map(({ arc, state }) => {
             const speaker = latestSpeakerAt(arc, reel, momentIndex)
+            const event = arcEventAt(arc, momentIndex)
             return (
               <li
-                key={arc.quest.id}
+                // The event is in the key, not just the attribute: a CSS animation restarts only
+                // when the element mounts, and a quest whose first and last line are consecutive
+                // moments would otherwise only swap the attribute's value and stay silent.
+                key={`${arc.quest.id}:${event ?? ''}`}
                 className="cinema-quest-rail__item"
                 data-state={state}
+                data-event={event ?? undefined}
                 style={railHueStyle(state, arc.quest)}
               >
                 <p className="cinema-quest-rail__name">{questName(arc.quest)}</p>
