@@ -111,6 +111,7 @@
 .cinema-stage__frames {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
 }
 
@@ -153,13 +154,16 @@
    breaks are part of what was seen. */
 .cinema-stage__text {
   margin: 0;
+  width: 100%;
   white-space: pre-wrap;
+  text-align: center;
   font-size: var(--text-md);
 }
 
 .cinema-stage__chips {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-1);
   margin: 0;
   padding: 0;
