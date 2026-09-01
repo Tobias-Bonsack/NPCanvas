@@ -61,9 +61,10 @@ export async function connectCaptureSource(): Promise<ConnectOutcome> {
   let picked: MediaStream
   try {
     picked = await navigator.mediaDevices.getDisplayMedia({
-      // Matched to `POLL_MS` in `capture-watch.ts` — a still frame is all it reads, so a higher
-      // rate would only cost encode work on the captured window.
-      video: { frameRate: { ideal: 10 } },
+      // Matched to `POLL_MS` in `capture-watch.ts` — below it every other tick would re-read the
+      // same source frame, above it the extra frames are encode work on the captured window for
+      // nothing.
+      video: { frameRate: { ideal: 20 } },
       audio: false,
       selfBrowserSurface: 'exclude',
       surfaceSwitching: 'include',

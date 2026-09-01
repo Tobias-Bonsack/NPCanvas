@@ -29,6 +29,7 @@ const EXCEPTIONS = new Map([
   ['capture/GlyphSet.tsx', 'names every self-correction and undo-coalescing rule the learner depends on'],
   ['capture/capture-to-dialogue.ts', 'the capture-to-document boundary — each branch has a non-obvious reason'],
   ['capture/GlyphLearner.tsx', 'names the three distinct cancel/keep contracts its callers rely on'],
+  ['capture/capture-watch.ts', 'the only concurrent writer — nearly every line names a race a reader could reintroduce'],
 ]);
 
 function listSourceFiles(dir) {

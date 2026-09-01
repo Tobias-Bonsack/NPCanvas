@@ -60,11 +60,12 @@ type HeldReplay = {
   failures: readonly string[]
 }
 
-// Matches `frameRate: { ideal: 10 }` in `connectCaptureSource`; faster re-reads the same frame.
-const POLL_MS = 100
+// Matches `frameRate: { ideal: 20 }` in `connectCaptureSource`; faster re-reads the same frame.
+const POLL_MS = 50
 
-// Three ticks at 100ms; `autosave-decision.ts`'s "every 600 ms" settle-cadence note assumes this value.
-const SETTLE_TICKS = 3
+// Six ticks at 50ms: the window is 300 ms of wall clock, not a tick count — at the slowest text
+// speed a character holds ~100 ms, so 150 ms would call a box still typing itself out finished.
+const SETTLE_TICKS = 6
 
 // A single hiccup shouldn't end a conversation, but a minimised window stops producing frames for good.
 const FAILURES_BEFORE_STOP = 3
@@ -125,7 +126,7 @@ export function useWatchState(): WatchState {
   return useSyncExternalStore(subscribe, getWatchState)
 }
 
-// On its own subscription, mirroring `useSaveState`: a watcher reading ten times a second changes
+// On its own subscription, mirroring `useSaveState`: a watcher reading twenty times a second changes
 // its counters constantly, and the toggle has no business re-rendering for that.
 export function useWatching(): boolean {
   return useSyncExternalStore(subscribe, isWatching)
@@ -380,7 +381,7 @@ function nextCaptureName(existing: readonly PendingCapture[]): string {
 // Never opens or bootstraps a capture — `captureId` already names one, live or held. Reads the
 // document as it stands **now**, never a copy taken before an await, since a settled box is
 // written well after the tick that read it began. `unchanged` writes nothing at all: a box saying
-// nothing new is the ordinary case for a loop reading ten times a second, and this is the only
+// nothing new is the ordinary case for a loop reading twenty times a second, and this is the only
 // caller allowed to judge a frame by outcome rather than by a deliberate press.
 async function writeIntoCapture(
   captureId: PendingCaptureId,
@@ -441,8 +442,8 @@ async function takeBack(captureId: PendingCaptureId, media: DialogueMedia): Prom
   bump('dropped')
 }
 
-// Whole-second resolution deliberately — at `POLL_MS` an exact stamp would publish a new state ten
-// times a second for a line that changes once a second at most.
+// Whole-second resolution deliberately — at `POLL_MS` an exact stamp would publish a new state
+// twenty times a second for a line that changes once a second at most.
 function markRead(): void {
   if (state.kind !== 'watching') return
   const at = Date.now()
