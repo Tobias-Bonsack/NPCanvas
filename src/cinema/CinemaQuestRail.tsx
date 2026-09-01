@@ -38,9 +38,15 @@ export function CinemaQuestRail({
   const active = arcs
     .map((arc) => ({ arc, state: arcStateAt(arc, momentIndex) }))
     .filter(({ state }) => state !== 'unseen')
-    // Done quests sink to the bottom; otherwise the reel's own arrival order (arcs is sorted by
-    // firstMoment) is kept — a stable sort only ever moves the 'done' items.
-    .sort((a, b) => Number(a.state === 'done') - Number(b.state === 'done'))
+    // Done quests sink below open ones, but a quest that has just closed lands right under the
+    // open group rather than at the very bottom — done quests sort by lastMoment descending, so
+    // each newly-closing quest inserts itself between the last open quest and the first already-
+    // closed one. Open quests keep the reel's own arrival order (arcs is sorted by firstMoment),
+    // preserved because the comparator returns 0 for two open quests and sort is stable.
+    .sort((a, b) => {
+      if (a.state !== b.state) return a.state === 'done' ? 1 : -1
+      return a.state === 'done' ? b.arc.lastMoment - a.arc.lastMoment : 0
+    })
 
   return (
     <>
