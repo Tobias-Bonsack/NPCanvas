@@ -63,9 +63,10 @@ type HeldReplay = {
 // Matches `frameRate: { ideal: 20 }` in `connectCaptureSource`; faster re-reads the same frame.
 const POLL_MS = 50
 
-// Six ticks at 50ms: the window is 300 ms of wall clock, not a tick count — at the slowest text
-// speed a character holds ~100 ms, so 150 ms would call a box still typing itself out finished.
-const SETTLE_TICKS = 6
+// Three ticks at 50ms, a 150 ms window. Safe only because Gen 1's fastest text speed prints a
+// character about every 17 ms: three identical reads then mean a box that stopped, not one still
+// typing. At the slowest speed a character holds ~100 ms and this would settle mid-sentence.
+const SETTLE_TICKS = 3
 
 // A single hiccup shouldn't end a conversation, but a minimised window stops producing frames for good.
 const FAILURES_BEFORE_STOP = 3

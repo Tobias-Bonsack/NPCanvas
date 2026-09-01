@@ -6,7 +6,7 @@ import type { AppState, ProjectFile } from '../project/types.ts'
 export const DEBOUNCE_MS = 800
 
 // The most a debounce may ever delay a write past the first unwritten edit. DEBOUNCE_MS alone
-// assumes a burst that ends — but a watcher recording re-arms it roughly every 300ms
+// assumes a burst that ends — but a watcher recording re-arms it roughly every 150ms
 // (capture-watch.ts) for as long as the conversation runs, so without this ceiling the one
 // situation the app is designed to leave unattended is the one where nothing reaches disk.
 export const MAX_UNSAVED_MS = 5000
