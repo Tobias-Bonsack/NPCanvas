@@ -11,7 +11,7 @@ import { CinemaLedger } from './CinemaLedger.tsx'
 import { CinemaMinimap } from './CinemaMinimap.tsx'
 import { CinemaQuestRail } from './CinemaQuestRail.tsx'
 import { CinemaStage } from './CinemaStage.tsx'
-import { isAnnounceableMove, PLAY_SPEEDS } from './playhead.ts'
+import { isAnnounceableMove, SPEED_MAX, SPEED_MIN, SPEED_STEP } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
 import { usePlayhead } from './use-playhead.ts'
 import { questArcs } from './quest-arcs.ts'
@@ -157,7 +157,7 @@ export function CinemaScreen({
       case '2':
       case '3':
       case '4': {
-        const speed = PLAY_SPEEDS[Number(event.key) - 1]
+        const speed = [0.5, 1, 2, 4][Number(event.key) - 1]
         if (speed !== undefined) dispatch({ kind: 'speed', speed })
         return
       }
@@ -282,19 +282,18 @@ function Transport({
       <button type="button" className="button" onClick={() => dispatch({ kind: 'jump', to: 'end' })}>
         ⏭
       </button>
-      <div className="cinema__speeds" role="group" aria-label="Playback speed">
-        {PLAY_SPEEDS.map((speed) => (
-          <button
-            key={speed}
-            type="button"
-            className="button"
-            aria-pressed={playhead.speed === speed}
-            onClick={() => dispatch({ kind: 'speed', speed })}
-          >
-            ×{speed}
-          </button>
-        ))}
-      </div>
+      <label className="cinema__speed">
+        <span>×{playhead.speed}</span>
+        <input
+          type="range"
+          min={SPEED_MIN}
+          max={SPEED_MAX}
+          step={SPEED_STEP}
+          value={playhead.speed}
+          aria-label="Playback speed"
+          onChange={(event) => dispatch({ kind: 'speed', speed: Number(event.target.value) })}
+        />
+      </label>
     </div>
   )
 }

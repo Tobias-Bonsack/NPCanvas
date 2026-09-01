@@ -164,8 +164,8 @@ describe('frameMsFor', () => {
 
   it('floors at MIN_FRAME_MS rather than strobing at an extreme speed', () => {
     const moment = momentOf('a', 0, 0, 50, 1500)
-    // PLAY_SPEEDS tops out at 4, where the flat per-frame rate stays well above the floor —
+    // Normal speeds top out at 4, where the flat per-frame rate stays well above the floor —
     // this exercises the floor itself, independent of what speeds happen to be offered today.
-    expect(frameMsFor(moment, 100 as never)).toBe(MIN_FRAME_MS)
+    expect(frameMsFor(moment, 100)).toBe(MIN_FRAME_MS)
   })
 })

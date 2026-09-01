@@ -189,14 +189,12 @@
   padding: var(--space-3);
 }
 
-.cinema__speeds {
+.cinema__speed {
   display: flex;
-  gap: var(--space-1);
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
-}
-
-.cinema__speeds .button[aria-pressed='true'] {
-  border-color: var(--accent);
+  font-variant-numeric: tabular-nums;
 }
 
 .cinema__band {

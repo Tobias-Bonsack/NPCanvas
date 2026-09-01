@@ -2,8 +2,10 @@ import { assertNever } from '../assert-never.ts'
 import { MS_PER_FRAME } from './reel.ts'
 import type { Moment, Reel } from './reel.ts'
 
-export const PLAY_SPEEDS = [0.5, 1, 2, 4] as const
-type PlaySpeed = (typeof PLAY_SPEEDS)[number]
+export const SPEED_MIN = 0.25
+export const SPEED_MAX = 4
+export const SPEED_STEP = 0.25
+type PlaySpeed = number
 
 type JumpTarget = 'start' | 'end' | 'session-next' | 'session-prev'
 
@@ -123,7 +125,7 @@ export function playheadReducer(state: Playhead, action: PlayheadAction, reel: R
       if (reel.moments.length === 0) return state
       return { ...state, moment: jumpTarget(state.moment, action.to, reel), frame: 0 }
     case 'speed':
-      return { ...state, speed: action.speed }
+      return { ...state, speed: Math.min(Math.max(action.speed, SPEED_MIN), SPEED_MAX) }
     default:
       return assertNever(action)
   }
