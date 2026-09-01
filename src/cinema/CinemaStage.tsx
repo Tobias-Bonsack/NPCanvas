@@ -96,6 +96,18 @@ export function CinemaStage({
         {zone !== undefined && <span className="cinema-stage__zone hint-text"> — {zone.name}</span>}
       </p>
 
+      <ul className="cinema-stage__chips cinema-stage__chips--relevance">
+        {relevanceTags.length === 0 ? (
+          <li className="hue-chip hue-chip--untagged">Untagged</li>
+        ) : (
+          relevanceTags.map((tag) => (
+            <li key={tag.id} className="hue-chip" style={relevanceHueStyle(tag.hue)}>
+              {tag.name}
+            </li>
+          ))
+        )}
+      </ul>
+
       <div className="cinema-stage__frame">
         {frameLayers.map((layer, index) => (
           <div
@@ -133,13 +145,8 @@ export function CinemaStage({
 
       {dialogue.text !== '' && <p className="cinema-stage__text">{dialogue.text}</p>}
 
-      {(relevanceTags.length > 0 || quests.length > 0) && (
+      {quests.length > 0 && (
         <ul className="cinema-stage__chips">
-          {relevanceTags.map((tag) => (
-            <li key={tag.id} className="hue-chip" style={relevanceHueStyle(tag.hue)}>
-              {tag.name}
-            </li>
-          ))}
           {quests.map((quest) => (
             <li key={quest.id} className="hue-chip" style={questAccentStyle(quest)}>
               {questName(quest)}

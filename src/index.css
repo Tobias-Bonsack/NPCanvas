@@ -758,3 +758,10 @@ body {
   border: 1px solid hsl(var(--relevance-hue) var(--hue-chip-border));
   background: hsl(var(--relevance-hue) var(--hue-chip-fill) / var(--hue-chip-fill-alpha));
 }
+
+/* Matches UNTAGGED_COLOR in relevance-segments.ts — not hue-based, so it can't go through the
+   --relevance-hue formula above. */
+.hue-chip--untagged {
+  border: 1px solid hsl(220 8% 62% / 0.6);
+  background: hsl(220 8% 62% / var(--hue-chip-fill-alpha));
+}
