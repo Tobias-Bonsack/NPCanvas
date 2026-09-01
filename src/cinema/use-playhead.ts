@@ -4,12 +4,8 @@ import { frameMsFor, playheadReducer } from './playhead.ts'
 import type { Playhead, PlayheadAction } from './playhead.ts'
 import type { Reel } from './reel.ts'
 
-function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-}
-
 function initialPlayhead(moment: number): Playhead {
-  return { moment, frame: 0, playing: !prefersReducedMotion(), speed: 1 }
+  return { moment, frame: 0, playing: false, speed: 1 }
 }
 
 /** Drives `playheadReducer` on a `setTimeout` per frame — each frame has its own duration. */
