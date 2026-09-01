@@ -1,6 +1,5 @@
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { dialogueSnippet } from '../dialogue-row/dialogue-summary.ts'
 import { relevanceHueStyle } from '../dialogue/relevance.ts'
 import { MediaView } from '../media/MediaView.tsx'
 import { byId } from '../project/derived.ts'
@@ -160,7 +159,7 @@ export function CinemaStage({
           {references.map((target) => (
             <li key={target.dialogue.id}>
               <button type="button" className="button" onClick={() => onSeekMoment(target.index)}>
-                {target.dialogue.npcName}: {dialogueSnippet(target.dialogue)}
+                {target.dialogue.npcName}
               </button>
             </li>
           ))}
