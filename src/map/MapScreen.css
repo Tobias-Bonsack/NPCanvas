@@ -137,13 +137,6 @@
   font-size: var(--text-xs);
 }
 
-.zone-list__map {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-2xs);
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
 /* The row's primary action, carrying the zone's own colour as a left edge so the sidebar and
    the canvas can be matched up at a glance. */
 .zone-list__name {

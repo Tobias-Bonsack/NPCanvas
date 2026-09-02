@@ -60,7 +60,7 @@ export function MapScreen({
 }): ReactElement {
   // Tool, quest filter and viewport are lifted to App so a switch away and back leaves the
   // canvas as it was. Setters below are stable functional updates, not closures over viewState.
-  const { tool, questFilter, trail, references, mapsOpen, viewport, panelWidth } = viewState
+  const { tool, questFilter, trail, references, zonesOpen, mapsOpen, viewport, panelWidth } = viewState
 
   const [armedCaptureId, setArmedCaptureId] = useState<PendingCaptureId | null>(null)
   const [currentCaptureId, setCurrentCaptureId] = useState<PendingCaptureId | null>(null)
@@ -302,7 +302,21 @@ export function MapScreen({
             </button>
             <ToolPicker tool={tool} onChange={setTool} />
           </div>
-          <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />
+          <details
+            className="map-list-disclosure"
+            open={zonesOpen}
+            // Read synchronously, not inside the updater below — currentTarget reverts to null
+            // once the native event finishes dispatching, before a setState updater runs.
+            onToggle={(event) => {
+              const open = event.currentTarget.open
+              onViewStateChange((prev) => ({ ...prev, zonesOpen: open }))
+            }}
+          >
+            <summary className="map-list-disclosure__summary micro-label disclosure-summary">
+              Zones
+            </summary>
+            <ZoneList project={project} selectedId={selectedZoneId} counts={zoneCounts} />
+          </details>
           <details
             className="map-list-disclosure"
             open={mapsOpen}

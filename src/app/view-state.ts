@@ -24,6 +24,9 @@ export type CanvasViewState = {
   trail: boolean
   /** Whether a dialogue's stored references are drawn on the canvas — see `ReferenceLayer`. */
   references: boolean
+  /** Whether the rail's Zones section is expanded — an uncontrolled `<details>` would spring
+   * back open on every view switch. */
+  zonesOpen: boolean
   /** Whether the rail's Maps section is expanded — an uncontrolled `<details>` would spring
    * back open on every view switch. */
   mapsOpen: boolean
@@ -63,7 +66,8 @@ export const INITIAL_VIEW_STATE: ViewState = {
     questFilter: false,
     trail: false,
     references: true,
-    mapsOpen: true,
+    zonesOpen: false,
+    mapsOpen: false,
     viewport: null,
     panelWidth: null,
   },

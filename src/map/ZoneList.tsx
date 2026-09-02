@@ -7,7 +7,7 @@ import { navigate } from '../app/route.ts'
 import { RowActions } from '../app/RowActions.tsx'
 import { selectZone } from '../app/select.ts'
 import { dispatch } from '../project/store.ts'
-import type { GameMap, MapId, ProjectFile, Zone, ZoneId } from '../project/types.ts'
+import type { GameMap, ProjectFile, Zone, ZoneId } from '../project/types.ts'
 import { useRowFocus } from './row-focus.ts'
 import { ZONE_HUES, zoneHueStyle } from './zone-style.ts'
 
@@ -22,8 +22,8 @@ export function ZoneList({
 }): ReactElement {
   // One pass instead of a filter per map — O(maps x zones) matters since this re-renders every
   // frame of a zone drag.
-  const byMap = useMemo(
-    () => groupByMap(project.maps, project.zones),
+  const orderedZones = useMemo(
+    () => orderByMap(project.maps, project.zones),
     [project.maps, project.zones],
   )
 
@@ -34,68 +34,32 @@ export function ZoneList({
 
   return (
     <div className="zone-list">
-      <h2 className="map-list__heading micro-label">Zones</h2>
       {project.zones.length === 0 ? (
         <p className="zone-list__empty hint-text">
           Pick <strong>Draw zone</strong> and drag a rectangle on a map. Every dialogue pinned
           inside it counts as having happened there.
         </p>
       ) : (
-        project.maps.map((map) => (
-          <ZoneGroup
-            key={map.id}
-            map={map}
-            zones={byMap.get(map.id) ?? NO_ZONES}
-            selectedId={selectedId}
-            counts={counts}
-            onFocus={onFocus}
-          />
-        ))
+        <ul className="map-list__items">
+          {orderedZones.map((zone) => (
+            <li key={zone.id} className="map-list__item row-actions-host">
+              <ZoneRow
+                zone={zone}
+                selected={zone.id === selectedId}
+                count={counts.get(zone.id) ?? 0}
+                onFocus={() => onFocus(zone)}
+              />
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
 }
 
-const NO_ZONES: readonly Zone[] = []
-
-function groupByMap(maps: readonly GameMap[], zones: readonly Zone[]): ReadonlyMap<MapId, Zone[]> {
-  const byMap = new Map<MapId, Zone[]>()
-  for (const map of maps) byMap.set(map.id, [])
-  for (const zone of zones) byMap.get(zone.mapId)?.push(zone)
-  return byMap
-}
-
-function ZoneGroup({
-  map,
-  zones,
-  selectedId,
-  counts,
-  onFocus,
-}: {
-  map: GameMap
-  zones: readonly Zone[]
-  selectedId: ZoneId | null
-  counts: ReadonlyMap<ZoneId, number>
-  onFocus: (zone: Zone) => void
-}): ReactElement | null {
-  if (zones.length === 0) return null
-  return (
-    <>
-      <h3 className="zone-list__map">{map.name}</h3>
-      <ul className="map-list__items">
-        {zones.map((zone) => (
-          <li key={zone.id} className="map-list__item row-actions-host">
-            <ZoneRow
-              zone={zone}
-              selected={zone.id === selectedId}
-              count={counts.get(zone.id) ?? 0}
-              onFocus={() => onFocus(zone)}
-            />
-          </li>
-        ))}
-      </ul>
-    </>
-  )
+function orderByMap(maps: readonly GameMap[], zones: readonly Zone[]): readonly Zone[] {
+  const order = new Map(maps.map((map, index) => [map.id, index]))
+  return [...zones].sort((a, b) => (order.get(a.mapId) ?? 0) - (order.get(b.mapId) ?? 0))
 }
 
 // Colour is its own third mode, tracked locally beside EditableRow's rename/delete state.
