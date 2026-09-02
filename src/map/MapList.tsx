@@ -26,6 +26,7 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
 
   return (
     <div className="map-list">
+      <MapImportButton label="Import map" />
       <ul className="map-list__items">
         {project.maps.map((map) => (
           <li key={map.id} className="map-list__item row-actions-host">
@@ -38,7 +39,6 @@ export function MapList({ project }: { project: ProjectFile }): ReactElement {
           </li>
         ))}
       </ul>
-      <MapImportButton label="Import map" />
     </div>
   )
 }
