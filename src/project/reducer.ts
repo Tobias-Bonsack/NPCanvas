@@ -2,7 +2,13 @@ import { assertNever } from '../assert-never.ts'
 import { appendWithoutOverlap } from '../capture/append-overlap.ts'
 import type { ProfileCalibration } from '../capture/capture-profile.ts'
 import { forgetGlyph, mergeGlyphs } from '../capture/glyph-matcher.ts'
-import { clampMapScale, originForScale } from '../map/canvas-layout.ts'
+import {
+  canvasToMapLocal,
+  clampMapScale,
+  mapAtCanvasPoint,
+  mapLocalToCanvas,
+  originForScale,
+} from '../map/canvas-layout.ts'
 import { isSamePolygon } from '../map/geometry.ts'
 import type {
   AppState,
@@ -320,7 +326,7 @@ function applyAction(state: AppState, action: Action): AppState {
       if (target.position.x === action.position.x && target.position.y === action.position.y) {
         return state
       }
-      return replaceIn(state, 'dialogues', target, { ...target, position: action.position })
+      return replaceIn(state, 'dialogues', target, rehomed(state.project.maps, target, action.position))
     }
 
     case 'dialogue/npc-named': {
@@ -799,6 +805,24 @@ function applyAction(state: AppState, action: Action): AppState {
     default:
       return assertNever(action)
   }
+}
+
+/**
+ * A pin dropped over another map belongs to that map. Without this a move across a map boundary
+ * leaves `mapId` pointing at the map the pin came from, with map-local coordinates far outside
+ * it — and `indexDialoguesByZone` buckets zone candidates by the pin's own map, so the zone the
+ * pin visibly sits in is never tested. Topmost map wins, as at click time (`zoneAtCanvasPoint`);
+ * a drop over no map at all keeps the current one rather than orphaning the pin. The position is
+ * carried over verbatim whenever the map is unchanged — round-tripping through canvas space is
+ * not exact in floating point.
+ */
+function rehomed(maps: readonly GameMap[], dialogue: Dialogue, position: Point): Dialogue {
+  const from = maps.find((map) => map.id === dialogue.mapId)
+  if (from === undefined) return { ...dialogue, position }
+  const canvasPoint = mapLocalToCanvas(from, position)
+  const to = mapAtCanvasPoint(maps, canvasPoint)
+  if (to === null || to.id === from.id) return { ...dialogue, position }
+  return { ...dialogue, mapId: to.id, position: canvasToMapLocal(to, canvasPoint) }
 }
 
 // Pop the top of `from`, push the document being left onto `to`. `null` when `from` is empty.

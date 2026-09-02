@@ -23,6 +23,7 @@ import type {
   History,
   MapId,
   PendingCapture,
+  Point,
   ProjectFile,
   Quest,
   RelevanceTag,
@@ -53,14 +54,14 @@ function readyOf(state: AppState): ReadyState {
   return state
 }
 
-function gameMap(id: string, name = id): GameMap {
+function gameMap(id: string, name = id, origin: Point = { x: 0, y: 0 }): GameMap {
   return {
     id: asMapId(id),
     name,
     file: { fileName: `map-${id}.png`, mimeType: 'image/png', byteSize: 10 },
     width: 100,
     height: 100,
-    origin: { x: 0, y: 0 },
+    origin,
     scale: 1,
   }
 }
@@ -152,7 +153,9 @@ function pendingCapture(id: string): PendingCapture {
 /** Two maps, each with a dialogue and a zone, plus a quest spanning both. */
 function twoMapProject(): ProjectFile {
   const harbour = gameMap('harbour')
-  const forest = gameMap('forest')
+  // Side by side, not stacked: a dialogue moved inside one map must not land on the other, which
+  // `dialogue/moved` would now read as a deliberate move across the boundary.
+  const forest = gameMap('forest', 'forest', { x: 200, y: 0 })
   return {
     ...createEmptyProject('Harbour'),
     maps: [harbour, forest],
@@ -434,7 +437,7 @@ describe('reduce: map placement', () => {
     })
     expect(next.kind === 'ready' && next.project.maps.map((map) => map.origin)).toEqual([
       { x: -250, y: 80 },
-      { x: 0, y: 0 },
+      { x: 200, y: 0 },
     ])
   })
 
@@ -592,6 +595,28 @@ describe('reduce: dialogue actions', () => {
       { x: 40, y: 90 },
       { x: 1, y: 2 },
     ])
+  })
+
+  it('rehomes a dialogue dragged onto another map, using that map coordinates', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/moved',
+      dialogueId: asDialogueId('dialogue-harbour'),
+      position: { x: 240, y: 30 }, // canvas (240, 30) — inside forest, which starts at x 200
+    })
+    const moved = readyOf(next).project.dialogues[0]
+    expect(moved.mapId).toBe(asMapId('forest'))
+    expect(moved.position).toEqual({ x: 40, y: 30 })
+  })
+
+  it('keeps the current map for a move onto bare canvas', () => {
+    const next = reduce(ready(twoMapProject()), {
+      kind: 'dialogue/moved',
+      dialogueId: asDialogueId('dialogue-harbour'),
+      position: { x: 150, y: 30 }, // the gap between the two maps
+    })
+    const moved = readyOf(next).project.dialogues[0]
+    expect(moved.mapId).toBe(asMapId('harbour'))
+    expect(moved.position).toEqual({ x: 150, y: 30 })
   })
 
   it('ignores a move of a dialogue that does not exist, or to the position it already has', () => {
